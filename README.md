@@ -8,6 +8,8 @@ The AI coach, its data and its honest benchmark live in
 [COMPUTER-VISION-PROJECT-LIBRARY / 20-football-analytics](https://github.com/yandouziyassine/COMPUTER-VISION-PROJECT-LIBRARY/tree/main/20-football-analytics)
 (design: `docs/superpowers/specs/2026-11-09-playmaker-fan-game-design.md`).
 
+**Docs:** [architecture](docs/ARCHITECTURE.md) · [case study](docs/CASE_STUDY.md) · [decisions](docs/DECISIONS.md)
+
 ## What you play
 
 - **Five real moments a day** from open professional tracking data (Bundesliga, 2. Bundesliga, A-League). Watch 3 s of

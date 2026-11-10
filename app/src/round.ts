@@ -166,7 +166,10 @@ export async function playMoment(ui: RoundUI, mo: Moment, player: string, index:
   return res;
 }
 
-export async function playDay(ui: RoundUI, day: Day, player: string, onPoints: (p: number[]) => void = () => {}): Promise<number[]> {
+/** Called after every answered moment (stats, history). */
+export type OnResult = (mo: Moment, res: PickResult, index: number) => void;
+
+export async function playDay(ui: RoundUI, day: Day, player: string, onResult: OnResult = () => {}): Promise<number[]> {
   const points: number[] = [];
   const total = day.moments.length;
   let nextMoment = getMoment(day.moments[0]!);
@@ -174,7 +177,7 @@ export async function playDay(ui: RoundUI, day: Day, player: string, onPoints: (
     const mo = await nextMoment;
     if (i + 1 < total) nextMoment = getMoment(day.moments[i + 1]!); // prefetch while this one is played
     const res = await playMoment(ui, mo, player, i, total, points);
-    points.push(res.points); onPoints(points);
+    points.push(res.points); onResult(mo, res, i);
     ui.next.hidden = false; ui.next.textContent = i < total - 1 ? "Next moment →" : "See my score";
     ui.next.focus();
     await new Promise<void>((r) => (ui.next.onclick = () => r()));

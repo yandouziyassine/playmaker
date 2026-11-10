@@ -57,6 +57,11 @@ describe("precache list (build)", () => {
     expect(versionOf(list)).toMatch(/^[0-9a-f]{10}$/);
     expect(versionOf(list)).not.toBe(versionOf([...list, "/assets/x.js"]));
   });
+  it("adds every stylesheet, so lazily imported CSS (the stats card) renders offline", () => {
+    const lazy = { ...bundle, "assets/stats-5.css": { type: "asset", fileName: "assets/stats-5.css" } as BundleFile };
+    expect(precacheList(lazy, "index.html", html)).toContain("/assets/stats-5.css");
+    expect(precacheList(lazy, "index.html", html)).not.toContain("/assets/view-9.js");
+  });
 });
 
 describe("swEnabled", () => {

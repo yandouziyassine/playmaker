@@ -20,18 +20,27 @@ export const setLang = (l: Lang) => { current = l; };
 const isLang = (x: unknown): x is Lang => x === "en" || x === "fr";
 
 export type Params = Record<string, string | number>;
-/** The string for `key` in the current language, with {name} placeholders filled. */
-export function t(key: Key, params?: Params, lang: Lang = current): string {
-  const s = DICTS[lang][key] ?? en[key];
-  return params ? s.replace(/\{(\w+)\}/g, (m, k: string) => (k in params ? String(params[k]) : m)) : s;
+type Dicts<K extends string> = Record<Lang, Record<K, string>>;
+/** Plural keys come in pairs "<base>.one" / "<base>.other". */
+export type PluralBase<K extends string> = { [P in K]: P extends `${infer B}.one` ? (`${B}.other` extends K ? B : never) : never }[K];
+
+/** A typed t() / tn() pair over one set of dictionaries. The game uses the shared one below; the Lab builds its own
+ *  from lab.en.ts / lab.fr.ts (app/src/lab/i18n.ts), so the game bundle does not carry the Lab strings. */
+export function translator<K extends string>(dicts: Dicts<K>) {
+  /** The string for `key` in the current language, with {name} placeholders filled. */
+  function t(key: K, params?: Params, lang: Lang = current): string {
+    const s = dicts[lang][key] ?? dicts.en[key];
+    return params ? s.replace(/\{(\w+)\}/g, (m, k: string) => (k in params ? String(params[k]) : m)) : s;
+  }
+  /** Plural form of `base` for n. French: 0 and 1 are singular; English: only 1. */
+  function tn(base: PluralBase<K>, n: number, params: Params = {}, lang: Lang = current): string {
+    const one = new Intl.PluralRules(LOCALE[lang]).select(n) === "one";
+    return t(`${base}.${one ? "one" : "other"}` as K, { n, ...params }, lang);
+  }
+  return { t, tn };
 }
 
-/** Plural keys come in pairs "<base>.one" / "<base>.other". French: 0 and 1 are singular; English: only 1. */
-type PluralBase = { [K in Key]: K extends `${infer B}.one` ? (`${B}.other` extends Key ? B : never) : never }[Key];
-export function tn(base: PluralBase, n: number, params: Params = {}, lang: Lang = current): string {
-  const one = new Intl.PluralRules(LOCALE[lang]).select(n) === "one";
-  return t(`${base}.${one ? "one" : "other"}` as Key, { n, ...params }, lang);
-}
+export const { t, tn } = translator<Key>(DICTS);
 
 /** A number with exactly `nd` decimals in the current language ("6.2" / "6,2"); no grouping. */
 export function num(x: number, nd = 0, lang: Lang = current): string {
@@ -79,9 +88,9 @@ export function saveLang(l: Lang) { try { storage()?.setItem(LANG_KEY, l); } cat
 
 /** Fills the page's static strings: data-i18n (text), data-i18n-html (trusted dictionary markup), data-i18n-aria
  *  (aria-label), data-i18n-content (meta content). */
-export function localizeDom(root: ParentNode = document) {
-  for (const e of root.querySelectorAll<HTMLElement>("[data-i18n]")) e.textContent = t(e.dataset.i18n as Key);
-  for (const e of root.querySelectorAll<HTMLElement>("[data-i18n-html]")) e.innerHTML = t(e.dataset.i18nHtml as Key);
-  for (const e of root.querySelectorAll<HTMLElement>("[data-i18n-aria]")) e.setAttribute("aria-label", t(e.dataset.i18nAria as Key));
-  for (const e of root.querySelectorAll<HTMLElement>("[data-i18n-content]")) e.setAttribute("content", t(e.dataset.i18nContent as Key));
+export function localizeDom(root: ParentNode = document, tr: (key: string) => string = (k) => t(k as Key)) {
+  for (const e of root.querySelectorAll<HTMLElement>("[data-i18n]")) e.textContent = tr(e.dataset.i18n!);
+  for (const e of root.querySelectorAll<HTMLElement>("[data-i18n-html]")) e.innerHTML = tr(e.dataset.i18nHtml!);
+  for (const e of root.querySelectorAll<HTMLElement>("[data-i18n-aria]")) e.setAttribute("aria-label", tr(e.dataset.i18nAria!));
+  for (const e of root.querySelectorAll<HTMLElement>("[data-i18n-content]")) e.setAttribute("content", tr(e.dataset.i18nContent!));
 }

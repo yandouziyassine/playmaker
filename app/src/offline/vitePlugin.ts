@@ -30,7 +30,8 @@ export function htmlRefs(html: string): string[] {
 }
 
 /** The precache list: the page, what it references and, for each JS file, its static imports, CSS and assets
- * (recursively). Dynamic imports (the 3D view) are left out on purpose. Sorted, de-duplicated, root-relative. */
+ * (recursively), plus every stylesheet. Dynamic JS imports (the 3D view) are left out on purpose. Sorted, de-duplicated,
+ * root-relative. */
 export function precacheList(bundle: Record<string, BundleFile>, page: string, html: string, extra: string[] = []): string[] {
   const out = new Set<string>([`/${page}`, ...extra]);
   const seen = new Set<string>();
@@ -48,6 +49,8 @@ export function precacheList(bundle: Record<string, BundleFile>, page: string, h
     const file = ref.slice(1);
     if (bundle[file]) visit(file); else out.add(ref); // public/ files (favicon, manifest)
   }
+  // every stylesheet too (a few kB): lazily imported CSS (e.g. the stats card) must render offline
+  for (const file of Object.keys(bundle)) if (file.endsWith(".css")) out.add(`/${file}`);
   return [...out].sort();
 }
 

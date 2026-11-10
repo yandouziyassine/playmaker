@@ -7,7 +7,6 @@ import { readsText } from "./text.ts";
 import { History } from "./storage.ts";
 import { icon, setIconText } from "./design/icons.ts";
 import { startPreview } from "./preview.ts";
-import "./stats.css";
 import { initLang, localizeDom, pct, t, tn } from "./i18n/index.ts";
 import { mountLangSwitch } from "./i18n/ui.ts";
 import { markPendingDay, pickQueue, registerSW, startFlushing, warmOffline } from "./offline/index.ts";
@@ -82,11 +81,24 @@ function statBars(title: string, rows: [string, Bucket][]) {
   return box;
 }
 
+// The stats card's stylesheet is not render-blocking (the intro paints from the inlined critical CSS): it is fetched
+// from the start, in parallel, and a card is only inserted once it has loaded, so the card never shows unstyled.
+const statsCss = import("./stats.css").catch(() => { /* offline or failed: the card still renders */ });
+
 /** "Your stats": full card on the done screen, compact one on the intro. Built from local history only. */
 function renderStats(host: HTMLElement, compact: boolean) {
   host.querySelector(".stats")?.remove();
   const s = computeStats(history.days(), history.moments());
   if (!s.games) return;
+  void statsCss.then(() => {
+    host.querySelector(".stats")?.remove(); // callbacks run in call order: the latest render wins, one card per host
+    const card = buildStats(s, compact);
+    const anchor = compact ? host.querySelector("#play") : null;
+    if (anchor) anchor.after(card); else host.append(card);
+  });
+}
+
+function buildStats(s: ReturnType<typeof computeStats>, compact: boolean): HTMLElement {
   const card = el("section", `card stats${compact ? " compact" : ""}`);
   card.setAttribute("aria-label", t("stats.title"));
   const head = el("div", "shead");
@@ -113,8 +125,7 @@ function renderStats(host: HTMLElement, compact: boolean) {
     );
   }
   if (s.insight) card.append(el("p", "insight", s.insight));
-  const anchor = compact ? host.querySelector("#play") : null;
-  if (anchor) anchor.after(card); else host.append(card);
+  return card;
 }
 
 let savedUrl = "";

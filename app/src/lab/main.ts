@@ -17,12 +17,13 @@ import { attackDirection, ballGround, pickBall, pickCarrier, stepBall, trackBox,
 import { calibrationCheck, fitQuality, LINE_SIDE, pointAt, scanLines, snapPoint, toSource, type LineScan } from "./lines.ts";
 import { setIconText, spinner, type IconName } from "../design/icons.ts";
 import type { CoachOption } from "../coach/advice.ts";
-import { initLang, localizeDom, num, pct, t, tn, xg, type Key } from "../i18n/index.ts";
+import { initLang, num, pct, t, xg } from "../i18n/index.ts";
+import { localizeLab, tl, tln, type LabKey } from "./i18n.ts";
 import { translatePhrase } from "../i18n/phrases.ts";
 import { mountLangSwitch } from "../i18n/ui.ts";
 
 initLang();
-localizeDom();
+localizeLab();
 mountLangSwitch();
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -37,7 +38,7 @@ function carryDirection(angle: number): string {
   return a === 0 ? t("rp.straight") : t(a > 0 ? "rp.left" : "rp.right", { a: Math.abs(a) });
 }
 function optionTitle(o: CoachOption): string {
-  if (o.kind === "pass") return t("lab.opt.pass", { n: (o.target ?? -1) + 1 });
+  if (o.kind === "pass") return tl("lab.opt.pass", { n: (o.target ?? -1) + 1 });
   if (o.kind === "carry") return t("rp.carry", { dir: carryDirection(o.angle ?? 0) });
   return t("rp.shoot");
 }
@@ -48,10 +49,10 @@ function successLabel(o: CoachOption): string {
 const src = document.createElement("canvas"); // the picture at working resolution
 const img = $<HTMLCanvasElement>("img"), top = $<HTMLCanvasElement>("top");
 const status = $("status"), calibMsg = $("calib-msg");
-$("work").querySelector<HTMLElement>(".stage")!.dataset.frozen = t("lab.frozen"); // the "Frozen" badge (CSS content: attr())
+$("work").querySelector<HTMLElement>(".stage")!.dataset.frozen = tl("lab.frozen"); // the "Frozen" badge (CSS content: attr())
 /** Landmark names: the full one (title) and a short one that fits the closed dropdown at 360 px. */
-const lmFull = (id: string) => t(`lab.lm.${id}` as Key);
-const lmShort = (id: string) => t(`lab.lms.${id}` as Key);
+const lmFull = (id: string) => tl(`lab.lm.${id}` as LabKey);
+const lmShort = (id: string) => tl(`lab.lms.${id}` as LabKey);
 
 const st = {
   loaded: false,
@@ -88,11 +89,11 @@ function buildCalib() {
     const num = document.createElement("span");
     num.className = "num"; num.textContent = String(i + 1); num.style.background = PT_COLOURS[i]!;
     const sel = document.createElement("select");
-    sel.setAttribute("aria-label", t("lab.calib.pointAria", { n: i + 1 }));
+    sel.setAttribute("aria-label", tl("lab.calib.pointAria", { n: i + 1 }));
     sel.title = lmFull(id);
     for (const [group, filter] of [["lab.grp.centre", "c"], ["lab.grp.left", "L-"], ["lab.grp.right", "R-"]] as const) {
       const og = document.createElement("optgroup");
-      og.label = t(group);
+      og.label = tl(group);
       for (const l of LANDMARKS.filter((l) => (filter === "c" ? !/^[LR]-/.test(l.id) : l.id.startsWith(filter)))) {
         const o = document.createElement("option");
         o.value = l.id; o.textContent = lmShort(l.id); o.title = lmFull(l.id); o.selected = l.id === id;
@@ -105,10 +106,10 @@ function buildCalib() {
     state.className = "state";
     if (st.pts[i]) {
       const b = document.createElement("button");
-      b.type = "button"; b.className = "ghost"; b.textContent = t(st.active === i ? "lab.calib.tapPicture" : "lab.calib.replace");
+      b.type = "button"; b.className = "ghost"; b.textContent = tl(st.active === i ? "lab.calib.tapPicture" : "lab.calib.replace");
       b.addEventListener("click", () => { st.active = i; buildCalib(); render(); });
       state.append(b);
-    } else state.textContent = t(st.active === i ? "lab.calib.tapPicture" : "lab.calib.notPlaced");
+    } else state.textContent = tl(st.active === i ? "lab.calib.tapPicture" : "lab.calib.notPlaced");
     li.append(num, sel, state);
     ol.append(li);
   });
@@ -119,13 +120,13 @@ type Calib = { p2i: Mat3; i2p: Mat3 } | { error: string };
 
 function calibration(): Calib | null {
   if (st.pts.some((p) => !p)) return null;
-  if (new Set(st.ids).size < 4) return { error: t("lab.err.distinct") };
+  if (new Set(st.ids).size < 4) return { error: tl("lab.err.distinct") };
   const pitchPts = st.ids.map((id) => landmark(id)!);
   const imgPts = st.pts as Pt[];
-  if (hasCollinearTriple(pitchPts, 2e-3)) return { error: t("lab.err.pitchLine") };
-  if (hasCollinearTriple(imgPts, 1e-3)) return { error: t("lab.err.picLine") };
+  if (hasCollinearTriple(pitchPts, 2e-3)) return { error: tl("lab.err.pitchLine") };
+  if (hasCollinearTriple(imgPts, 1e-3)) return { error: tl("lab.err.picLine") };
   const p2i = computeHomography(pitchPts, imgPts), i2pRaw = computeHomography(imgPts, pitchPts);
-  if (!p2i || !i2pRaw) return { error: t("lab.err.order") };
+  if (!p2i || !i2pRaw) return { error: tl("lab.err.order") };
   const c = { x: imgPts.reduce((s, p) => s + p.x, 0) / 4, y: imgPts.reduce((s, p) => s + p.y, 0) / 4 };
   const pc = { x: pitchPts.reduce((s, p) => s + p.x, 0) / 4, y: pitchPts.reduce((s, p) => s + p.y, 0) / 4 };
   return { p2i: orientH(p2i, pc), i2p: orientH(i2pRaw, c) };
@@ -212,7 +213,7 @@ function teamColour(l: TeamLabel): string {
   return l === "other" ? "#8d99ae" : rgb(st.teamRgb[l]!);
 }
 function teamName(l: TeamLabel): string {
-  return l === "other" ? t("lab.team.other") : l === 0 ? "A" : "B";
+  return l === "other" ? tl("lab.team.other") : l === 0 ? "A" : "B";
 }
 
 /** The picture (or, live, the current video frame) with the overlays. */
@@ -291,7 +292,7 @@ function drawImage(cal: Calib | null, source: CanvasImageSource = src) {
     ctx.beginPath(); ctx.arc(c.x, c.y, r, 0, Math.PI * 2); ctx.stroke();
     ctx.setLineDash([]);
     ctx.font = `700 ${11 * u}px system-ui, sans-serif`; ctx.fillStyle = "#ff9f1c";
-    ctx.fillText(t("lab.cv.ball", { p: pct(ball.score) }), c.x + r + 3 * u, c.y - r);
+    ctx.fillText(tl("lab.cv.ball", { p: pct(ball.score) }), c.x + r + 3 * u, c.y - r);
     ctx.restore();
   }
   const now = performance.now();
@@ -394,7 +395,7 @@ function drawTop(cal: Calib | null, pos: (Pt | null)[], advice: Advice | null, b
     ctx.beginPath(); ctx.arc(q.x, q.y, br, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     ctx.font = `700 ${Math.max(11, s * 1.5)}px system-ui, sans-serif`; ctx.fillStyle = "#ff9f1c";
     ctx.shadowColor = "rgba(0,0,0,0.8)"; ctx.shadowBlur = 3;
-    ctx.fillText(t("lab.cv.ballApprox"), q.x + br * 2.8, q.y - br * 1.5);
+    ctx.fillText(tl("lab.cv.ballApprox"), q.x + br * 2.8, q.y - br * 1.5);
     ctx.restore();
   }
   if (coachText) {
@@ -404,7 +405,7 @@ function drawTop(cal: Calib | null, pos: (Pt | null)[], advice: Advice | null, b
   if (!cal || "error" in cal) {
     ctx.fillStyle = "rgba(7,23,14,0.7)"; ctx.fillRect(0, 0, top.width, top.height);
     ctx.fillStyle = "#f1faee"; ctx.font = `600 ${s * 2.4}px system-ui, sans-serif`; ctx.textAlign = "center";
-    ctx.fillText(t(cal ? "lab.cv.fixCal" : live.on ? "lab.cv.freezePlace" : "lab.cv.place"),
+    ctx.fillText(tl(cal ? "lab.cv.fixCal" : live.on ? "lab.cv.freezePlace" : "lab.cv.place"),
       top.width / 2, top.height / 2);
     ctx.textAlign = "start";
   }
@@ -461,7 +462,7 @@ function ensureCoach() {
   coachLoading = true;
   import("../coach/picture.ts")
     .then(async (m) => { coachW = await m.loadCoach(new URL("coach/models.json", document.baseURI).href); coachText = m; })
-    .catch((e) => { console.error(e); coachErr = t("lab.coach.loadErr"); })
+    .catch((e) => { console.error(e); coachErr = tl("lab.coach.loadErr"); })
     .finally(() => { coachLoading = false; render(); });
 }
 
@@ -469,15 +470,15 @@ type CoachView = { advice: Advice } | { msg: string } | null;
 function coachData(pos: (Pt | null)[]): CoachView {
   const c = st.carrier;
   if (c === null) return null;
-  if (live.on && !live.frozen) return { msg: t("lab.coach.freezeFirst") };
+  if (live.on && !live.frozen) return { msg: tl("lab.coach.freezeFirst") };
   const team = st.labels[c];
-  if (!pos[c] || team === undefined || team === "other") return { msg: t("lab.coach.carrierTeam") };
-  if (!coachW || !coachText) { ensureCoach(); return { msg: coachErr || t("lab.coach.loading") }; }
+  if (!pos[c] || team === undefined || team === "other") return { msg: tl("lab.coach.carrierTeam") };
+  if (!coachW || !coachText) { ensureCoach(); return { msg: coachErr || tl("lab.coach.loading") }; }
   const ps = coachText.stateFromPicture(pos, st.labels, c, st.dir);
-  if (!ps) return { msg: t("lab.coach.carrierTeamShort") };
+  if (!ps) return { msg: tl("lab.coach.carrierTeamShort") };
   if (live.on) withVelocities(ps.state, st.dir);
   const advice = coachText.advise(ps, coachW.coach, coachW.models);
-  return advice ? { advice } : { msg: t("lab.coach.noOpp") };
+  return advice ? { advice } : { msg: tl("lab.coach.noOpp") };
 }
 
 /** Live: the tracked velocities (pitch frame) into the coach State (attack-normalised: rotated 180° for the left goal). */
@@ -497,8 +498,8 @@ function renderSide(pos: (Pt | null)[], view: CoachView) {
   $("st-teams").textContent = st.ms === null ? "–" : `${counts["0"]} / ${counts["1"]} / ${counts["other"]}`;
   $("st-mapped").textContent = st.ms === null ? "–" : String(pos.filter(Boolean).length);
   const nVel = live.on ? live.vel.filter(Boolean).length : 0;
-  $("coach-tag").textContent = t(live.on ? "lab.coach.tagLive" : "lab.coach.tagPicture");
-  $("coach-still").textContent = !live.on ? t("lab.coach.still") : nVel ? tn("lab.coach.vel", nVel) : t("lab.coach.noVel");
+  $("coach-tag").textContent = tl(live.on ? "lab.coach.tagLive" : "lab.coach.tagPicture");
+  $("coach-still").textContent = !live.on ? tl("lab.coach.still") : nVel ? tln("lab.coach.vel", nVel) : tl("lab.coach.noVel");
   const legend = $("legend");
   legend.innerHTML = "";
   if (st.persons.length) {
@@ -508,12 +509,12 @@ function renderSide(pos: (Pt | null)[], view: CoachView) {
       i.style.background = teamColour(l);
       if (l === 1) i.className = "b";
       if (l === "other") i.className = "o";
-      s.append(i, l === "other" ? t("lab.legend.other", { n: counts["other"]! }) : t("lab.legend.team", { t: teamName(l), n: counts[String(l)]! }));
+      s.append(i, l === "other" ? tl("lab.legend.other", { n: counts["other"]! }) : tl("lab.legend.team", { t: teamName(l), n: counts[String(l)]! }));
       legend.append(s);
     }
     if (st.separation < 15) {
       const w = document.createElement("span");
-      w.textContent = t("lab.legend.similar");
+      w.textContent = tl("lab.legend.similar");
       w.style.color = "#ffd166";
       legend.append(w);
     }
@@ -536,14 +537,14 @@ function renderSide(pos: (Pt | null)[], view: CoachView) {
       const num = document.createElement("span"); num.className = "num"; num.textContent = `${k + 1}.`;
       const title = document.createElement("b"); title.textContent = optionTitle(r.option);
       const ok = document.createElement("span"); ok.textContent = successLabel(r.option);
-      const val = document.createElement("span"); val.textContent = t("lab.opt.value", { xg: xg(r.option.score) });
+      const val = document.createElement("span"); val.textContent = tl("lab.opt.value", { xg: xg(r.option.score) });
       head.append(num, title, ok, val);
       const why = document.createElement("ul");
       r.why.phrases.forEach((p, i) => {
         const w = document.createElement("li");
         const sign = r.why.signs[i];
         w.className = sign === 1 ? "helps" : sign === -1 ? "hurts" : "val";
-        if (sign === 1 || sign === -1) w.dataset.pre = t(sign === 1 ? "lab.why.helps" : "lab.why.hurts");
+        if (sign === 1 || sign === -1) w.dataset.pre = tl(sign === 1 ? "lab.why.helps" : "lab.why.hurts");
         w.textContent = translatePhrase(p);
         why.append(w);
       });
@@ -555,7 +556,7 @@ function renderSide(pos: (Pt | null)[], view: CoachView) {
       const li = document.createElement("li");
       li.className = "msg";
       const mates = a.ps.state.att.length - 1, opps = a.ps.state.def.length;
-      li.textContent = tn("lab.coach.rest", rest, { mates: tn("lab.mates", mates), opps: tn("lab.opps", opps) });
+      li.textContent = tln("lab.coach.rest", rest, { mates: tln("lab.mates", mates), opps: tln("lab.opps", opps) });
       ol.append(li);
     }
   }
@@ -569,8 +570,8 @@ function render() {
     if (!st.loaded) return;
     const cal = calibration();
     calibMsg.textContent = cal && "error" in cal ? cal.error
-      : cal ? t("lab.calib.ok")
-      : t(live.on && !live.frozen ? "lab.calib.freezeTap" : "lab.calib.tap", { n: (st.active ?? 0) + 1 });
+      : cal ? tl("lab.calib.ok")
+      : tl(live.on && !live.frozen ? "lab.calib.freezeTap" : "lab.calib.tap", { n: (st.active ?? 0) + 1 });
     calibMsg.classList.toggle("bad", !!cal && "error" in cal);
     const pos = mapped(cal);
     const ballPt = ballOnPitch(cal, currentBall(cal));
@@ -602,10 +603,10 @@ function autoCarrier(pos: (Pt | null)[], ballPt: Pt | null) {
     const ad = attackDirection(pos, st.labels, team);
     if (ad) {
       if (ad.dir !== st.dir) setDir(ad.dir, false);
-      dirNote = t("lab.auto.dir", { side: t(ad.dir === 1 ? "lab.side.right" : "lab.side.left"), team: teamName(team), own: t(ad.ownSide === 1 ? "lab.side.right" : "lab.side.left") });
+      dirNote = tl("lab.auto.dir", { side: tl(ad.dir === 1 ? "lab.side.right" : "lab.side.left"), team: teamName(team), own: tl(ad.ownSide === 1 ? "lab.side.right" : "lab.side.left") });
     }
   }
-  st.autoNote = [t("lab.auto.carrier", { n: pick.index + 1, team: teamName(team), d: num(pick.dist, 1) }), dirNote, t("lab.auto.override")].filter(Boolean).join(" ");
+  st.autoNote = [tl("lab.auto.carrier", { n: pick.index + 1, team: teamName(team), d: num(pick.dist, 1) }), dirNote, tl("lab.auto.override")].filter(Boolean).join(" ");
   if (first && !live.on) $<HTMLDetailsElement>("opts").open = true; // picture mode: the coach runs straight away
 }
 
@@ -617,11 +618,11 @@ function renderFit(f: Fit | null) {
   const parts: string[] = [];
   if (f.quality) {
     el.classList.add(f.quality.rating);
-    parts.push(t("lab.fit", { rating: t(`lab.fit.${f.quality.rating}`), d: num(f.quality.mean, 1) }));
-  } else parts.push(t("lab.fit.few"));
+    parts.push(tl("lab.fit", { rating: tl(`lab.fit.${f.quality.rating}`), d: num(f.quality.mean, 1) }));
+  } else parts.push(tl("lab.fit.few"));
   if (f.check) parts.push(f.check.n > 4
-    ? tn("lab.fit.err", f.check.n - 4, { e: num(f.check.err, 1) })
-    : t("lab.fit.exact"));
+    ? tln("lab.fit.err", f.check.n - 4, { e: num(f.check.err, 1) })
+    : tl("lab.fit.exact"));
   el.textContent = parts.join(" · ") + ".";
 }
 
@@ -640,13 +641,13 @@ function setPicture(draw: (ctx: CanvasRenderingContext2D) => void, w: number, h:
 }
 
 async function loadFile(file: File) {
-  if (!file.type.startsWith("image/")) { status.textContent = t("lab.st.notPicture"); return; }
+  if (!file.type.startsWith("image/")) { status.textContent = tl("lab.st.notPicture"); return; }
   try {
     const bmp = await createImageBitmap(file);
     setPicture((ctx) => ctx.drawImage(bmp, 0, 0), bmp.width, bmp.height);
     bmp.close();
   } catch {
-    status.textContent = t("lab.st.cantRead"); return;
+    status.textContent = tl("lab.st.cantRead"); return;
   }
   st.pts = [null, null, null, null]; st.active = 0;
   buildCalib(); render();
@@ -662,7 +663,7 @@ function loadDemo() {
   st.pts = st.ids.map((id, i) => { const p = applyH(H!, landmark(id)!)!; return { x: p.x + nudge[i]!.x, y: p.y + nudge[i]!.y }; });
   st.active = null;
   buildCalib(); render();
-  status.textContent = t("lab.st.demo");
+  status.textContent = tl("lab.st.demo");
   void runDetect();
 }
 
@@ -683,14 +684,14 @@ async function runDetect() {
   if (st.busy || !st.loaded) return;
   st.busy = true;
   const btn = $<HTMLButtonElement>("detect");
-  btn.disabled = true; btn.setAttribute("aria-busy", "true"); btn.replaceChildren(spinner(), t("lab.detecting"));
+  btn.disabled = true; btn.setAttribute("aria-busy", "true"); btn.replaceChildren(spinner(), tl("lab.detecting"));
   const busy = (t: string) => status.replaceChildren(spinner(), t);
   try {
-    busy(t("lab.st.loadingDetector"));
+    busy(tl("lab.st.loadingDetector"));
     const t0 = performance.now();
     await loadDetector();
     const loadMs = performance.now() - t0;
-    busy(t("lab.st.detectingPeople"));
+    busy(tl("lab.st.detectingPeople"));
     await new Promise((r) => setTimeout(r, 30));
     const run = await detectPeople(src, $<HTMLInputElement>("tiled").checked);
     // number players from left to right
@@ -703,16 +704,16 @@ async function runDetect() {
     const cal = calibration();
     const ball = pickBall(run.balls, persons, cal && !("error" in cal) ? cal.i2p : null, img.width);
     status.textContent = [
-      t("lab.st.found", { people: tn("lab.people", persons.length), ms: Math.round(run.ms), passes: tn("lab.passes", run.passes),
-        load: loadMs > 50 ? t("lab.st.loadedIn", { s: num(loadMs / 1000, 1) }) : "" }),
-      persons.length === 0 ? t("lab.st.nobody") : "",
-      ball ? t("lab.st.ball", { p: pct(ball.score) }) : t($<HTMLInputElement>("tiled").checked ? "lab.st.noBall" : "lab.st.noBallTiled"),
+      tl("lab.st.found", { people: tln("lab.people", persons.length), ms: Math.round(run.ms), passes: tln("lab.passes", run.passes),
+        load: loadMs > 50 ? tl("lab.st.loadedIn", { s: num(loadMs / 1000, 1) }) : "" }),
+      persons.length === 0 ? tl("lab.st.nobody") : "",
+      ball ? tl("lab.st.ball", { p: pct(ball.score) }) : tl($<HTMLInputElement>("tiled").checked ? "lab.st.noBall" : "lab.st.noBallTiled"),
     ].filter(Boolean).join(" ");
   } catch (e) {
     console.error(e);
-    status.textContent = t("lab.st.detFail");
+    status.textContent = tl("lab.st.detFail");
   } finally {
-    st.busy = false; btn.disabled = false; btn.removeAttribute("aria-busy"); btn.replaceChildren(t("lab.detect"));
+    st.busy = false; btn.disabled = false; btn.removeAttribute("aria-busy"); btn.replaceChildren(tl("lab.detect"));
     render();
   }
 }
@@ -737,7 +738,7 @@ img.addEventListener("pointerdown", (e) => {
     const next = st.pts.findIndex((q) => !q);
     st.active = next >= 0 ? next : null;
     calibChanged(); buildCalib(); render();
-    if (d !== null) status.textContent = t("lab.st.snapped", { n: i + 1, d: num(d, 0) });
+    if (d !== null) status.textContent = tl("lab.st.snapped", { n: i + 1, d: num(d, 0) });
     return;
   }
   const inBox = st.persons.map((q, i) => ({ q, i }))
@@ -790,7 +791,7 @@ $("clear-carrier").addEventListener("click", () => { st.carrier = null; st.carri
 $("snap-all").addEventListener("click", () => {
   let n = 0;
   st.pts.forEach((p, i) => { if (p && snapPointAt(i, st.snaps[i]?.from ?? p) !== null) n++; });
-  status.textContent = n ? tn("lab.st.snappedN", n) : t("lab.st.noSnap");
+  status.textContent = n ? tln("lab.st.snappedN", n) : tl("lab.st.noSnap");
   calibChanged(); buildCalib(); render();
 });
 $("reset-pts").addEventListener("click", () => { st.pts = [null, null, null, null]; st.snaps = [null, null, null, null]; st.active = 0; calibChanged(); buildCalib(); render(); });
@@ -877,7 +878,7 @@ function setMode(on: boolean) {
   live.cents = null; live.ref = null; resetTracking(); setFrozen(false);
   $("work").hidden = true;
   status.textContent = "";
-  camStatus(on ? t("lab.cam.private") : "");
+  camStatus(on ? tl("lab.cam.private") : "");
   buildCalib();
 }
 
@@ -885,7 +886,7 @@ async function startCamera() {
   if (live.stream) return;
   const btn = $<HTMLButtonElement>("cam-start");
   btn.disabled = true;
-  camStatus(t("lab.cam.asking"), false, true);
+  camStatus(tl("lab.cam.asking"), false, true);
   let stream: MediaStream;
   try {
     stream = await openCamera();
@@ -917,15 +918,15 @@ async function startCamera() {
   $("work").hidden = false;
   btn.hidden = true; btn.disabled = false;
   $("cam-stop").hidden = false;
-  camStatus(t("lab.cam.on"));
+  camStatus(tl("lab.cam.on"));
   drawLoop();
   $("work").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
-  status.replaceChildren(spinner(), t("lab.st.loadingDetector"));
+  status.replaceChildren(spinner(), tl("lab.st.loadingDetector"));
   try {
     await loadVideoDetector();
   } catch (e) {
     console.error(e);
-    status.textContent = t("lab.st.detFailCam");
+    status.textContent = tl("lab.st.detFailCam");
     return;
   }
   schedule(0);
@@ -976,7 +977,7 @@ async function tick() {
     processFrame(run.persons, run.balls, run.ms, t0);
   } catch (e) {
     console.error(e);
-    status.textContent = t("lab.st.liveFail");
+    status.textContent = tl("lab.st.liveFail");
     return;
   }
   const spent = performance.now() - t0;
@@ -1049,10 +1050,10 @@ function processFrame(found: Person[], balls: Ball[], ms: number, now: number) {
   Object.assign(st, { persons, colours, labels, separation, ms, carrier: null, carrierManual: false, autoNote: "" });
   const fps = live.fps === null ? "–" : num(live.fps, 1);
   if (live.moved) {
-    status.textContent = t("lab.st.moved");
+    status.textContent = tl("lab.st.moved");
   } else {
-    status.textContent = t("lab.live.status", { fps, ms: Math.round(ms), people: tn("lab.people", persons.length) }) +
-      (ok ? (live.cents ? t("lab.live.fixed") : "") : t("lab.live.uncal")) + (live.ball ? t("lab.live.ball") : "");
+    status.textContent = tl("lab.live.status", { fps, ms: Math.round(ms), people: tln("lab.people", persons.length) }) +
+      (ok ? (live.cents ? tl("lab.live.fixed") : "") : tl("lab.live.uncal")) + (live.ball ? tl("lab.live.ball") : "");
   }
   status.classList.toggle("bad", live.moved);
 }
@@ -1060,7 +1061,7 @@ function processFrame(found: Person[], balls: Ball[], ms: number, now: number) {
 function setFrozen(f: boolean) {
   live.frozen = f;
   const b = $("freeze");
-  b.textContent = t(f ? "lab.resume" : "lab.freeze");
+  b.textContent = tl(f ? "lab.resume" : "lab.freeze");
   b.setAttribute("aria-pressed", String(f));
   $("work").querySelector(".stage")!.classList.toggle("frozen", f && live.on);
   if (!live.stream) return;
@@ -1078,12 +1079,12 @@ function setFrozen(f: boolean) {
 $("mode-picture").addEventListener("click", () => setMode(false));
 $("mode-live").addEventListener("click", () => setMode(true));
 $("cam-start").addEventListener("click", () => void startCamera());
-$("cam-stop").addEventListener("click", () => { stopCamera(); setFrozen(true); camStatus(t("lab.cam.stopped")); });
+$("cam-stop").addEventListener("click", () => { stopCamera(); setFrozen(true); camStatus(tl("lab.cam.stopped")); });
 $("freeze").addEventListener("click", () => setFrozen(!live.frozen));
 $("ask-coach").addEventListener("click", () => {
   setFrozen(true);
   $<HTMLDetailsElement>("opts").open = true;
-  status.textContent = t(live.ball ? "lab.st.frozenBall" : "lab.st.frozenNoBall");
+  status.textContent = tl(live.ball ? "lab.st.frozenBall" : "lab.st.frozenNoBall");
   status.classList.remove("bad");
   top.scrollIntoView({ behavior: "smooth", block: "center" });
 });
@@ -1091,7 +1092,7 @@ $("recal").addEventListener("click", () => {
   setFrozen(true);
   st.pts = [null, null, null, null]; st.snaps = [null, null, null, null]; st.active = 0;
   live.cents = null; live.ref = null; resetTracking();
-  status.textContent = t("lab.st.recal");
+  status.textContent = tl("lab.st.recal");
   status.classList.remove("bad");
   buildCalib(); render();
 });
@@ -1099,7 +1100,7 @@ $("recal").addEventListener("click", () => {
 document.addEventListener("visibilitychange", () => {
   if (document.hidden && live.stream) {
     stopCamera(); setFrozen(true);
-    camStatus(t("lab.cam.hidden"));
+    camStatus(tl("lab.cam.hidden"));
   }
 });
 addEventListener("pagehide", () => stopCamera());

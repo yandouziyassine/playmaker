@@ -4,8 +4,11 @@ import type { Moment, PickResult } from "../src/api.ts";
 import { PHRASES, fmt, signed } from "../src/coach/explain.ts";
 import { en } from "../src/i18n/en.ts";
 import { fr } from "../src/i18n/fr.ts";
-import { DICTS, NNBSP, num, pct, resolveLang, setLang, t, tn, xg, type Key } from "../src/i18n/index.ts";
+import { labEn } from "../src/i18n/lab.en.ts";
+import { labFr } from "../src/i18n/lab.fr.ts";
+import { DICTS, NNBSP, num, pct, resolveLang, setLang, t, tn, xg } from "../src/i18n/index.ts";
 import { CAMERA_MESSAGES } from "../src/lab/camera.ts";
+import { LAB_DICTS, tl, tln, type LabKey } from "../src/lab/i18n.ts";
 import { LANDMARKS } from "../src/lab/landmarks.ts";
 import { PHRASE_FR, translatePhrase } from "../src/i18n/phrases.ts";
 import { arrowLabel } from "../src/replay/draw.ts";
@@ -17,22 +20,29 @@ afterEach(() => setLang("en"));
 const placeholders = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
 const tags = (s: string) => [...s.matchAll(/<\/?([a-z]+)/g)].map((m) => m[0]).sort();
 
+// The shared dictionaries (game, replay, about) and the Lab's own pair (lab.en.ts / lab.fr.ts): same rules for both.
+const SETS: [string, Record<string, string>, Record<string, string>][] = [["shared", en, fr], ["lab", labEn, labFr]];
+
 describe("dictionaries", () => {
-  it("en and fr have the same keys, placeholders and markup", () => {
+  it.each(SETS)("%s: en and fr have the same keys, placeholders and markup", (_, en, fr) => {
     expect(Object.keys(fr).sort()).toEqual(Object.keys(en).sort());
-    for (const k of Object.keys(en) as (keyof typeof en)[]) {
-      expect(placeholders(fr[k]), k).toEqual(placeholders(en[k]));
-      if (k.endsWith(".html")) expect(tags(fr[k]), k).toEqual(tags(en[k]));
+    for (const k of Object.keys(en)) {
+      expect(placeholders(fr[k]!), k).toEqual(placeholders(en[k]!));
+      if (k.endsWith(".html")) expect(tags(fr[k]!), k).toEqual(tags(en[k]!));
       else expect(fr[k], k).not.toMatch(/<[a-z]/);
-      expect(fr[k].trim().length, k).toBeGreaterThan(0);
+      expect(fr[k]!.trim().length, k).toBeGreaterThan(0);
     }
   });
   it("French strings are translated (only names, codes and units may stay identical)", () => {
-    const same = (Object.keys(en) as (keyof typeof en)[]).filter((k) => en[k] === fr[k]);
+    const same = SETS.flatMap(([, en, fr]) => Object.keys(en).filter((k) => en[k] === fr[k]));
     expect(same.sort()).toEqual(["kind.pass", "lab.grp.centre", "lang.en", "lang.fr", "nav.code", "reveal.points", "rp.pause", "time.hm", "tour.aria", "v3d.2d", "v3d.3d"].sort()); // same word in both
   });
   it("French typography: no plain space before ? ! ; or :", () => {
-    for (const [k, v] of Object.entries(fr)) expect(v.replace(/<[^>]+>/g, ""), k).not.toMatch(/ [?!;:]/);
+    for (const [k, v] of [...Object.entries(fr), ...Object.entries(labFr)]) expect(v.replace(/<[^>]+>/g, ""), k).not.toMatch(/ [?!;:]/);
+  });
+  it("Lab strings live only in the Lab dictionaries (kept out of the game bundle)", () => {
+    expect(Object.keys(en).filter((k) => k.startsWith("lab."))).toEqual([]);
+    expect(Object.keys(labEn).filter((k) => !k.startsWith("lab."))).toEqual([]);
   });
 });
 
@@ -139,38 +149,39 @@ describe("coach phrase translation", () => {
   });
   it("every dictionary is complete for both languages", () => {
     for (const d of Object.values(DICTS)) expect(Object.keys(d).length).toBe(Object.keys(en).length);
+    for (const d of Object.values(LAB_DICTS)) expect(Object.keys(d).length).toBe(Object.keys(labEn).length);
   });
 });
 
 describe("Lab in French", () => {
   it("every landmark has a full and a short name in both languages; short names fit the 360 px dropdown", () => {
     for (const l of LANDMARKS) for (const lang of ["en", "fr"] as const) {
-      const full = DICTS[lang][`lab.lm.${l.id}` as Key], short = DICTS[lang][`lab.lms.${l.id}` as Key];
+      const full = LAB_DICTS[lang][`lab.lm.${l.id}` as LabKey], short = LAB_DICTS[lang][`lab.lms.${l.id}` as LabKey];
       expect(full, `${lang} ${l.id}`).toBeTruthy();
       expect(short, `${lang} ${l.id}`).toBeTruthy();
       expect(short.length, `${lang} ${l.id}: ${short}`).toBeLessThanOrEqual(30);
     }
-    expect(Object.keys(en).filter((k) => k.startsWith("lab.lm.")).length).toBe(LANDMARKS.length);
-    expect(Object.keys(en).filter((k) => k.startsWith("lab.lms.")).length).toBe(LANDMARKS.length);
-    expect(en["lab.lm.R-box-goal-far"]).toBe(LANDMARKS.find((l) => l.id === "R-box-goal-far")!.label); // English unchanged
-    expect(t("lab.lm.R-box-goal-far", undefined, "fr")).toBe("Surface de réparation droite : ligne de but, côté éloigné");
+    expect(Object.keys(labEn).filter((k) => k.startsWith("lab.lm.")).length).toBe(LANDMARKS.length);
+    expect(Object.keys(labEn).filter((k) => k.startsWith("lab.lms.")).length).toBe(LANDMARKS.length);
+    expect(labEn["lab.lm.R-box-goal-far"]).toBe(LANDMARKS.find((l) => l.id === "R-box-goal-far")!.label); // English unchanged
+    expect(tl("lab.lm.R-box-goal-far", undefined, "fr")).toBe("Surface de réparation droite : ligne de but, côté éloigné");
   });
   it("every data-i18n key of lab.html exists, and the Lab link no longer says 'in English'", () => {
     const html = readFileSync(new URL("../lab.html", import.meta.url), "utf8");
     const keys = [...html.matchAll(/data-i18n(?:-html|-aria|-content)?="([^"]+)"/g)].map((m) => m[1]!);
     expect(keys.length).toBeGreaterThan(50);
-    for (const k of keys) expect(Object.keys(en), k).toContain(k);
+    for (const k of keys) expect([...Object.keys(labEn), ...Object.keys(en)], k).toContain(k);
     expect(fr["more.lab"]).not.toMatch(/anglais/);
     expect(en["more.lab"]).not.toMatch(/English/);
   });
   it("Lab plurals, camera messages and coach labels follow the language", () => {
-    expect(tn("lab.people", 1)).toBe("1 person");
-    expect(tn("lab.coach.rest", 4, { mates: tn("lab.mates", 1), opps: tn("lab.opps", 3) })).toBe("4 other options ranked lower (1 teammate and 3 opponents on the map).");
+    expect(tln("lab.people", 1)).toBe("1 person");
+    expect(tln("lab.coach.rest", 4, { mates: tln("lab.mates", 1), opps: tln("lab.opps", 3) })).toBe("4 other options ranked lower (1 teammate and 3 opponents on the map).");
     expect(CAMERA_MESSAGES.insecure).toMatch(/HTTPS/);
     setLang("fr");
-    expect(tn("lab.people", 0)).toBe("0 personne");
+    expect(tln("lab.people", 0)).toBe("0 personne");
     expect(CAMERA_MESSAGES.denied).toMatch(/^L’accès à la caméra a été refusé/);
-    expect(t("lab.st.ball", { p: pct(0.83) })).toBe(`Ballon trouvé (83${NNBSP}%).`);
+    expect(tl("lab.st.ball", { p: pct(0.83) })).toBe(`Ballon trouvé (83${NNBSP}%).`);
     expect(t("rp.carry", { dir: t("rp.left", { a: 30 }) })).toBe("Conduite à 30° à gauche");
   });
 });

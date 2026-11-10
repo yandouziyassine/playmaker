@@ -16,6 +16,14 @@ import { drawScene, SCENE_H, SCENE_W } from "./scene.ts";
 import { attackDirection, ballGround, pickBall, pickCarrier, stepBall, trackBox, type Ball, type BallTrack } from "./ball.ts";
 import { calibrationCheck, fitQuality, LINE_SIDE, pointAt, scanLines, snapPoint, toSource, type LineScan } from "./lines.ts";
 import { setIconText, spinner, type IconName } from "../design/icons.ts";
+import type { CoachOption } from "../coach/advice.ts";
+import { initLang, localizeDom, num, pct, t, tn, xg, type Key } from "../i18n/index.ts";
+import { translatePhrase } from "../i18n/phrases.ts";
+import { mountLangSwitch } from "../i18n/ui.ts";
+
+initLang();
+localizeDom();
+mountLangSwitch();
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const MAX_SIDE = 1600;
@@ -23,9 +31,27 @@ const PT_COLOURS = ["#ffd166", "#4cc9f0", "#ff9f1c", "#c77dff"];
 const RANK_COLOURS = ["#06d6a0", "#4cc9f0", "#ffd166"];
 const TOP_N = 3;
 
+/** Coach option texts in the page language (English identical to coach/picture.ts; carries reuse the replay's keys). */
+function carryDirection(angle: number): string {
+  const a = Math.round(angle);
+  return a === 0 ? t("rp.straight") : t(a > 0 ? "rp.left" : "rp.right", { a: Math.abs(a) });
+}
+function optionTitle(o: CoachOption): string {
+  if (o.kind === "pass") return t("lab.opt.pass", { n: (o.target ?? -1) + 1 });
+  if (o.kind === "carry") return t("rp.carry", { dir: carryDirection(o.angle ?? 0) });
+  return t("rp.shoot");
+}
+function successLabel(o: CoachOption): string {
+  return t(o.kind === "pass" ? "rp.arrives" : o.kind === "carry" ? "rp.keeps" : "rp.goalChance", { p: pct(o.p) });
+}
+
 const src = document.createElement("canvas"); // the picture at working resolution
 const img = $<HTMLCanvasElement>("img"), top = $<HTMLCanvasElement>("top");
 const status = $("status"), calibMsg = $("calib-msg");
+$("work").querySelector<HTMLElement>(".stage")!.dataset.frozen = t("lab.frozen"); // the "Frozen" badge (CSS content: attr())
+/** Landmark names: the full one (title) and a short one that fits the closed dropdown at 360 px. */
+const lmFull = (id: string) => t(`lab.lm.${id}` as Key);
+const lmShort = (id: string) => t(`lab.lms.${id}` as Key);
 
 const st = {
   loaded: false,
@@ -62,26 +88,27 @@ function buildCalib() {
     const num = document.createElement("span");
     num.className = "num"; num.textContent = String(i + 1); num.style.background = PT_COLOURS[i]!;
     const sel = document.createElement("select");
-    sel.setAttribute("aria-label", `Landmark for point ${i + 1}`);
-    for (const [group, filter] of [["Centre", "c"], ["Left goal", "L-"], ["Right goal", "R-"]] as const) {
+    sel.setAttribute("aria-label", t("lab.calib.pointAria", { n: i + 1 }));
+    sel.title = lmFull(id);
+    for (const [group, filter] of [["lab.grp.centre", "c"], ["lab.grp.left", "L-"], ["lab.grp.right", "R-"]] as const) {
       const og = document.createElement("optgroup");
-      og.label = group;
+      og.label = t(group);
       for (const l of LANDMARKS.filter((l) => (filter === "c" ? !/^[LR]-/.test(l.id) : l.id.startsWith(filter)))) {
         const o = document.createElement("option");
-        o.value = l.id; o.textContent = l.label; o.selected = l.id === id;
+        o.value = l.id; o.textContent = lmShort(l.id); o.title = lmFull(l.id); o.selected = l.id === id;
         og.append(o);
       }
       sel.append(og);
     }
-    sel.addEventListener("change", () => { st.ids[i] = sel.value; calibChanged(); render(); });
+    sel.addEventListener("change", () => { st.ids[i] = sel.value; sel.title = lmFull(sel.value); calibChanged(); render(); });
     const state = document.createElement("span");
     state.className = "state";
     if (st.pts[i]) {
       const b = document.createElement("button");
-      b.type = "button"; b.className = "ghost"; b.textContent = st.active === i ? "tap picture" : "re-place";
+      b.type = "button"; b.className = "ghost"; b.textContent = t(st.active === i ? "lab.calib.tapPicture" : "lab.calib.replace");
       b.addEventListener("click", () => { st.active = i; buildCalib(); render(); });
       state.append(b);
-    } else state.textContent = st.active === i ? "tap picture" : "not placed";
+    } else state.textContent = t(st.active === i ? "lab.calib.tapPicture" : "lab.calib.notPlaced");
     li.append(num, sel, state);
     ol.append(li);
   });
@@ -92,13 +119,13 @@ type Calib = { p2i: Mat3; i2p: Mat3 } | { error: string };
 
 function calibration(): Calib | null {
   if (st.pts.some((p) => !p)) return null;
-  if (new Set(st.ids).size < 4) return { error: "Pick 4 different landmarks." };
+  if (new Set(st.ids).size < 4) return { error: t("lab.err.distinct") };
   const pitchPts = st.ids.map((id) => landmark(id)!);
   const imgPts = st.pts as Pt[];
-  if (hasCollinearTriple(pitchPts, 2e-3)) return { error: "3 of these landmarks are on one line: pick another one." };
-  if (hasCollinearTriple(imgPts, 1e-3)) return { error: "3 points are almost on one line in the picture: move one." };
+  if (hasCollinearTriple(pitchPts, 2e-3)) return { error: t("lab.err.pitchLine") };
+  if (hasCollinearTriple(imgPts, 1e-3)) return { error: t("lab.err.picLine") };
   const p2i = computeHomography(pitchPts, imgPts), i2pRaw = computeHomography(imgPts, pitchPts);
-  if (!p2i || !i2pRaw) return { error: "These points do not define a pitch view: check the order." };
+  if (!p2i || !i2pRaw) return { error: t("lab.err.order") };
   const c = { x: imgPts.reduce((s, p) => s + p.x, 0) / 4, y: imgPts.reduce((s, p) => s + p.y, 0) / 4 };
   const pc = { x: pitchPts.reduce((s, p) => s + p.x, 0) / 4, y: pitchPts.reduce((s, p) => s + p.y, 0) / 4 };
   return { p2i: orientH(p2i, pc), i2p: orientH(i2pRaw, c) };
@@ -185,7 +212,7 @@ function teamColour(l: TeamLabel): string {
   return l === "other" ? "#8d99ae" : rgb(st.teamRgb[l]!);
 }
 function teamName(l: TeamLabel): string {
-  return l === "other" ? "other" : l === 0 ? "A" : "B";
+  return l === "other" ? t("lab.team.other") : l === 0 ? "A" : "B";
 }
 
 /** The picture (or, live, the current video frame) with the overlays. */
@@ -225,7 +252,7 @@ function drawImage(cal: Calib | null, source: CanvasImageSource = src) {
       ctx.strokeStyle = i === st.carrier ? "#ffd166" : l === "other" ? "#8d99ae" : l === 0 ? "#ffffff" : "#111111";
       ctx.strokeRect(p.box.x, p.box.y, p.box.w, p.box.h);
       ctx.setLineDash([]);
-      const tag = `${i + 1}${teamName(l) === "other" ? "" : teamName(l)}`;
+      const tag = `${i + 1}${l === "other" ? "" : teamName(l)}`;
       const tw = ctx.measureText(tag).width + 6 * u;
       ctx.fillStyle = teamColour(l);
       ctx.fillRect(p.box.x, p.box.y - 15 * u, tw, 15 * u);
@@ -264,7 +291,7 @@ function drawImage(cal: Calib | null, source: CanvasImageSource = src) {
     ctx.beginPath(); ctx.arc(c.x, c.y, r, 0, Math.PI * 2); ctx.stroke();
     ctx.setLineDash([]);
     ctx.font = `700 ${11 * u}px system-ui, sans-serif`; ctx.fillStyle = "#ff9f1c";
-    ctx.fillText(`ball ${Math.round(ball.score * 100)}%`, c.x + r + 3 * u, c.y - r);
+    ctx.fillText(t("lab.cv.ball", { p: pct(ball.score) }), c.x + r + 3 * u, c.y - r);
     ctx.restore();
   }
   const now = performance.now();
@@ -367,18 +394,17 @@ function drawTop(cal: Calib | null, pos: (Pt | null)[], advice: Advice | null, b
     ctx.beginPath(); ctx.arc(q.x, q.y, br, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     ctx.font = `700 ${Math.max(11, s * 1.5)}px system-ui, sans-serif`; ctx.fillStyle = "#ff9f1c";
     ctx.shadowColor = "rgba(0,0,0,0.8)"; ctx.shadowBlur = 3;
-    ctx.fillText("ball ≈", q.x + br * 2.8, q.y - br * 1.5);
+    ctx.fillText(t("lab.cv.ballApprox"), q.x + br * 2.8, q.y - br * 1.5);
     ctx.restore();
   }
   if (coachText) {
-    const m = coachText;
     const placed: Rect[] = [];
-    top3.forEach((r, k) => tagAt(ctx, toTop(r.to), from!, `${k + 1} · ${m.pct(r.option.p)} · ${m.signedXg(r.option.score)}`, RANK_COLOURS[k]!, s, placed));
+    top3.forEach((r, k) => tagAt(ctx, toTop(r.to), from!, `${k + 1} · ${pct(r.option.p)} · ${xg(r.option.score)}`, RANK_COLOURS[k]!, s, placed));
   }
   if (!cal || "error" in cal) {
     ctx.fillStyle = "rgba(7,23,14,0.7)"; ctx.fillRect(0, 0, top.width, top.height);
     ctx.fillStyle = "#f1faee"; ctx.font = `600 ${s * 2.4}px system-ui, sans-serif`; ctx.textAlign = "center";
-    ctx.fillText(cal ? "Fix the calibration to see the map" : live.on ? "Freeze, then place the 4 calibration points" : "Place the 4 calibration points",
+    ctx.fillText(t(cal ? "lab.cv.fixCal" : live.on ? "lab.cv.freezePlace" : "lab.cv.place"),
       top.width / 2, top.height / 2);
     ctx.textAlign = "start";
   }
@@ -435,7 +461,7 @@ function ensureCoach() {
   coachLoading = true;
   import("../coach/picture.ts")
     .then(async (m) => { coachW = await m.loadCoach(new URL("coach/models.json", document.baseURI).href); coachText = m; })
-    .catch((e) => { console.error(e); coachErr = "The AI coach could not load its models (network?)."; })
+    .catch((e) => { console.error(e); coachErr = t("lab.coach.loadErr"); })
     .finally(() => { coachLoading = false; render(); });
 }
 
@@ -443,15 +469,15 @@ type CoachView = { advice: Advice } | { msg: string } | null;
 function coachData(pos: (Pt | null)[]): CoachView {
   const c = st.carrier;
   if (c === null) return null;
-  if (live.on && !live.frozen) return { msg: "Tap “Freeze & ask the coach” first: the coach reads a frozen frame." };
+  if (live.on && !live.frozen) return { msg: t("lab.coach.freezeFirst") };
   const team = st.labels[c];
-  if (!pos[c] || team === undefined || team === "other") return { msg: "The carrier must be in team A or B and on the map (tap his box on the picture to change the team)." };
-  if (!coachW || !coachText) { ensureCoach(); return { msg: coachErr || "Loading the AI coach…" }; }
+  if (!pos[c] || team === undefined || team === "other") return { msg: t("lab.coach.carrierTeam") };
+  if (!coachW || !coachText) { ensureCoach(); return { msg: coachErr || t("lab.coach.loading") }; }
   const ps = coachText.stateFromPicture(pos, st.labels, c, st.dir);
-  if (!ps) return { msg: "The carrier must be in team A or B and on the map." };
+  if (!ps) return { msg: t("lab.coach.carrierTeamShort") };
   if (live.on) withVelocities(ps.state, st.dir);
   const advice = coachText.advise(ps, coachW.coach, coachW.models);
-  return advice ? { advice } : { msg: "No opponent on the map: the coach needs at least one defender (the other team)." };
+  return advice ? { advice } : { msg: t("lab.coach.noOpp") };
 }
 
 /** Live: the tracked velocities (pitch frame) into the coach State (attack-normalised: rotated 180° for the left goal). */
@@ -471,11 +497,8 @@ function renderSide(pos: (Pt | null)[], view: CoachView) {
   $("st-teams").textContent = st.ms === null ? "–" : `${counts["0"]} / ${counts["1"]} / ${counts["other"]}`;
   $("st-mapped").textContent = st.ms === null ? "–" : String(pos.filter(Boolean).length);
   const nVel = live.on ? live.vel.filter(Boolean).length : 0;
-  $("coach-tag").textContent = live.on ? "Live, approximate positions from the camera (a frozen frame): a model opinion, not a fact."
-    : "A model opinion from a single picture: positions are approximate.";
-  $("coach-still").textContent = !live.on ? "Standing still: no velocities from a single picture."
-    : nVel ? `Velocities: rough estimates from the last frames for ${nVel} player${nVel > 1 ? "s" : ""} (white arrows: the next second).`
-    : "No velocities yet (players need a few frames on the map): everyone stands still for the coach.";
+  $("coach-tag").textContent = t(live.on ? "lab.coach.tagLive" : "lab.coach.tagPicture");
+  $("coach-still").textContent = !live.on ? t("lab.coach.still") : nVel ? tn("lab.coach.vel", nVel) : t("lab.coach.noVel");
   const legend = $("legend");
   legend.innerHTML = "";
   if (st.persons.length) {
@@ -485,12 +508,12 @@ function renderSide(pos: (Pt | null)[], view: CoachView) {
       i.style.background = teamColour(l);
       if (l === 1) i.className = "b";
       if (l === "other") i.className = "o";
-      s.append(i, `${l === "other" ? "Other (referee, keeper?)" : `Team ${teamName(l)}`}: ${counts[String(l)]}`);
+      s.append(i, l === "other" ? t("lab.legend.other", { n: counts["other"]! }) : t("lab.legend.team", { t: teamName(l), n: counts[String(l)]! }));
       legend.append(s);
     }
     if (st.separation < 15) {
       const w = document.createElement("span");
-      w.textContent = "Kits look similar: check the teams (tap a box to fix).";
+      w.textContent = t("lab.legend.similar");
       w.style.color = "#ffd166";
       legend.append(w);
     }
@@ -504,23 +527,24 @@ function renderSide(pos: (Pt | null)[], view: CoachView) {
     li.className = "msg"; li.textContent = view.msg;
     ol.append(li);
   } else if (view && coachText) {
-    const m = coachText, a = view.advice;
+    const a = view.advice;
     a.ranked.slice(0, TOP_N).forEach((r, k) => {
       const li = document.createElement("li");
       li.className = `rank-${k + 1}`;
       const head = document.createElement("div");
       head.className = "head";
       const num = document.createElement("span"); num.className = "num"; num.textContent = `${k + 1}.`;
-      const title = document.createElement("b"); title.textContent = m.optionTitle(r.option);
-      const ok = document.createElement("span"); ok.textContent = m.successLabel(r.option);
-      const val = document.createElement("span"); val.textContent = `value ${m.signedXg(r.option.score)}`;
+      const title = document.createElement("b"); title.textContent = optionTitle(r.option);
+      const ok = document.createElement("span"); ok.textContent = successLabel(r.option);
+      const val = document.createElement("span"); val.textContent = t("lab.opt.value", { xg: xg(r.option.score) });
       head.append(num, title, ok, val);
       const why = document.createElement("ul");
       r.why.phrases.forEach((p, i) => {
         const w = document.createElement("li");
         const sign = r.why.signs[i];
         w.className = sign === 1 ? "helps" : sign === -1 ? "hurts" : "val";
-        w.textContent = p;
+        if (sign === 1 || sign === -1) w.dataset.pre = t(sign === 1 ? "lab.why.helps" : "lab.why.hurts");
+        w.textContent = translatePhrase(p);
         why.append(w);
       });
       li.append(head, why);
@@ -531,7 +555,7 @@ function renderSide(pos: (Pt | null)[], view: CoachView) {
       const li = document.createElement("li");
       li.className = "msg";
       const mates = a.ps.state.att.length - 1, opps = a.ps.state.def.length;
-      li.textContent = `${rest} other option${rest > 1 ? "s" : ""} ranked lower (${mates} teammate${mates === 1 ? "" : "s"} and ${opps} opponent${opps === 1 ? "" : "s"} on the map).`;
+      li.textContent = tn("lab.coach.rest", rest, { mates: tn("lab.mates", mates), opps: tn("lab.opps", opps) });
       ol.append(li);
     }
   }
@@ -545,9 +569,8 @@ function render() {
     if (!st.loaded) return;
     const cal = calibration();
     calibMsg.textContent = cal && "error" in cal ? cal.error
-      : cal ? "Calibrated. If the blue lines do not sit on the painted lines, drag the points or check the landmarks."
-      : live.on && !live.frozen ? `Freeze the frame, then tap point ${(st.active ?? 0) + 1} on it.`
-      : `Tap point ${(st.active ?? 0) + 1} on the picture.`;
+      : cal ? t("lab.calib.ok")
+      : t(live.on && !live.frozen ? "lab.calib.freezeTap" : "lab.calib.tap", { n: (st.active ?? 0) + 1 });
     calibMsg.classList.toggle("bad", !!cal && "error" in cal);
     const pos = mapped(cal);
     const ballPt = ballOnPitch(cal, currentBall(cal));
@@ -579,10 +602,10 @@ function autoCarrier(pos: (Pt | null)[], ballPt: Pt | null) {
     const ad = attackDirection(pos, st.labels, team);
     if (ad) {
       if (ad.dir !== st.dir) setDir(ad.dir, false);
-      dirNote = ` Direction: attacks the ${ad.dir === 1 ? "right" : "left"} goal, a guess (relative to the other team, team ${teamName(team)} has its deepest player on the ${ad.ownSide === 1 ? "right" : "left"}): flip it if wrong.`;
+      dirNote = t("lab.auto.dir", { side: t(ad.dir === 1 ? "lab.side.right" : "lab.side.left"), team: teamName(team), own: t(ad.ownSide === 1 ? "lab.side.right" : "lab.side.left") });
     }
   }
-  st.autoNote = `Carrier picked from the ball: player ${pick.index + 1} (team ${teamName(team)}), ${pick.dist.toFixed(1)} m from it.${dirNote} Tap another player on the map to override.`;
+  st.autoNote = [t("lab.auto.carrier", { n: pick.index + 1, team: teamName(team), d: num(pick.dist, 1) }), dirNote, t("lab.auto.override")].filter(Boolean).join(" ");
   if (first && !live.on) $<HTMLDetailsElement>("opts").open = true; // picture mode: the coach runs straight away
 }
 
@@ -594,11 +617,11 @@ function renderFit(f: Fit | null) {
   const parts: string[] = [];
   if (f.quality) {
     el.classList.add(f.quality.rating);
-    parts.push(`Fit ${f.quality.rating}: the blue lines are ${f.quality.mean.toFixed(1)} px from the painted lines on average`);
-  } else parts.push("Fit: too few painted lines found to check");
+    parts.push(t("lab.fit", { rating: t(`lab.fit.${f.quality.rating}`), d: num(f.quality.mean, 1) }));
+  } else parts.push(t("lab.fit.few"));
   if (f.check) parts.push(f.check.n > 4
-    ? `4-point reprojection error ${f.check.err.toFixed(1)} px (checked against ${f.check.n - 4} more line corner${f.check.n > 5 ? "s" : ""})`
-    : "4-point reprojection error 0 px (4 points fit exactly: no other line corner to check against)");
+    ? tn("lab.fit.err", f.check.n - 4, { e: num(f.check.err, 1) })
+    : t("lab.fit.exact"));
   el.textContent = parts.join(" · ") + ".";
 }
 
@@ -617,13 +640,13 @@ function setPicture(draw: (ctx: CanvasRenderingContext2D) => void, w: number, h:
 }
 
 async function loadFile(file: File) {
-  if (!file.type.startsWith("image/")) { status.textContent = "That file is not a picture."; return; }
+  if (!file.type.startsWith("image/")) { status.textContent = t("lab.st.notPicture"); return; }
   try {
     const bmp = await createImageBitmap(file);
     setPicture((ctx) => ctx.drawImage(bmp, 0, 0), bmp.width, bmp.height);
     bmp.close();
   } catch {
-    status.textContent = "Could not read this picture."; return;
+    status.textContent = t("lab.st.cantRead"); return;
   }
   st.pts = [null, null, null, null]; st.active = 0;
   buildCalib(); render();
@@ -639,7 +662,7 @@ function loadDemo() {
   st.pts = st.ids.map((id, i) => { const p = applyH(H!, landmark(id)!)!; return { x: p.x + nudge[i]!.x, y: p.y + nudge[i]!.y }; });
   st.active = null;
   buildCalib(); render();
-  status.textContent = "Synthetic scene drawn by code. The 4 points are placed slightly off: tap “Snap points to lines” or drag them.";
+  status.textContent = t("lab.st.demo");
   void runDetect();
 }
 
@@ -660,14 +683,14 @@ async function runDetect() {
   if (st.busy || !st.loaded) return;
   st.busy = true;
   const btn = $<HTMLButtonElement>("detect");
-  btn.disabled = true; btn.setAttribute("aria-busy", "true"); btn.replaceChildren(spinner(), "Detecting…");
+  btn.disabled = true; btn.setAttribute("aria-busy", "true"); btn.replaceChildren(spinner(), t("lab.detecting"));
   const busy = (t: string) => status.replaceChildren(spinner(), t);
   try {
-    busy("Loading the detector (first time only: 7 MB model + ~15 MB engine)…");
+    busy(t("lab.st.loadingDetector"));
     const t0 = performance.now();
     await loadDetector();
     const loadMs = performance.now() - t0;
-    busy("Detecting people…");
+    busy(t("lab.st.detectingPeople"));
     await new Promise((r) => setTimeout(r, 30));
     const run = await detectPeople(src, $<HTMLInputElement>("tiled").checked);
     // number players from left to right
@@ -679,15 +702,17 @@ async function runDetect() {
     scan = null; // the players are masked out of the line search
     const cal = calibration();
     const ball = pickBall(run.balls, persons, cal && !("error" in cal) ? cal.i2p : null, img.width);
-    status.textContent = `${persons.length} people in ${Math.round(run.ms)} ms (${run.passes} pass${run.passes > 1 ? "es" : ""}` +
-      `${loadMs > 50 ? `, detector loaded in ${(loadMs / 1000).toFixed(1)} s` : ""}).` +
-      (persons.length === 0 ? " Nobody found: try the tiled scan, or a closer shot." : "") +
-      (ball ? ` Ball found (${Math.round(ball.score * 100)} %).` : " No ball found" + ($<HTMLInputElement>("tiled").checked ? "." : ": the tiled scan helps."));
+    status.textContent = [
+      t("lab.st.found", { people: tn("lab.people", persons.length), ms: Math.round(run.ms), passes: tn("lab.passes", run.passes),
+        load: loadMs > 50 ? t("lab.st.loadedIn", { s: num(loadMs / 1000, 1) }) : "" }),
+      persons.length === 0 ? t("lab.st.nobody") : "",
+      ball ? t("lab.st.ball", { p: pct(ball.score) }) : t($<HTMLInputElement>("tiled").checked ? "lab.st.noBall" : "lab.st.noBallTiled"),
+    ].filter(Boolean).join(" ");
   } catch (e) {
     console.error(e);
-    status.textContent = "The detector could not start in this browser (WebAssembly / network). The calibration still works.";
+    status.textContent = t("lab.st.detFail");
   } finally {
-    st.busy = false; btn.disabled = false; btn.removeAttribute("aria-busy"); btn.replaceChildren("Detect players");
+    st.busy = false; btn.disabled = false; btn.removeAttribute("aria-busy"); btn.replaceChildren(t("lab.detect"));
     render();
   }
 }
@@ -712,7 +737,7 @@ img.addEventListener("pointerdown", (e) => {
     const next = st.pts.findIndex((q) => !q);
     st.active = next >= 0 ? next : null;
     calibChanged(); buildCalib(); render();
-    if (d !== null) status.textContent = `Point ${i + 1} snapped to a detected line corner (${d.toFixed(0)} px away). Drag it to undo.`;
+    if (d !== null) status.textContent = t("lab.st.snapped", { n: i + 1, d: num(d, 0) });
     return;
   }
   const inBox = st.persons.map((q, i) => ({ q, i }))
@@ -765,7 +790,7 @@ $("clear-carrier").addEventListener("click", () => { st.carrier = null; st.carri
 $("snap-all").addEventListener("click", () => {
   let n = 0;
   st.pts.forEach((p, i) => { if (p && snapPointAt(i, st.snaps[i]?.from ?? p) !== null) n++; });
-  status.textContent = n ? `Snapped ${n} point${n > 1 ? "s" : ""} to detected line corners. Drag a point to undo.` : "No detected line corner near the points.";
+  status.textContent = n ? tn("lab.st.snappedN", n) : t("lab.st.noSnap");
   calibChanged(); buildCalib(); render();
 });
 $("reset-pts").addEventListener("click", () => { st.pts = [null, null, null, null]; st.snaps = [null, null, null, null]; st.active = 0; calibChanged(); buildCalib(); render(); });
@@ -852,7 +877,7 @@ function setMode(on: boolean) {
   live.cents = null; live.ref = null; resetTracking(); setFrozen(false);
   $("work").hidden = true;
   status.textContent = "";
-  camStatus(on ? "Nothing is recorded or uploaded: frames are analysed in this page, then dropped." : "");
+  camStatus(on ? t("lab.cam.private") : "");
   buildCalib();
 }
 
@@ -860,7 +885,7 @@ async function startCamera() {
   if (live.stream) return;
   const btn = $<HTMLButtonElement>("cam-start");
   btn.disabled = true;
-  camStatus("Asking for the camera…", false, true);
+  camStatus(t("lab.cam.asking"), false, true);
   let stream: MediaStream;
   try {
     stream = await openCamera();
@@ -892,15 +917,15 @@ async function startCamera() {
   $("work").hidden = false;
   btn.hidden = true; btn.disabled = false;
   $("cam-stop").hidden = false;
-  camStatus("Camera on. Frames are analysed on this device: nothing is recorded or uploaded.");
+  camStatus(t("lab.cam.on"));
   drawLoop();
   $("work").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
-  status.replaceChildren(spinner(), "Loading the detector (first time only: 7 MB model + ~15 MB engine)…");
+  status.replaceChildren(spinner(), t("lab.st.loadingDetector"));
   try {
     await loadVideoDetector();
   } catch (e) {
     console.error(e);
-    status.textContent = "The detector could not start in this browser (WebAssembly / network). The camera view still works.";
+    status.textContent = t("lab.st.detFailCam");
     return;
   }
   schedule(0);
@@ -951,7 +976,7 @@ async function tick() {
     processFrame(run.persons, run.balls, run.ms, t0);
   } catch (e) {
     console.error(e);
-    status.textContent = "Live detection failed in this browser. Stop and start the camera to try again.";
+    status.textContent = t("lab.st.liveFail");
     return;
   }
   const spent = performance.now() - t0;
@@ -961,7 +986,7 @@ async function tick() {
 }
 
 /** One detection result: team colours, camera-move check, mapping through the homography and tracking. */
-function processFrame(found: Person[], balls: Ball[], ms: number, t: number) {
+function processFrame(found: Person[], balls: Ball[], ms: number, now: number) {
   sctx().drawImage(work, 0, 0);
   scan = null; // a new frame
   const data = wctx().getImageData(0, 0, work.width, work.height);
@@ -992,8 +1017,8 @@ function processFrame(found: Person[], balls: Ball[], ms: number, t: number) {
   if (ok) {
     const raw = persons.map((p) => toPitch(cal.i2p, feet(p.box)));
     const idx = raw.map((p, i) => (p ? i : -1)).filter((i) => i >= 0);
-    const dt = live.lastT ? (t - live.lastT) / 1000 : live.throttle.interval / 1000;
-    live.lastT = t;
+    const dt = live.lastT ? (now - live.lastT) / 1000 : live.throttle.interval / 1000;
+    live.lastT = now;
     const res = stepTracks(live.tracks, idx.map((i) => ({ p: raw[i]!, team: labels[i]! })), dt, live.nextId);
     live.tracks = res.tracks; live.nextId = res.nextId;
     const trackOf: (Track | null)[] = persons.map(() => null);
@@ -1018,16 +1043,16 @@ function processFrame(found: Person[], balls: Ball[], ms: number, t: number) {
   live.pos = pos; live.vel = vel;
   // the ball: best candidate of this frame (crowd filter once calibrated), smoothed by its own tracker
   const meas = pickBall(balls, found, ok ? cal.i2p : null, work.width);
-  const bdt = live.ballT ? (t - live.ballT) / 1000 : live.throttle.interval / 1000;
-  live.ballT = t;
+  const bdt = live.ballT ? (now - live.ballT) / 1000 : live.throttle.interval / 1000;
+  live.ballT = now;
   live.ball = stepBall(live.ball, meas, bdt, work.width);
   Object.assign(st, { persons, colours, labels, separation, ms, carrier: null, carrierManual: false, autoNote: "" });
-  const fps = live.fps === null ? "–" : live.fps.toFixed(1);
+  const fps = live.fps === null ? "–" : num(live.fps, 1);
   if (live.moved) {
-    status.textContent = "Camera moved: recalibrate (freeze, then place the 4 points again).";
+    status.textContent = t("lab.st.moved");
   } else {
-    status.textContent = `Live · ${fps} detections/s · ${Math.round(ms)} ms each · ${persons.length} people` +
-      (ok ? (live.cents ? " · team colours fixed" : "") : " · not calibrated yet") + (live.ball ? " · ball tracked" : "");
+    status.textContent = t("lab.live.status", { fps, ms: Math.round(ms), people: tn("lab.people", persons.length) }) +
+      (ok ? (live.cents ? t("lab.live.fixed") : "") : t("lab.live.uncal")) + (live.ball ? t("lab.live.ball") : "");
   }
   status.classList.toggle("bad", live.moved);
 }
@@ -1035,7 +1060,7 @@ function processFrame(found: Person[], balls: Ball[], ms: number, t: number) {
 function setFrozen(f: boolean) {
   live.frozen = f;
   const b = $("freeze");
-  b.textContent = f ? "Resume" : "Freeze frame";
+  b.textContent = t(f ? "lab.resume" : "lab.freeze");
   b.setAttribute("aria-pressed", String(f));
   $("work").querySelector(".stage")!.classList.toggle("frozen", f && live.on);
   if (!live.stream) return;
@@ -1053,14 +1078,12 @@ function setFrozen(f: boolean) {
 $("mode-picture").addEventListener("click", () => setMode(false));
 $("mode-live").addEventListener("click", () => setMode(true));
 $("cam-start").addEventListener("click", () => void startCamera());
-$("cam-stop").addEventListener("click", () => { stopCamera(); setFrozen(true); camStatus("Camera stopped. The last frame stays on screen."); });
+$("cam-stop").addEventListener("click", () => { stopCamera(); setFrozen(true); camStatus(t("lab.cam.stopped")); });
 $("freeze").addEventListener("click", () => setFrozen(!live.frozen));
 $("ask-coach").addEventListener("click", () => {
   setFrozen(true);
   $<HTMLDetailsElement>("opts").open = true;
-  status.textContent = live.ball
-    ? "Frozen. The carrier and direction are preselected from the ball when a player is close to it: tap another player to override."
-    : "Frozen. No ball tracked: tap the ball carrier on the map, then pick the goal their team attacks.";
+  status.textContent = t(live.ball ? "lab.st.frozenBall" : "lab.st.frozenNoBall");
   status.classList.remove("bad");
   top.scrollIntoView({ behavior: "smooth", block: "center" });
 });
@@ -1068,7 +1091,7 @@ $("recal").addEventListener("click", () => {
   setFrozen(true);
   st.pts = [null, null, null, null]; st.snaps = [null, null, null, null]; st.active = 0;
   live.cents = null; live.ref = null; resetTracking();
-  status.textContent = "Frozen. Tap the 4 calibration points on the picture, then Resume.";
+  status.textContent = t("lab.st.recal");
   status.classList.remove("bad");
   buildCalib(); render();
 });
@@ -1076,7 +1099,7 @@ $("recal").addEventListener("click", () => {
 document.addEventListener("visibilitychange", () => {
   if (document.hidden && live.stream) {
     stopCamera(); setFrozen(true);
-    camStatus("Camera stopped while the page was hidden. Tap Start the camera to go on.");
+    camStatus(t("lab.cam.hidden"));
   }
 });
 addEventListener("pagehide", () => stopCamera());

@@ -6,6 +6,8 @@ import { translatePhrase } from "./i18n/phrases.ts";
 import { is3D, on3DChange, paint3D, pick3D, setup3D } from "./view3d/toggle.ts";
 import type { Overlay3D as Overlay } from "./view3d/geom.ts";
 import { icon, setIconText, spinner, type IconName } from "./design/icons.ts";
+import { isOfflineError } from "./offline/pickQueue.ts";
+import { clearOfflineReveal, renderOfflineReveal } from "./offline/ui.ts";
 
 type Cm = [number, number] | null;
 /** Paints the 2D pitch and mirrors the frame into the 3D view (shown instead of the canvas when 3D is on). */
@@ -19,6 +21,8 @@ export interface RoundUI {
   list: HTMLElement; reveal: HTMLElement; next: HTMLButtonElement;
   /** Coach-marks of the guided first moment (first visit only). */
   tour?: Tour | null;
+  /** Indexes of moments answered offline (scored later): their progress dot is drawn as pending. */
+  pending?: Set<number>;
 }
 
 /** One coach-mark of the guided first moment, in order. */
@@ -108,7 +112,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text = ""):
 /** Progress dots; `just`: the last answered dot fills with a short pop (useful feedback: the answer counted). */
 function renderDots(ui: RoundUI, points: number[], total: number, just = false) {
   ui.dots.innerHTML = "";
-  progress(points, total).forEach((state, i) => ui.dots.append(el("span", `dot ${state}${just && i === points.length - 1 ? " just" : ""}`)));
+  progress(points, total).forEach((state, i) => ui.dots.append(el("span", `dot ${ui.pending?.has(i) ? "pending" : state}${just && i === points.length - 1 ? " just" : ""}`)));
   ui.dots.setAttribute("aria-label", t("game.dots", { done: points.length, total }));
 }
 
@@ -313,7 +317,11 @@ function renderReveal(ui: RoundUI, mo: Moment, res: PickResult, pick: number, re
   r.append(tools, el("p", "fine", t("reveal.opinion")));
 }
 
-export async function playMoment(ui: RoundUI, mo: Moment, player: string, index: number, total: number, points: number[]): Promise<PickResult> {
+/** An answer that could not reach the server (offline): the page queues it and it is scored later. */
+export type OnOffline = (mo: Moment, option: number, guess: number | null, index: number) => void;
+
+/** Resolves null when the answer was saved offline (only with `onOffline`; without it a network error throws). */
+export async function playMoment(ui: RoundUI, mo: Moment, player: string, index: number, total: number, points: number[], onOffline?: OnOffline): Promise<PickResult | null> {
   setup3D(ui.canvas); // once: wraps the canvas with the 3D view and its toggle
   if (ui.tour?.started && !ui.tour.ended) ui.tour.end(); // moved on without "Got it": the tour is done
   if (ui.tour && !ui.tour.ended && ui.tour.host.parentElement !== ui.canvas.parentElement) ui.canvas.parentElement?.append(ui.tour.host); // over the pitch's bottom edge
@@ -330,7 +338,21 @@ export async function playMoment(ui: RoundUI, mo: Moment, player: string, index:
   // second question, nothing revealed yet: the pro always passed in these moments, so only passes are offered
   const guess = passes.length ? await choose(ui, ctx, v, { ...mo, options: passes }, Q_PRO, true) : null;
   ui.reveal.setAttribute("aria-busy", "true");
-  const res = await postPick(player, mo.id, pick, guess).finally(() => { ui.reveal.removeAttribute("aria-busy"); ui.actions.innerHTML = ""; });
+  clearOfflineReveal(ui.reveal);
+  let res: PickResult;
+  try {
+    res = await postPick(player, mo.id, pick, guess).finally(() => { ui.reveal.removeAttribute("aria-busy"); ui.actions.innerHTML = ""; });
+  } catch (e) {
+    if (!onOffline || !isOfflineError(e)) throw e;
+    // offline: the answer is queued; no server data to reveal, the day goes on
+    onOffline(mo, pick, guess, index);
+    (ui.pending ??= new Set()).add(index);
+    draw(ctx, v, mo, mo.lead_up[mo.lead_up.length - 1]!, mo.ball[mo.ball.length - 1] ?? null, { mine: pick });
+    ui.hint.textContent = "";
+    renderOfflineReveal(ui.reveal, optionLabel(mo, pick));
+    renderDots(ui, [...points, 0], total, true);
+    return null;
+  }
   const mine = res.option; // the first answer counts: a replayed moment shows the original pick
   try { navigator.vibrate?.(res.points >= 100 ? [30, 40, 30] : 20); } catch { /* not supported */ }
   ui.hint.textContent = res.after ? t("reveal.after") : "";
@@ -364,15 +386,18 @@ async function loading<T>(ui: RoundUI, p: Promise<T>): Promise<T> {
   try { return await p; } finally { c.classList.remove("skeleton"); game?.removeAttribute("aria-busy"); }
 }
 
-export async function playDay(ui: RoundUI, day: Day, player: string, onResult: OnResult = () => {}): Promise<number[]> {
+/** `onOffline`: answers that cannot reach the server are handed over (queued by the page) and count 0 points for now
+ * (their index is in ui.pending); without it a network error stops the day, as before. */
+export async function playDay(ui: RoundUI, day: Day, player: string, onResult: OnResult = () => {}, onOffline?: OnOffline): Promise<number[]> {
   const points: number[] = [];
+  ui.pending = new Set();
   const total = day.moments.length;
   let nextMoment = getMoment(day.moments[0]!);
   for (let i = 0; i < total; i++) {
     const mo = await loading(ui, nextMoment);
     if (i + 1 < total) nextMoment = getMoment(day.moments[i + 1]!); // prefetch while this one is played
-    const res = await playMoment(ui, mo, player, i, total, points);
-    points.push(res.points); onResult(mo, res, i);
+    const res = await playMoment(ui, mo, player, i, total, points, onOffline);
+    if (res) { points.push(res.points); onResult(mo, res, i); } else points.push(0); // offline: scored later
     ui.next.hidden = false;
     if (i < total - 1) setIconText(ui.next, "arrowRight", t("game.next"), true); else ui.next.replaceChildren(t("game.seeScore"));
     ui.next.focus();

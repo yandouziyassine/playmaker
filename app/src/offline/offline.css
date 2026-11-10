@@ -1,0 +1,14 @@
+/* Offline layer: the "saved, scored later" reveal, pending dots / tiles, the update toast. Uses the page's tokens. */
+.reveal.offline .offline-head { display: flex; align-items: center; gap: var(--s-2, 8px); margin: 0 0 var(--s-2, 8px); font-weight: 700; }
+.reveal.offline .offline-head::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--mid, #e9c46a); }
+.reveal.offline p { margin: 0 0 var(--s-2, 8px); }
+.dot.pending { background: transparent; box-shadow: inset 0 0 0 2px var(--mid, #e9c46a); }
+.tile.pending { background: transparent; box-shadow: inset 0 0 0 2px var(--mid, #e9c46a); }
+.pending-note { margin: var(--s-3, 12px) 0 0; }
+.sw-toast {
+  position: fixed; left: 50%; bottom: max(16px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 50;
+  display: flex; align-items: center; gap: 12px; max-width: calc(100vw - 32px); padding: 10px 12px 10px 16px;
+  background: var(--surface, #12301f); color: var(--fg, #f1faee); border: 1px solid var(--line, rgba(255, 255, 255, 0.15));
+  border-radius: 12px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35); font-size: 0.9rem;
+}
+.sw-toast button { min-height: 36px; }

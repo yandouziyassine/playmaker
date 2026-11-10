@@ -10,7 +10,50 @@
   <meta property="og:description" content="Five real moments a day. Pick the pass, then see what the AI coach and the pro chose." />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <link rel="manifest" href="/manifest.webmanifest" />
-  <link rel="stylesheet" href="/src/styles.css" />
+  <!-- Critical CSS: just what the intro screen needs for its first paint (tokens, top bar, hero, primary button, how-to,
+       links, footer), copied from design/tokens.css, design/components.css and styles.css (same values: the full sheet
+       then changes nothing on screen). The full stylesheet (styles.css with its @imports) is not render-blocking: it is
+       loaded by the module script below, so slow networks paint the intro without waiting for it. -->
+  <style>
+    :root { color-scheme: dark; --bg: #07170e; --surface: #0e2618; --surface-2: #163423; --line: rgba(241, 250, 238, 0.12);
+      --line-strong: rgba(241, 250, 238, 0.42); --fg: #f1faee; --muted: #b2c9bb; --accent: #4cc9f0; --accent-ink: #04202c;
+      --attack: #ef476f; --disabled-bg: #233a2d; --disabled-fg: #93a89b;
+      --font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      --font-display: "Avenir Next Condensed", "Arial Narrow", "Roboto Condensed", system-ui, sans-serif;
+      --fs-xs: 0.75rem; --fs-sm: 0.875rem; --fs-md: 1rem; --fs-lg: 1.25rem; --fs-2xl: clamp(2rem, 8.5vw, 2.75rem);
+      --lh-tight: 1.05; --lh-body: 1.5; --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px; --s-6: 24px; --s-8: 32px;
+      --r-card: 20px; --pad-card: 12px; --r-pill: 999px; --tap: 44px; }
+    * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; background: var(--bg); }
+    body { margin: 0; background: var(--bg); color: var(--fg); font: var(--fs-md)/var(--lh-body) var(--font-body); min-height: 100vh; }
+    a { color: var(--accent); text-underline-offset: 0.18em; }
+    h1 { font: 800 var(--fs-2xl)/var(--lh-tight) var(--font-display); text-transform: uppercase; letter-spacing: 0.01em; margin: var(--s-4) 0 var(--s-3); text-wrap: balance; }
+    h1 em { font-style: normal; color: var(--accent); }
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    .lead { color: var(--muted); margin: 0 0 var(--s-5); max-width: 60ch; }
+    .fine { font-size: var(--fs-sm); color: var(--muted); }
+    main, .topbar, footer { max-width: 520px; margin: 0 auto; }
+    main { padding: var(--s-2) var(--s-4) var(--s-4); }
+    footer { padding: var(--s-6) var(--s-4) var(--s-8); }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); padding: var(--s-3) var(--s-4) 0; min-height: 48px; }
+    .brand { font: 800 1.35rem/1 var(--font-display); letter-spacing: 0.02em; text-transform: uppercase; color: var(--fg); text-decoration: none; }
+    .brand b { color: var(--attack); }
+    .page { color: var(--muted); font-size: var(--fs-sm); }
+    button { font: inherit; color: inherit; border: 0; background: none; }
+    .primary { display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2); min-height: var(--tap); border-radius: var(--r-pill);
+      font-weight: 700; background: var(--accent); color: var(--accent-ink); padding: 0 var(--s-5); }
+    .primary.big { width: 100%; min-height: 56px; font-size: 1.125rem; }
+    .primary:disabled { background: var(--disabled-bg); color: var(--disabled-fg); }
+    .spinner { width: 1em; height: 1em; flex: none; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; display: inline-block; }
+    .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); padding: var(--pad-card); margin: var(--s-4) 0; }
+    .howto summary { font-weight: 600; min-height: var(--tap); display: flex; align-items: center; }
+    .howto ol { padding-left: 1.2rem; margin: 0 0 var(--s-1); color: var(--muted); }
+    .howto li { margin: var(--s-2) 0; }
+    .howto li b { color: var(--fg); }
+    .more { display: grid; gap: var(--s-1); margin: var(--s-4) 0 0; }
+    .more a { display: flex; align-items: center; min-height: var(--tap); font-weight: 600; text-decoration: none; }
+  </style>
+  <script type="module">import("/src/styles.css");</script>
 </head>
 <body data-screen="intro">
   <!-- Strings: English here as the no-JS fallback; main.ts fills data-i18n* from app/src/i18n (en / fr). -->

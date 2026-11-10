@@ -22,8 +22,9 @@ h2 span { display: block; margin-top: 2px; color: var(--muted); text-transform: 
 #pitch.skeleton { background: linear-gradient(100deg, #0b2a1a 30%, #133b25 50%, #0b2a1a 70%) 0 0 / 300% 100%; animation: shimmer 1.4s linear infinite; }
 
 .timeline { position: relative; margin: var(--s-3) 0 var(--s-1); }
-.timeline input { width: 100%; accent-color: var(--accent); min-height: 32px; margin: 0; }
-.marks { position: absolute; left: 8px; right: 8px; top: -4px; height: 8px; pointer-events: none; }
+/* 44 px tall touch target (WCAG 2.5.8 / the --tap token); the native track keeps its thin look, centred in the box */
+.timeline input { display: block; width: 100%; accent-color: var(--accent); min-height: var(--tap); margin: 0; }
+.marks { position: absolute; left: 8px; right: 8px; top: 2px; height: 8px; pointer-events: none; }
 .mark { position: absolute; top: 0; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; background: var(--pro); }
 .mark.ht { width: 2px; height: 14px; margin-left: -1px; border-radius: 1px; background: var(--muted); top: -2px; }
 

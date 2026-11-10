@@ -1,15 +1,18 @@
 // Camera access for the Lab's live mode: rear camera first (phones), any camera as a fallback, clear messages.
 // The stream is only drawn into canvases on this device: nothing is sent anywhere.
 
+import { t } from "../i18n/index.ts";
+
 export type CameraProblem = "insecure" | "unsupported" | "denied" | "notfound" | "busy" | "other";
 
-export const CAMERA_MESSAGES: Record<CameraProblem, string> = {
-  insecure: "The camera needs a secure page: open the Lab over HTTPS (or on localhost while developing).",
-  unsupported: "This browser cannot open a camera here. Picture mode still works.",
-  denied: "Camera permission was refused. Allow the camera for this site in the browser settings, then tap Start again.",
-  notfound: "No camera found on this device. Picture mode still works.",
-  busy: "The camera is busy (another app or tab is using it). Close it, then tap Start again.",
-  other: "The camera could not start. Tap Start to try again, or use Picture mode.",
+/** User-facing message per problem, in the page language (getters: read at display time, after initLang). */
+export const CAMERA_MESSAGES: Readonly<Record<CameraProblem, string>> = {
+  get insecure() { return t("lab.cam.insecure"); },
+  get unsupported() { return t("lab.cam.unsupported"); },
+  get denied() { return t("lab.cam.denied"); },
+  get notfound() { return t("lab.cam.notfound"); },
+  get busy() { return t("lab.cam.busy"); },
+  get other() { return t("lab.cam.other"); },
 };
 
 /** Maps a getUserMedia error (DOMException name) to a problem with a user-facing message. */

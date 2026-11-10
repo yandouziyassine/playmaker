@@ -77,3 +77,19 @@ test("the EN | FR switch saves the choice; the about page follows it", async ({ 
   await page.getByRole("button", { name: "English" }).click();
   await expect(page.locator(".page")).toHaveText("Free play");
 });
+
+test("the Lab in French: strings, landmark names and the EN | FR switch", async ({ page }) => {
+  await page.goto("/lab.html?lang=fr");
+  await expect(page.locator("html")).toHaveAttribute("lang", "fr");
+  await expect(page.locator("h1")).toContainText("D’une image télé à la tactique");
+  await expect(page.locator(".topbar .page")).toHaveText("Labo");
+  await expect(page.getByRole("button", { name: "Français" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".limits h2")).toHaveText("Limites, en toute franchise");
+  await page.getByRole("button", { name: "Essayer une scène de synthèse" }).click();
+  const point1 = page.getByRole("combobox", { name: "Repère du point 1" });
+  await expect(point1).toBeVisible();
+  await expect(point1).toHaveAttribute("title", /^Surface de réparation droite\s:\sligne de but, côté éloigné$/);
+  await expect(page.locator("#calib-msg")).toContainText("Calibré");
+  await page.getByRole("button", { name: "English" }).click();
+  await expect(page.locator(".topbar .page")).toHaveText("Lab");
+});

@@ -3,114 +3,115 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Playmaker Lab · from a TV picture to tactics</title>
-  <meta name="description" content="Computer-vision lab: detect players in a football picture in your browser, calibrate the pitch with 4 taps and see the shape from above." />
+  <title data-i18n="lab.title">Playmaker Lab · from a TV picture to tactics</title>
+  <meta name="description" data-i18n-content="lab.desc" content="Computer-vision lab: detect players in a football picture in your browser, calibrate the pitch with 4 taps and see the shape from above." />
   <meta name="theme-color" content="#0b2a1a" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="/src/lab/lab.css" />
 </head>
 <body>
+  <!-- Strings: English here as the no-JS fallback; lab/main.ts fills data-i18n* from app/src/i18n (en / fr). -->
   <header class="topbar">
     <a class="brand" href="/">Play<b>maker</b></a>
-    <span class="page">Lab</span>
+    <span class="page" data-i18n="lab.page">Lab</span>
   </header>
   <main>
-    <h1>From a TV picture <em>to tactics</em></h1>
-    <p class="lead">Load a broadcast-style picture: players are detected in your browser, 4 taps calibrate the pitch, and
+    <h1 data-i18n-html="lab.h1.html">From a TV picture <em>to tactics</em></h1>
+    <p class="lead" data-i18n="lab.lead">Load a broadcast-style picture: players are detected in your browser, 4 taps calibrate the pitch, and
       the shape appears from above with the AI coach's options. Or point your camera at a TV in live mode. Nothing is uploaded.</p>
 
-    <div class="mode" role="group" aria-label="Lab mode">
-      <button id="mode-picture" class="chip" type="button" aria-pressed="true">Picture</button>
-      <button id="mode-live" class="chip" type="button" aria-pressed="false">Live camera</button>
+    <div class="mode" role="group" aria-label="Lab mode" data-i18n-aria="lab.modeGroup">
+      <button id="mode-picture" class="chip" type="button" aria-pressed="true" data-i18n="lab.modePicture">Picture</button>
+      <button id="mode-live" class="chip" type="button" aria-pressed="false" data-i18n="lab.modeLive">Live camera</button>
     </div>
 
     <section class="card" id="load-card">
-      <h2>1 · Picture</h2>
+      <h2 data-i18n="lab.load.h2">1 · Picture</h2>
       <label id="drop" class="drop" tabindex="0">
         <input id="file" type="file" accept="image/*" hidden />
-        <strong>Choose or drop a picture</strong>
-        <span class="fine">Use your own picture (a TV screenshot from the main camera works best). It stays on this device.</span>
+        <strong data-i18n="lab.drop">Choose or drop a picture</strong>
+        <span class="fine" data-i18n="lab.dropFine">Use your own picture (a TV screenshot from the main camera works best). It stays on this device.</span>
       </label>
       <div class="row-actions">
-        <button id="demo" class="ghost" type="button">Try a synthetic scene</button>
-        <label class="check"><input id="tiled" type="checkbox" checked /> Tiled scan for small players and the ball</label>
+        <button id="demo" class="ghost" type="button" data-i18n="lab.demo">Try a synthetic scene</button>
+        <label class="check"><input id="tiled" type="checkbox" checked /> <span data-i18n="lab.tiled">Tiled scan for small players and the ball</span></label>
       </div>
     </section>
 
     <section class="card" id="live-card" hidden>
-      <h2>1 · Live camera</h2>
-      <p class="fine">Point the camera at a TV showing a match from the main camera angle, and hold it steady (lean it on
+      <h2 data-i18n="lab.live.h2">1 · Live camera</h2>
+      <p class="fine" data-i18n="lab.live.fine">Point the camera at a TV showing a match from the main camera angle, and hold it steady (lean it on
         something). The video is analysed on this device: nothing is uploaded or recorded.</p>
       <div class="row-actions">
-        <button id="cam-start" class="primary" type="button">Start the camera</button>
-        <button id="cam-stop" class="ghost" type="button" hidden>Stop the camera</button>
-        <label class="check"><input id="live-tiled" type="checkbox" /> Tiled scan (smaller players, slower)</label>
+        <button id="cam-start" class="primary" type="button" data-i18n="lab.camStart">Start the camera</button>
+        <button id="cam-stop" class="ghost" type="button" hidden data-i18n="lab.camStop">Stop the camera</button>
+        <label class="check"><input id="live-tiled" type="checkbox" /> <span data-i18n="lab.liveTiled">Tiled scan (smaller players, slower)</span></label>
       </div>
       <p id="cam-msg" class="hint" role="status"></p>
-      <p class="fine">The camera needs a secure page (HTTPS, or localhost while developing). It stops when you leave live mode
+      <p class="fine" data-i18n="lab.live.secure">The camera needs a secure page (HTTPS, or localhost while developing). It stops when you leave live mode
         or switch to another tab or app.</p>
     </section>
 
     <section id="work" hidden>
       <div class="stats" aria-live="polite">
-        <div class="stat"><b id="st-count">–</b><span>people</span></div>
-        <div class="stat"><b id="st-ms">–</b><span>inference ms</span></div>
-        <div class="stat"><b id="st-teams">–</b><span>teams A / B / other</span></div>
-        <div class="stat"><b id="st-mapped">–</b><span>on the map</span></div>
+        <div class="stat"><b id="st-count">–</b><span data-i18n="lab.st.people">people</span></div>
+        <div class="stat"><b id="st-ms">–</b><span data-i18n="lab.st.ms">inference ms</span></div>
+        <div class="stat"><b id="st-teams">–</b><span data-i18n="lab.st.teams">teams A / B / other</span></div>
+        <div class="stat"><b id="st-mapped">–</b><span data-i18n="lab.st.mapped">on the map</span></div>
       </div>
       <p id="status" class="hint"></p>
       <div class="row-actions" id="live-actions" hidden>
-        <button id="freeze" class="ghost" type="button">Freeze frame</button>
-        <button id="ask-coach" class="primary" type="button">Freeze &amp; ask the coach</button>
-        <button id="recal" class="ghost" type="button">Recalibrate</button>
+        <button id="freeze" class="ghost" type="button" data-i18n="lab.freeze">Freeze frame</button>
+        <button id="ask-coach" class="primary" type="button" data-i18n="lab.askCoach">Freeze &amp; ask the coach</button>
+        <button id="recal" class="ghost" type="button" data-i18n="lab.recal">Recalibrate</button>
       </div>
-      <div class="stage"><video id="cam" class="cam" playsinline muted aria-hidden="true"></video><canvas id="img" role="img" aria-label="Your picture with detections and calibration points"></canvas></div>
+      <div class="stage"><video id="cam" class="cam" playsinline muted aria-hidden="true"></video><canvas id="img" role="img" data-i18n-aria="lab.imgAria" aria-label="Your picture with detections and calibration points"></canvas></div>
       <div class="row-actions">
-        <button id="detect" class="primary picture-only" type="button">Detect players</button>
-        <label class="check"><input id="show-lines" type="checkbox" checked /> Show pitch lines</label>
-        <label class="check"><input id="show-boxes" type="checkbox" checked /> Show boxes</label>
-        <label class="check"><input id="show-detected" type="checkbox" /> Show detected lines</label>
+        <button id="detect" class="primary picture-only" type="button" data-i18n="lab.detect">Detect players</button>
+        <label class="check"><input id="show-lines" type="checkbox" checked /> <span data-i18n="lab.showLines">Show pitch lines</span></label>
+        <label class="check"><input id="show-boxes" type="checkbox" checked /> <span data-i18n="lab.showBoxes">Show boxes</span></label>
+        <label class="check"><input id="show-detected" type="checkbox" /> <span data-i18n="lab.showDetected">Show detected lines</span></label>
       </div>
-      <p class="fine">Tap a box to change its team (A → B → other). Drag a numbered point to refine the calibration.
-        <span class="live-only">Live: freeze the frame first, then tap the 4 points; the calibration is kept while the camera stays still.</span></p>
+      <p class="fine"><span data-i18n="lab.tapFine">Tap a box to change its team (A → B → other). Drag a numbered point to refine the calibration.</span>
+        <span class="live-only" data-i18n="lab.liveFine">Live: freeze the frame first, then tap the 4 points; the calibration is kept while the camera stays still.</span></p>
 
       <div class="grid">
         <section class="card">
-          <h2>2 · Calibrate the pitch</h2>
-          <p class="fine">Pick 4 landmarks you can see (no 3 on one line), then tap them on the picture in order. "Near" is the
+          <h2 data-i18n="lab.calib.h2">2 · Calibrate the pitch</h2>
+          <p class="fine" data-i18n="lab.calib.fine">Pick 4 landmarks you can see (no 3 on one line), then tap them on the picture in order. "Near" is the
             touchline closest to the camera, "left" is the goal on the left of the TV picture. A tap snaps to the nearest corner
             of the painted lines found in the picture (orange diamonds) within about 20 px; drag the point to undo.</p>
           <ol id="calib" class="calib"></ol>
           <div class="row-actions">
-            <button id="reset-pts" class="ghost" type="button">Reset points</button>
-            <button id="snap-all" class="ghost" type="button">Snap points to lines</button>
+            <button id="reset-pts" class="ghost" type="button" data-i18n="lab.resetPts">Reset points</button>
+            <button id="snap-all" class="ghost" type="button" data-i18n="lab.snapAll">Snap points to lines</button>
           </div>
           <p id="calib-msg" class="hint"></p>
           <p id="fit" class="hint fit" role="status" hidden></p>
         </section>
 
         <section class="card">
-          <h2>3 · From above</h2>
-          <canvas id="top" class="topdown" width="840" height="565" role="img" aria-label="Top-down pitch with the detected players"></canvas>
+          <h2 data-i18n="lab.top.h2">3 · From above</h2>
+          <canvas id="top" class="topdown" width="840" height="565" role="img" data-i18n-aria="lab.topAria" aria-label="Top-down pitch with the detected players"></canvas>
           <div id="legend" class="legend"></div>
           <details class="opts" id="opts">
-            <summary>AI coach: the carrier's best options</summary>
-            <p class="fine" id="coach-tag">A model opinion from a single picture: positions are approximate.</p>
-            <p class="fine">When the ball is found, the nearest player within 3 m is preselected as the carrier and the attacking
+            <summary data-i18n="lab.coach.summary">AI coach: the carrier's best options</summary>
+            <p class="fine" id="coach-tag" data-i18n="lab.coach.tagPicture">A model opinion from a single picture: positions are approximate.</p>
+            <p class="fine" data-i18n="lab.coach.carrierFine">When the ball is found, the nearest player within 3 m is preselected as the carrier and the attacking
               direction is guessed; otherwise tap the ball carrier on the pitch above, then pick the goal their team attacks.</p>
             <p class="hint auto" id="coach-auto" hidden></p>
-            <div class="row-actions" role="group" aria-label="Attacking direction">
-              <button id="dir-left" class="ghost" type="button" aria-pressed="false" data-icon="arrowLeft">Attacks the left goal</button>
-              <button id="dir-right" class="ghost" type="button" aria-pressed="true" data-icon-after="arrowRight">Attacks the right goal</button>
-              <button id="clear-carrier" class="ghost" type="button">Clear</button>
+            <div class="row-actions" role="group" aria-label="Attacking direction" data-i18n-aria="lab.dirGroup">
+              <button id="dir-left" class="ghost" type="button" aria-pressed="false" data-icon="arrowLeft" data-i18n="lab.dirLeft">Attacks the left goal</button>
+              <button id="dir-right" class="ghost" type="button" aria-pressed="true" data-icon-after="arrowRight" data-i18n="lab.dirRight">Attacks the right goal</button>
+              <button id="clear-carrier" class="ghost" type="button" data-i18n="lab.clear">Clear</button>
             </div>
-            <p class="hint" id="coach-still">Standing still: no velocities from a single picture.</p>
+            <p class="hint" id="coach-still" data-i18n="lab.coach.still">Standing still: no velocities from a single picture.</p>
             <ol id="coach-list" class="coach-list" aria-live="polite"></ol>
-            <p class="fine">Arrows on the map: the top 3 options (1 = best). Success = the pass arrives, the team keeps the ball
+            <p class="fine" data-i18n="lab.coach.arrowsFine">Arrows on the map: the top 3 options (1 = best). Success = the pass arrives, the team keeps the ball
               after the carry, or the shot is a goal. Value = the coach's score, the expected change in net expected goals (xG).
               The carrier's team attacks, the other team defends; "other" (referee, keepers?) is ignored. Players off the picture
               are missing, so lanes can look more open than they are.</p>
-            <p class="fine" id="coach-credit">Models: logistic and ridge regressions (pass, possession value, shot) and a
+            <p class="fine" id="coach-credit" data-i18n-html="lab.coach.credit.html">Models: logistic and ridge regressions (pass, possession value, shot) and a
               closed-form pitch control, trained on Bundesliga tracking and event data, Bassek et al. (2025), DFL / Sportec
               Solutions, <a href="https://doi.org/10.6084/m9.figshare.28196177" target="_blank" rel="noopener">IDSSE dataset</a>
               (CC BY 4.0), and shots from <a href="https://github.com/SkillCorner/opendata" target="_blank" rel="noopener">SkillCorner
@@ -121,24 +122,24 @@
     </section>
 
     <section class="card limits">
-      <h2>Honest limits</h2>
+      <h2 data-i18n="lab.limits.h2">Honest limits</h2>
       <ul>
-        <li>Only what the camera sees: a TV picture is a partial view, players off screen are missing.</li>
-        <li>Small model (EfficientDet-Lite0, trained on everyday photos): small, overlapping or blurred players are missed, and
+        <li data-i18n="lab.limits.1">Only what the camera sees: a TV picture is a partial view, players off screen are missing.</li>
+        <li data-i18n="lab.limits.2">Small model (EfficientDet-Lite0, trained on everyday photos): small, overlapping or blurred players are missed, and
           people in the crowd or on the bench can be detected.</li>
-        <li>Feet = bottom of the box: occlusions and cut boxes move players on the map by a few metres.</li>
-        <li>Team colours come from the average shirt colour and can fail (similar kits, shadows, keepers, referees).</li>
-        <li>The ball is tiny on a TV picture: often missed, sometimes confused with a head or a boot. On the map it is the
+        <li data-i18n="lab.limits.3">Feet = bottom of the box: occlusions and cut boxes move players on the map by a few metres.</li>
+        <li data-i18n="lab.limits.4">Team colours come from the average shirt colour and can fail (similar kits, shadows, keepers, referees).</li>
+        <li data-i18n="lab.limits.5">The ball is tiny on a TV picture: often missed, sometimes confused with a head or a boot. On the map it is the
           point under the ball, so a ball in the air is drawn too far from the camera (approximate). The carrier is just the
           nearest player within 3 m, and the attacking direction is a guess from where each team's deepest player is: check both.</li>
-        <li>The calibration is manual; tap snapping only finds straight painted lines on green (curves, worn or shaded lines and
+        <li data-i18n="lab.limits.6">The calibration is manual; tap snapping only finds straight painted lines on green (curves, worn or shaded lines and
           heavy occlusion are missed), and the fit score only checks the lines it can see.</li>
-        <li>Live camera: positions are approximate (a few metres) and the speeds are rough estimates from the last frames. The
+        <li data-i18n="lab.limits.7">Live camera: positions are approximate (a few metres) and the speeds are rough estimates from the last frames. The
           calibration only holds while both your phone and the TV camera stay still: broadcast cameras pan and zoom all the
           time, so recalibrate after each change of view. A few detections per second on a phone, players can blink in
           and out.</li>
       </ul>
-      <p class="fine">Detector: MediaPipe Tasks Vision with EfficientDet-Lite0 (both Apache-2.0), running on your device.
+      <p class="fine" data-i18n-html="lab.limits.fine.html">Detector: MediaPipe Tasks Vision with EfficientDet-Lite0 (both Apache-2.0), running on your device.
         <a href="/">The daily game</a> · <a href="/about.html">About</a></p>
     </section>
   </main>

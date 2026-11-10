@@ -10,10 +10,12 @@ import { startPreview } from "./preview.ts";
 import "./stats.css";
 import { initLang, localizeDom, pct, t, tn } from "./i18n/index.ts";
 import { mountLangSwitch } from "./i18n/ui.ts";
+import { markPendingDay, pickQueue, registerSW, startFlushing, warmOffline } from "./offline/index.ts";
 
 initLang(); // ?lang=, saved choice, browser language; sets <html lang>
 localizeDom();
 mountLangSwitch();
+registerSW(); // offline play (production builds; see app/src/offline/register.ts)
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const history = new History(localStorage);
@@ -126,6 +128,7 @@ function finish(day: Day, pts: number[]) {
   const tiles = el("span", "tiles"); tiles.setAttribute("aria-hidden", "true");
   pts.forEach((p, i) => { const t = el("span", `tile ${p >= 100 ? "top" : p >= 50 ? "mid" : "low"}`); t.style.animationDelay = `${i * 70}ms`; tiles.append(t); });
   sq.replaceChildren(el("span", "sr-only", pts.map(square).join(" ")), tiles);
+  markPendingDay(sq, tiles, pickQueue.pending(date).map((p) => p.index)); // answers given offline: scored later
   const reads = proReads(history.moments()[date]); // from the per-moment records (null for days played before question 2)
   if (reads) setIconText($("reads"), "eye", readsText(reads.right, reads.of)); else $("reads").textContent = "";
   $("reads").hidden = !reads;
@@ -175,6 +178,9 @@ async function start() {
     return;
   }
   $("day-label").textContent = `${t("day.label", { n: day.day_number })}${date !== realToday ? ` · ${date}` : ""}`;
+  current = day;
+  // the service worker caches the day and its five moments: opened online, the day can be finished offline
+  warmOffline([`/content/days/${date}.json`, ...day.moments.map((id) => `/content/moments/${id}.json`)]);
   const done = history.days()[date];
   if (done) return finish(day, done);
   play.disabled = false; play.removeAttribute("aria-busy");
@@ -198,10 +204,26 @@ async function start() {
       day,
       history.player(),
       (mo, res) => { try { history.record(date, toRecord(mo, res)); } catch { /* stats are best effort */ } },
+      (mo, option, guess, index) => pickQueue.enqueue({ player: history.player(), moment: mo.id, option, guess, date, index }),
     );
+    for (const [k, p] of scoredEarly) if (k.startsWith(`${date}#`)) pts[Number(k.slice(date.length + 1))] = p; // back online mid-day
     history.finish(date, pts, date === realToday);
     finish(day, pts);
   };
 }
+
+// Answers given offline are sent when the network is back; their points then replace the day's placeholders (0) and
+// their per-moment record is added, so the done screen, the share text and the stats become right.
+let current: Day | null = null;
+const scoredEarly = new Map<string, number>(); // "date#index" -> points, scored while that day is still being played
+startFlushing(async (q, res) => {
+  const d = history.days()[q.date];
+  if (d && q.index < d.length) { d[q.index] = res.points; history.finish(q.date, d, false); }
+  else scoredEarly.set(`${q.date}#${q.index}`, res.points);
+  try { history.record(q.date, toRecord(await getMoment(q.moment), res)); } catch { /* stats are best effort */ }
+}, () => {
+  const pts = history.days()[date];
+  if (current && pts && document.body.dataset.screen === "done") finish(current, pts);
+});
 
 void start();

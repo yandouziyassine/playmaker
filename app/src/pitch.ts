@@ -5,7 +5,8 @@ const L = 105, W = 68, PAD = 12;
 
 export function toScreen(p: Pt, v: View): Pt {
   const s = Math.min((v.w - 2 * PAD) / W, (v.h - 2 * PAD) / L);
-  return [v.w / 2 + p[1] * s, v.h / 2 - p[0] * s];
+  // attack points up the screen; facing +x, +y is on the player's left
+  return [v.w / 2 - p[1] * s, v.h / 2 - p[0] * s];
 }
 export function hitOption(opts: { k: number; at: Pt }[], tap: Pt, radius: number): number | null {
   let best: number | null = null, bestD = radius;
@@ -30,12 +31,14 @@ export function draw(ctx: CanvasRenderingContext2D, v: View, mo: Moment, frame: 
     const o = mo.options.find((q) => q.k === k)!; const to = c(...m(o.to));
     ctx.strokeStyle = color; ctx.lineWidth = width; ctx.beginPath(); ctx.moveTo(...carrierAt); ctx.lineTo(...to); ctx.stroke();
   };
-  arrow(highlight.pro, "#ffd166", 3); arrow(highlight.ai, "#4cc9f0", 4); arrow(highlight.mine, "#ffffff", 2);
-  f.forEach((p, i) => {
-    if (!p) return; const [x, y] = c(...m(p)); const pl = mo.players[i]!;
+  const order = f.map((_, i) => i).sort((a, b) => mo.players[b]!.side - mo.players[a]!.side); // defenders first, attackers on top
+  for (const i of order) {
+    const p = f[i]; if (!p) continue; const [x, y] = c(...m(p)); const pl = mo.players[i]!;
     ctx.fillStyle = pl.side === 0 ? "#e63946" : "#f1faee"; ctx.beginPath(); ctx.arc(x, y, i === mo.carrier ? 9 : 7, 0, 2 * Math.PI); ctx.fill();
+    if (i === mo.carrier) { ctx.strokeStyle = "#ffe066"; ctx.lineWidth = 2; ctx.stroke(); }
     ctx.fillStyle = pl.side === 0 ? "#fff" : "#111"; ctx.font = "9px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(String(pl.shirt), x, y);
-  });
+  }
+  arrow(highlight.pro, "#ffd166", 3); arrow(highlight.ai, "#4cc9f0", 3); arrow(highlight.mine, "#ffffff", 2);
   const b = mo.ball[Math.min(frame, mo.ball.length - 1)]!; const [bx, by] = c(...m(b));
   ctx.fillStyle = "#ffe066"; ctx.beginPath(); ctx.arc(bx, by, 4, 0, 2 * Math.PI); ctx.fill();
 }

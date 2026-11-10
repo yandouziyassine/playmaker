@@ -6,13 +6,13 @@
   --display: "Avenir Next Condensed", "Arial Narrow", "Roboto Condensed", system-ui, sans-serif;
 }
 * { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
+html { -webkit-text-size-adjust: 100%; background: var(--bg); }
 body {
   margin: 0; background: radial-gradient(120% 60% at 50% 0%, #12391f 0%, var(--bg) 60%) fixed; color: var(--fg);
   font: 16px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; min-height: 100vh;
 }
 a { color: var(--accent); }
-.top { display: flex; align-items: baseline; justify-content: space-between; max-width: 520px; margin: 0 auto; padding: 14px 16px 0; }
+.topbar { display: flex; align-items: baseline; justify-content: space-between; max-width: 520px; margin: 0 auto; padding: 14px 16px 0; }
 .brand { font: 800 1.35rem/1 var(--display); letter-spacing: 0.02em; text-transform: uppercase; color: var(--fg); text-decoration: none; }
 .brand b { color: var(--attack); }
 .daylabel { color: var(--muted); font-size: 0.85rem; }

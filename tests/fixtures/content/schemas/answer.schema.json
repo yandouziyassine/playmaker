@@ -16,7 +16,7 @@
           "k": {"type": "integer"}, "score": {"type": "number"}, "p": {"type": "number"},
           "share_top": {"type": "number", "minimum": 0, "maximum": 1},
           "points": {"type": "integer", "minimum": 0, "maximum": 100},
-          "reasons": {"type": "array", "maxItems": 3, "items": {"type": "string"}}
+          "reasons": {"type": "array", "maxItems": 3, "items": {"type": "object", "additionalProperties": false, "required": ["text", "effect"], "properties": {"text": {"type": "string"}, "effect": {"enum": [-1, 0, 1]}}}}
         }
       }
     },

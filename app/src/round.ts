@@ -155,7 +155,7 @@ export async function playMoment(ui: RoundUI, mo: Moment, player: string, index:
   ui.hint.textContent = res.after ? "What really happened next:" : "";
   const release = mo.lead_up[mo.lead_up.length - 1]!;
   const showAll = () => {
-    draw(ctx, v, mo, release, mo.ball[mo.ball.length - 1] ?? null, { ai: res.ai_pick, pro: res.pro_pick, mine, targets: true, scores: res.all_points });
+    draw(ctx, v, mo, release, mo.ball[mo.ball.length - 1] ?? null, { ai: res.ai_pick, pro: res.pro_pick, mine, scores: res.all_points });
     ui.hint.textContent = "Points of every option (green 100 · yellow 50+ · grey below)";
   };
   renderReveal(ui, mo, res, mine, () => void playAfter(ctx, v, mo, res, mine), showAll);

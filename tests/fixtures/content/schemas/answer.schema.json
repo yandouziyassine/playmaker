@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "playmaker/answer.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "options", "ai_pick", "pro_pick", "outcome", "models"],
+  "properties": {
+    "schema": {"const": 1},
+    "id": {"type": "string"},
+    "options": {
+      "type": "array", "minItems": 3,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["k", "score", "p", "share_top", "points", "reasons"],
+        "properties": {
+          "k": {"type": "integer"}, "score": {"type": "number"}, "p": {"type": "number"},
+          "share_top": {"type": "number", "minimum": 0, "maximum": 1},
+          "points": {"type": "integer", "minimum": 0, "maximum": 100},
+          "reasons": {"type": "array", "maxItems": 3, "items": {"type": "string"}}
+        }
+      }
+    },
+    "ai_pick": {"type": "integer"},
+    "pro_pick": {"type": "integer"},
+    "outcome": {
+      "type": "object", "additionalProperties": false, "required": ["kind", "net_xg_15s"],
+      "properties": {"kind": {"enum": ["goal", "shot", "kept", "lost"]}, "net_xg_15s": {"type": "number"}}
+    },
+    "models": {
+      "type": "object", "additionalProperties": false, "required": ["content_version", "trained_without", "refits"],
+      "properties": {"content_version": {"type": "integer"}, "trained_without": {"type": "string"}, "refits": {"type": "integer"}}
+    }
+  }
+}

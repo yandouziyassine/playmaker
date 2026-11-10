@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "playmaker/day.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "content_version", "day_number", "date", "moments"],
+  "properties": {
+    "schema": {"const": 1},
+    "content_version": {"type": "integer", "minimum": 1},
+    "day_number": {"type": "integer", "minimum": 1},
+    "date": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+    "moments": {"type": "array", "minItems": 5, "maxItems": 5, "items": {"type": "string", "pattern": "^[A-Za-z0-9-]+$"}}
+  }
+}

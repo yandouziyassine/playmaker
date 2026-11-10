@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "playmaker/moment.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "league", "home", "away", "attacking", "minute", "fps", "carrier", "players", "lead_up", "ball", "options", "credit"],
+  "properties": {
+    "schema": {"const": 1},
+    "id": {"type": "string", "pattern": "^[A-Za-z0-9-]+$"},
+    "league": {"enum": ["Bundesliga", "2. Bundesliga", "A-League"]},
+    "home": {"type": "string"},
+    "away": {"type": "string"},
+    "attacking": {"enum": ["home", "away"]},
+    "minute": {"type": "integer", "minimum": 0, "maximum": 130},
+    "fps": {"type": "number", "exclusiveMinimum": 0},
+    "carrier": {"type": "integer", "minimum": 0},
+    "players": {
+      "type": "array", "minItems": 18, "maxItems": 22,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["side", "shirt", "name"],
+        "properties": {"side": {"enum": [0, 1]}, "shirt": {"type": "integer"}, "name": {"type": "string"}}
+      }
+    },
+    "lead_up": {
+      "description": "frames x players (same order as players) x [x_cm, y_cm], attack-normalised (attacking side plays towards +x); null = not tracked",
+      "type": "array", "minItems": 2,
+      "items": {"type": "array", "minItems": 18, "maxItems": 22,
+        "items": {"oneOf": [{"type": "null"}, {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer"}}]}}
+    },
+    "ball": {"type": "array", "minItems": 2, "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer"}}},
+    "options": {
+      "type": "array", "minItems": 3,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["k", "kind", "to"],
+        "properties": {
+          "k": {"type": "integer", "minimum": 0},
+          "kind": {"enum": ["pass", "carry", "shot"]},
+          "player": {"type": "integer", "minimum": 0},
+          "angle": {"type": "integer"},
+          "to": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer"}}
+        }
+      }
+    },
+    "credit": {"type": "string"}
+  }
+}

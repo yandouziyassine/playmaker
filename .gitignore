@@ -1,5 +1,5 @@
 node_modules/
 dist/
-content/
+/content/
 test-results/
 playwright-report/

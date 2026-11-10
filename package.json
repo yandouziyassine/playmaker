@@ -10,7 +10,8 @@
     "test": "vitest run",
     "e2e": "playwright test",
     "content:link": "node scripts/link-content.mjs",
-    "fixture": "node scripts/make-fixture.mjs"
+    "fixture": "node scripts/make-fixture.mjs",
+    "lab:assets": "node scripts/lab-assets.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.65.0",
@@ -22,6 +23,7 @@
     "vitest": "^5.1.0"
   },
   "dependencies": {
+    "@mediapipe/tasks-vision": "^1.2.2",
     "three": "0.186.1"
   }
 }

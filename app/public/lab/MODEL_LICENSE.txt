@@ -1,0 +1,10 @@
+efficientdet_lite0.tflite (float16, version 1)
+Source: https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite
+Downloaded: 2026-11-09, sha256 4b59100025bea1235a84c1038879a6cccc9f6c49f5e41144e91e74d99e780993, 7,254,339 bytes
+Model card / docs: https://ai.google.dev/edge/mediapipe/solutions/vision/object_detector
+Licence: Apache License 2.0 (https://www.apache.org/licenses/LICENSE-2.0), as published by Google for the MediaPipe
+object detector models. EfficientDet-Lite0 trained on COCO 2017 (80 classes); the Lab keeps only "person".
+Unmodified copy. Re-fetch / verify with: npm run lab:assets
+
+Runtime: @mediapipe/tasks-vision (Apache-2.0), npm package; its wasm files are loaded from
+https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@<pinned version>/wasm (too large to self-host here: ~15 MB per build).

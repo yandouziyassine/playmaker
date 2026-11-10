@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Playmaker Lab · from a TV picture to tactics</title>
+  <meta name="description" content="Computer-vision lab: detect players in a football picture in your browser, calibrate the pitch with 4 taps and see the shape from above." />
+  <meta name="theme-color" content="#0b2a1a" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/src/lab/lab.css" />
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">Play<b>maker</b></a>
+    <span class="tag">Lab</span>
+  </header>
+  <main>
+    <h1>From a TV picture <span>to tactics</span></h1>
+    <p class="lead">Step 1 towards a live mode (point a phone at the TV, get advice). Load a broadcast-style picture: players
+      are detected in your browser, 4 taps calibrate the pitch, and the shape appears from above. Nothing is uploaded.</p>
+
+    <section class="card" id="load-card">
+      <h2>1 · Picture</h2>
+      <label id="drop" class="drop" tabindex="0">
+        <input id="file" type="file" accept="image/*" hidden />
+        <strong>Choose or drop a picture</strong>
+        <span class="fine">Use your own picture (a TV screenshot from the main camera works best). It stays on this device.</span>
+      </label>
+      <div class="row-actions">
+        <button id="demo" class="ghost" type="button">Try a synthetic scene</button>
+        <label class="check"><input id="tiled" type="checkbox" checked /> Tiled scan for small players</label>
+      </div>
+    </section>
+
+    <section id="work" hidden>
+      <div class="stats" aria-live="polite">
+        <div><b id="st-count">–</b><span>people</span></div>
+        <div><b id="st-ms">–</b><span>inference ms</span></div>
+        <div><b id="st-teams">–</b><span>teams A / B / other</span></div>
+        <div><b id="st-mapped">–</b><span>on the map</span></div>
+      </div>
+      <p id="status" class="hint"></p>
+      <div class="stage"><canvas id="img" aria-label="Your picture with detections and calibration points"></canvas></div>
+      <div class="row-actions">
+        <button id="detect" class="primary" type="button">Detect players</button>
+        <label class="check"><input id="show-lines" type="checkbox" checked /> Show pitch lines</label>
+        <label class="check"><input id="show-boxes" type="checkbox" checked /> Show boxes</label>
+      </div>
+      <p class="fine">Tap a box to change its team (A → B → other). Drag a numbered point to refine the calibration.</p>
+
+      <div class="grid">
+        <section class="card">
+          <h2>2 · Calibrate the pitch</h2>
+          <p class="fine">Pick 4 landmarks you can see (no 3 on one line), then tap them on the picture in order. "Near" is the
+            touchline closest to the camera, "left" is the goal on the left of the TV picture.</p>
+          <ol id="calib" class="calib"></ol>
+          <div class="row-actions">
+            <button id="reset-pts" class="ghost" type="button">Reset points</button>
+          </div>
+          <p id="calib-msg" class="hint"></p>
+        </section>
+
+        <section class="card">
+          <h2>3 · From above</h2>
+          <canvas id="top" class="topdown" aria-label="Top-down pitch with the detected players"></canvas>
+          <div id="legend" class="legend"></div>
+          <details class="opts" id="opts">
+            <summary>Passing options (experimental)</summary>
+            <p class="fine">Tap the ball carrier on the pitch above, then choose the attacking direction.</p>
+            <div class="row-actions">
+              <button id="dir" class="ghost" type="button">Attacking → right goal</button>
+              <button id="clear-carrier" class="ghost" type="button">Clear</button>
+            </div>
+            <ul id="lanes" class="lanes"></ul>
+            <p class="fine">Lane colour = distance from the nearest opponent to the straight pass line (open ≥ 4 m, tight ≥ 2 m,
+              blocked &lt; 2 m). A cheap proxy: it ignores speeds, pass height, body shape and players off the picture.</p>
+          </details>
+        </section>
+      </div>
+    </section>
+
+    <section class="card limits">
+      <h2>Honest limits</h2>
+      <ul>
+        <li>Only what the camera sees: a TV picture is a partial view, players off screen are missing.</li>
+        <li>Small model (EfficientDet-Lite0, trained on everyday photos): small, overlapping or blurred players are missed, and
+          people in the crowd or on the bench can be detected.</li>
+        <li>Feet = bottom of the box: occlusions and cut boxes move players on the map by a few metres.</li>
+        <li>Team colours come from the average shirt colour and can fail (similar kits, shadows, keepers, referees).</li>
+        <li>No ball detection yet, and the calibration is manual: one picture at a time, no video.</li>
+      </ul>
+      <p class="fine">Detector: MediaPipe Tasks Vision with EfficientDet-Lite0 (both Apache-2.0), running on your device.
+        <a href="/">Back to the game</a> · <a href="/about.html">About</a></p>
+    </section>
+  </main>
+  <script type="module" src="/src/lab/main.ts"></script>
+</body>
+</html>

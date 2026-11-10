@@ -7,24 +7,34 @@
 import {
   BufferAttribute, BufferGeometry, CanvasTexture, CapsuleGeometry, CircleGeometry, Color, CylinderGeometry,
   DirectionalLight, DoubleSide, DynamicDrawUsage, Fog, HemisphereLight, InstancedBufferAttribute, InstancedMesh, Line,
-  LineBasicMaterial, Matrix4, Mesh, MeshBasicMaterial, MeshLambertMaterial, PerspectiveCamera, PlaneGeometry,
-  Quaternion, RingGeometry, Scene, ShaderMaterial, SphereGeometry, Vector3, WebGLRenderer, type Material,
+  Group, LineBasicMaterial, Matrix4, Mesh, MeshBasicMaterial, MeshLambertMaterial, PerspectiveCamera, PlaneGeometry,
+  Quaternion, RingGeometry, Scene, ShaderMaterial, SphereGeometry, Sprite, SpriteMaterial, Vector3, WebGLRenderer, type Material,
 } from "three";
 import type { Moment } from "../api.ts";
 import {
-  COLORS, EYES_FOV, GOAL_H, GOAL_HALF_WIDTH, HALF_LENGTH, HALF_WIDTH, LOOK_HOME, arrowSpecs, atlasCell, carrierAt,
-  cmToM, dragLook, eyesArrow, eyesPose, pitchMarkings, ribbon, selectedReceiver, zoomFov, type Look, type Overlay3D, type Vec,
+  COLORS, EYES_FOV, GOAL_H, GOAL_HALF_WIDTH, HALF_LENGTH, HALF_WIDTH, LOOK_HOME, NO_FRAMING, arrowSpecs, atlasCell, badgeItems,
+  carrierAt, cmToM, dragLook, eyesArrow, eyesPose, frameTips, isTap, pickTargets, pitchMarkings, rayPick, ribbon, toWorld, zoomFov,
+  type Framing, type Look, type Overlay3D, type PickTarget, type Vec,
 } from "./geom.ts";
 
 type Cm = [number, number] | null;
 export interface View3D {
   readonly canvas: HTMLCanvasElement;
+  /** Draw one frame; overlay.selected rings the target, overlay.ai/pro frame the reveal, overlay.scores shows badges. */
   show(mo: Moment, frame: Cm[], ball: Cm, overlay?: Overlay3D): void;
+  /** Taps on a teammate (pass), a carry chevron or the goal mouth call fn(option k) until clearPickHandler(). */
+  setPickHandler(fn: (k: number) => void, mo: Moment): void;
+  clearPickHandler(): void;
+  /** Point badges over each pass target, the goal and the best carry (null clears them). */
+  showScores(scores: Record<number, number> | null): void;
+  /** The option under a client point while picking is on (tests / debugging), or null. */
+  pickAt(clientX: number, clientY: number): number | null;
   /** Back to looking at the goal. */
   reset(): void;
   dispose(): void;
 }
 
+const MAX_CARRIES = 16, Y_AXIS = new Vector3(0, 1, 0);
 const MAX_FIGURES = 30, MAX_ARROW_VERTS = 4 * 60 * 3, MAX_TRAIL = 200, MAX_DPR = 1.5;
 const BODY_Y = 0.78, HEAD_Y = 1.7, NUMBER_Y = 2.3, BALL_R = 0.11, BALL_VIS_R = 0.16;
 
@@ -170,17 +180,30 @@ export function createView3D(host: HTMLElement): View3D | null {
   trailGeo.setDrawRange(0, 0);
   const trail = new Line(trailGeo, new LineBasicMaterial({ color: COLORS.ball, transparent: true, opacity: 0.55 }));
   trail.frustumCulled = false;
-  scene.add(shadows, bodies, heads, numbers, ring, ball, arrows, trail);
+  // carry markers: yellow chevrons on the grass at the carry options' points, only while picking is on
+  const chevron = new BufferGeometry();
+  { // a V pointing along +x in pitch metres, lifted to the grass (pitch (x, y) -> world (x, 0, -y))
+    const tri = ribbon([[[-0.7, 0.8], [0, 0], [-0.7, -0.8]]], 0.28), pos = new Float32Array((tri.length / 2) * 3);
+    for (let i = 0, j = 0; i < tri.length; i += 2, j += 3) pos.set([tri[i]!, 0, -tri[i + 1]!], j);
+    chevron.setAttribute("position", new BufferAttribute(pos, 3));
+  }
+  const chevrons = new InstancedMesh(chevron, new MeshBasicMaterial({ color: 0xffffff, side: DoubleSide, transparent: true, opacity: 0.95, depthWrite: false }), MAX_CARRIES);
+  for (let i = 0; i < MAX_CARRIES; i++) chevrons.setColorAt(i, colour.set(COLORS.ball));
+  chevrons.count = 0; chevrons.frustumCulled = false;
+  const badges = new Group();
+  scene.add(shadows, bodies, heads, numbers, ring, ball, arrows, trail, chevrons, badges);
 
   // ---- camera and steering ----
   const camera = new PerspectiveCamera(EYES_FOV, 1, 0.1, 400);
-  let look: Look = LOOK_HOME, fov = EYES_FOV, eye: Vec = [0, 0], raf = 0, disposed = false;
-  const aim = new Vector3();
+  let look: Look = LOOK_HOME, fov = EYES_FOV, eye: Vec = [0, 0], raf = 0, disposed = false, framing: Framing = NO_FRAMING;
+  const aim = new Vector3(), ndc = new Vector3();
+  let picker: { fn: (k: number) => void; targets: PickTarget[] } | null = null;
+  let lastMo: Moment | null = null, lastFrame: Cm[] = [], lastBall: Cm = null, lastOverlay: Overlay3D = {};
 
   function render() {
     raf = 0;
     if (disposed) return;
-    const pose = eyesPose(eye, look, fov);
+    const pose = eyesPose(eye, look, fov, framing);
     camera.position.set(...pose.position);
     camera.fov = pose.fov;
     camera.updateProjectionMatrix();
@@ -189,13 +212,22 @@ export function createView3D(host: HTMLElement): View3D | null {
   }
   const request = () => { if (!raf && !disposed) raf = requestAnimationFrame(render); };
 
-  const pts = new Map<number, { x: number; y: number }>();
-  let lastTap = 0;
+  /** The option under a client point, from the camera ray (render() keeps the camera current). */
+  function pickAt(clientX: number, clientY: number): number | null {
+    if (!picker) return null;
+    const r = canvas.getBoundingClientRect();
+    if (!r.width || !r.height) return null;
+    render(); // make sure the camera matches what is on screen
+    ndc.set(((clientX - r.left) / r.width) * 2 - 1, -(((clientY - r.top) / r.height) * 2 - 1), 0.5).unproject(camera).sub(camera.position).normalize();
+    return rayPick([camera.position.x, camera.position.y, camera.position.z], [ndc.x, ndc.y, ndc.z], picker.targets);
+  }
+
+  const pts = new Map<number, { x: number; y: number; x0: number; y0: number; t0: number }>();
+  let multi = false, lastEmptyTap = -1e9;
   function down(e: PointerEvent) {
     canvas.setPointerCapture?.(e.pointerId);
-    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (e.timeStamp - lastTap < 300) { look = LOOK_HOME; fov = EYES_FOV; request(); }
-    lastTap = e.timeStamp;
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: e.timeStamp });
+    if (pts.size > 1) multi = true;
   }
   function move(e: PointerEvent) {
     const prev = pts.get(e.pointerId);
@@ -203,17 +235,27 @@ export function createView3D(host: HTMLElement): View3D | null {
     if (pts.size >= 2) { // pinch: the distance between the first two pointers zooms
       const [a, b] = [...pts.values()];
       const d0 = Math.hypot(a!.x - b!.x, a!.y - b!.y);
-      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      prev.x = e.clientX; prev.y = e.clientY;
       const [c, d] = [...pts.values()];
       const d1 = Math.hypot(c!.x - d!.x, c!.y - d!.y);
       if (d0 > 0 && d1 > 0) fov = zoomFov(fov, -Math.log(d1 / d0) / 0.001);
     } else {
       look = dragLook(look, e.clientX - prev.x, e.clientY - prev.y, fov, canvas.clientHeight);
-      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      prev.x = e.clientX; prev.y = e.clientY;
     }
     request();
   }
-  function up(e: PointerEvent) { pts.delete(e.pointerId); }
+  function up(e: PointerEvent) {
+    const p0 = pts.get(e.pointerId);
+    pts.delete(e.pointerId);
+    if (p0 && e.type === "pointerup" && !multi && isTap(e.clientX - p0.x0, e.clientY - p0.y0, e.timeStamp - p0.t0)) {
+      const k = pickAt(e.clientX, e.clientY);
+      if (k !== null && picker) picker.fn(k);
+      else if (e.timeStamp - lastEmptyTap < 350) { look = LOOK_HOME; fov = EYES_FOV; lastEmptyTap = -1e9; request(); } // double tap on nothing: re-centre
+      else lastEmptyTap = e.timeStamp;
+    }
+    if (pts.size === 0) multi = false;
+  }
   function wheel(e: WheelEvent) {
     e.preventDefault();
     fov = zoomFov(fov, Math.max(-300, Math.min(300, e.deltaY * (e.deltaMode === 1 ? 16 : 1))));
@@ -225,68 +267,136 @@ export function createView3D(host: HTMLElement): View3D | null {
   canvas.addEventListener("pointercancel", up);
   canvas.addEventListener("wheel", wheel, { passive: false });
 
+  const aspect = () => Math.max(1, canvas.clientWidth) / Math.max(1, canvas.clientHeight);
   const ro = new ResizeObserver(() => {
     const w = Math.max(1, canvas.clientWidth), h = Math.max(1, canvas.clientHeight);
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
+    if (lastMo) show(lastMo, lastFrame, lastBall, lastOverlay); // the framing depends on the aspect
     request();
   });
   ro.observe(canvas);
   const lost = (e: Event) => e.preventDefault();
   canvas.addEventListener("webglcontextlost", lost);
 
-  let lastMoment: string | null = null;
+  // ---- score badges: sprites with a drawn label, constant size on screen ----
+  function clearBadges() {
+    for (const sp of [...badges.children] as Sprite[]) { sp.material.map?.dispose(); sp.material.dispose(); badges.remove(sp); }
+  }
+  function showScores(scores: Record<number, number> | null) {
+    clearBadges();
+    if (!scores || !lastMo) { request(); return; }
+    for (const b of badgeItems(lastMo, scores)) {
+      const c = document.createElement("canvas"), g = c.getContext("2d")!;
+      c.width = 128; c.height = 64;
+      g.fillStyle = b.color; g.beginPath(); g.roundRect(4, 6, 120, 52, 26); g.fill();
+      g.fillStyle = "#07170e"; g.font = "800 38px system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
+      g.fillText(String(b.pts), 64, 34);
+      const sp = new Sprite(new SpriteMaterial({ map: new CanvasTexture(c), sizeAttenuation: false, depthTest: false, transparent: true }));
+      sp.scale.set(0.11, 0.055, 1);
+      sp.position.set(...toWorld(b.at, b.h));
+      sp.renderOrder = 10;
+      badges.add(sp);
+    }
+    request();
+  }
+
+  let lastMoment: string | null = null, scoresKey = "";
+
+  function show(mo: Moment, frame: Cm[], b: Cm, o: Overlay3D = {}) {
+    if (mo.id !== lastMoment) { lastMoment = mo.id; look = LOOK_HOME; fov = EYES_FOV; }
+    lastMo = mo; lastFrame = frame; lastBall = b; lastOverlay = o;
+    eye = carrierAt(mo, frame) ?? eye;
+    const specs = arrowSpecs(mo, o);
+    // the reveal (AI / pro / your arrows): turn and, if needed, widen and step back so they are all in view
+    framing = o.ai !== undefined || o.pro !== undefined ? frameTips(eye, specs.map((a) => a.to), aspect()) : NO_FRAMING;
+    const showCarrier = framing.back > 0;
+    let n = 0;
+    q.identity();
+    frame.forEach((cm, i) => {
+      if (!cm || n >= MAX_FIGURES) return;
+      const pl = mo.players[i];
+      if (!pl) return;
+      const [x, y] = cmToM(cm), z = -y, k = i === mo.carrier && !showCarrier ? 0 : 1; // the camera is inside the carrier
+      s.set(k, k, k);
+      bodies.setMatrixAt(n, m.compose(p.set(x, BODY_Y, z), q, s));
+      bodies.setColorAt(n, colour.set(pl.side === 0 ? COLORS.attack : COLORS.defend));
+      heads.setMatrixAt(n, m.compose(p.set(x, HEAD_Y, z), q, s));
+      const kn = i === mo.carrier ? 0 : 1; // seen from just behind him, his own number would fill the screen
+      numbers.setMatrixAt(n, m.compose(p.set(x, NUMBER_Y, z), q, s.set(kn, kn, kn)));
+      s.set(k, k, k);
+      const [cx, cy] = atlasCell(pl.shirt);
+      cells.setXY(n, cx, cy);
+      shadows.setMatrixAt(n, m.compose(p.set(x, 0.01, z), q, s));
+      n++;
+    });
+    for (const mesh of [bodies, heads, numbers, shadows]) { mesh.count = n; mesh.instanceMatrix.needsUpdate = true; }
+    bodies.instanceColor!.needsUpdate = true;
+    cells.needsUpdate = true;
+
+    // the selected target: a ring under the teammate, on the carry point, or in the goal mouth
+    const sel = o.selected === undefined ? undefined : pickTargets(mo).find((t) => t.k === o.selected);
+    ring.visible = !!sel;
+    if (sel) {
+      const at: Vec = sel.kind === "shot" ? [HALF_LENGTH - 1.2, 0] : sel.at;
+      ring.position.set(at[0], 0.025, -at[1]);
+      ring.scale.setScalar(sel.kind === "shot" ? 2.6 : sel.kind === "carry" ? 1.4 : 1.15);
+    }
+
+    // carry chevrons while picking, pointing away from the carrier; the selected one white
+    const carries = picker ? picker.targets.filter((t) => t.kind === "carry").slice(0, MAX_CARRIES) : [];
+    const from = carrierAt(mo, mo.lead_up[mo.lead_up.length - 1]!) ?? eye;
+    carries.forEach((t, i) => {
+      const a = Math.atan2(t.at[1] - from[1], t.at[0] - from[0]);
+      chevrons.setMatrixAt(i, m.compose(p.set(t.at[0], 0.02, -t.at[1]), q.setFromAxisAngle(Y_AXIS, a), s.set(1, 1, 1)));
+      chevrons.setColorAt(i, colour.set(t.k === o.selected ? "#ffffff" : COLORS.ball));
+    });
+    q.identity();
+    chevrons.count = carries.length;
+    chevrons.instanceMatrix.needsUpdate = true;
+    if (chevrons.instanceColor) chevrons.instanceColor.needsUpdate = true;
+
+    ball.visible = !!b;
+    if (b) { const [bx, by] = cmToM(b); ball.position.set(bx, Math.max(BALL_R, BALL_VIS_R), -by); }
+
+    let v = 0;
+    specs.forEach((a, ai) => {
+      const tri = eyesArrow(a.from, a.to, a.dashed), y = 0.03 + ai * 0.004; // later arrows a hair higher: on top
+      colour.set(a.color);
+      for (let i = 0; i + 1 < tri.length && v < MAX_ARROW_VERTS; i += 2, v++) {
+        arrowPos.setXYZ(v, tri[i]!, y, -tri[i + 1]!);
+        arrowCol.setXYZ(v, colour.r, colour.g, colour.b);
+      }
+    });
+    arrowGeo.setDrawRange(0, v - (v % 3));
+    arrowPos.needsUpdate = arrowCol.needsUpdate = true;
+
+    const tr = (o.balls ?? []).filter((x): x is [number, number] => !!x).slice(-MAX_TRAIL).map(cmToM);
+    tr.forEach((t, i) => trailPos.setXYZ(i, t[0], 0.05, -t[1]));
+    trailGeo.setDrawRange(0, tr.length);
+    trailPos.needsUpdate = true;
+
+    // the 2D overlay's scores (round.ts's "Show every option's score") become badges; any other paint clears them
+    const key = o.scores ? `${mo.id}:${JSON.stringify(o.scores)}` : "";
+    if (key !== scoresKey) { scoresKey = key; showScores(o.scores ?? null); }
+    request();
+  }
 
   return {
     canvas,
-    show(mo, frame, b, o = {}) {
-      if (mo.id !== lastMoment) { lastMoment = mo.id; look = LOOK_HOME; fov = EYES_FOV; }
-      eye = carrierAt(mo, frame) ?? eye;
-      const receiver = selectedReceiver(mo, o);
-      let n = 0;
-      q.identity();
-      ring.visible = false;
-      frame.forEach((cm, i) => {
-        if (!cm || n >= MAX_FIGURES) return;
-        const pl = mo.players[i];
-        if (!pl) return;
-        const [x, y] = cmToM(cm), z = -y, k = i === mo.carrier ? 0 : 1; // the camera is inside the carrier
-        s.set(k, k, k);
-        bodies.setMatrixAt(n, m.compose(p.set(x, BODY_Y, z), q, s));
-        bodies.setColorAt(n, colour.set(pl.side === 0 ? COLORS.attack : COLORS.defend));
-        heads.setMatrixAt(n, m.compose(p.set(x, HEAD_Y, z), q, s));
-        numbers.setMatrixAt(n, m.compose(p.set(x, NUMBER_Y, z), q, s));
-        const [cx, cy] = atlasCell(pl.shirt);
-        cells.setXY(n, cx, cy);
-        shadows.setMatrixAt(n, m.compose(p.set(x, 0.01, z), q, s));
-        if (i === receiver) { ring.visible = true; ring.position.set(x, 0.02, z); }
-        n++;
-      });
-      for (const mesh of [bodies, heads, numbers, shadows]) { mesh.count = n; mesh.instanceMatrix.needsUpdate = true; }
-      bodies.instanceColor!.needsUpdate = true;
-      cells.needsUpdate = true;
-
-      ball.visible = !!b;
-      if (b) { const [bx, by] = cmToM(b); ball.position.set(bx, Math.max(BALL_R, BALL_VIS_R), -by); }
-
-      let v = 0;
-      arrowSpecs(mo, o).forEach((a, ai) => {
-        const tri = eyesArrow(a.from, a.to, a.dashed), y = 0.03 + ai * 0.004; // later arrows a hair higher: on top
-        colour.set(a.color);
-        for (let i = 0; i + 1 < tri.length && v < MAX_ARROW_VERTS; i += 2, v++) {
-          arrowPos.setXYZ(v, tri[i]!, y, -tri[i + 1]!);
-          arrowCol.setXYZ(v, colour.r, colour.g, colour.b);
-        }
-      });
-      arrowGeo.setDrawRange(0, v - (v % 3));
-      arrowPos.needsUpdate = arrowCol.needsUpdate = true;
-
-      const tr = (o.balls ?? []).filter((x): x is [number, number] => !!x).slice(-MAX_TRAIL).map(cmToM);
-      tr.forEach((t, i) => trailPos.setXYZ(i, t[0], 0.05, -t[1]));
-      trailGeo.setDrawRange(0, tr.length);
-      trailPos.needsUpdate = true;
-      request();
+    show,
+    setPickHandler(fn, mo) {
+      picker = { fn, targets: pickTargets(mo) };
+      canvas.classList.add("v3d-picking");
+      if (lastMo) show(lastMo, lastFrame, lastBall, lastOverlay); // draw the carry markers
     },
+    clearPickHandler() {
+      picker = null;
+      canvas.classList.remove("v3d-picking");
+      if (lastMo) show(lastMo, lastFrame, lastBall, lastOverlay);
+    },
+    showScores(scores) { scoresKey = ""; showScores(scores); },
+    pickAt,
     reset() { look = LOOK_HOME; fov = EYES_FOV; request(); },
     dispose() {
       if (disposed) return;
@@ -296,6 +406,7 @@ export function createView3D(host: HTMLElement): View3D | null {
       canvas.removeEventListener("wheel", wheel);
       canvas.removeEventListener("webglcontextlost", lost);
       ro.disconnect();
+      clearBadges();
       const mats = new Set<Material>();
       scene.traverse((obj) => {
         const mesh = obj as Mesh;

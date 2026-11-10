@@ -12,3 +12,4 @@
   color: var(--fg); background: rgba(7, 23, 14, 0.72); border: 1px solid var(--line); backdrop-filter: blur(4px); }
 .v3d-toggle[aria-pressed="true"] { border-color: var(--accent); }
 .v3d-toggle:disabled { opacity: 0.6; cursor: default; }
+.v3d-host canvas.v3d-picking { cursor: pointer; }

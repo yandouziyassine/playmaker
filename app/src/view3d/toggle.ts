@@ -17,6 +17,8 @@ let view: View3D | null = null, loading: Promise<View3D | null> | null = null, f
 let canvas2d: HTMLCanvasElement | null = null, stage: HTMLElement | null = null, host: HTMLElement | null = null, button: HTMLButtonElement | null = null;
 let last: Paint | null = null;
 let hook: (() => void) | null = null;
+let pick: { fn: (k: number) => void; mo: Moment } | null = null, help: HTMLElement | null = null;
+const HELP = "Drag to look around · double-tap to re-centre", HELP_PICK = "Tap a teammate, a yellow chevron or the goal · drag to look";
 
 export const is3D = () => on && !!view;
 
@@ -36,6 +38,7 @@ function apply() {
   stage?.classList.toggle("is3d", show3);
   if (host) host.hidden = !show3;
   label();
+  if (view) { if (pick) view.setPickHandler(pick.fn, pick.mo); else view.clearPickHandler(); }
   if (show3 && last) view!.show(last.mo, last.frame, last.ball, last.overlay);
   hook?.();
 }
@@ -72,9 +75,9 @@ export function setup3D(canvas: HTMLCanvasElement) {
   host = document.createElement("div");
   host.className = "v3d-host";
   host.hidden = true;
-  const help = document.createElement("p");
+  help = document.createElement("p");
   help.className = "v3d-help";
-  help.textContent = "Drag to look around · double-tap to re-centre";
+  help.textContent = pick ? HELP_PICK : HELP;
   host.append(help);
   button = document.createElement("button");
   button.type = "button";
@@ -89,4 +92,21 @@ export function setup3D(canvas: HTMLCanvasElement) {
 export function paint3D(mo: Moment, frame: Cm[], ball: Cm, overlay: Overlay3D = {}) {
   last = { mo, frame, ball, overlay };
   if (on && view) view.show(mo, frame, ball, overlay);
+}
+
+/** While choosing: taps in 3D on a teammate (pass), a carry chevron or the goal mouth call fn(option k).
+ *  Pass null once the choice is confirmed. Survives turning 3D on later in the same choice. */
+export function pick3D(mo: Moment | null, fn: ((k: number) => void) | null) {
+  pick = mo && fn ? { fn, mo } : null;
+  if (help) help.textContent = pick ? HELP_PICK : HELP;
+  if (!view) return;
+  if (pick) view.setPickHandler(pick.fn, pick.mo); else view.clearPickHandler();
+}
+
+/** Point badges in 3D (normally not needed: paint3D already shows overlay.scores). null clears them. */
+export function scores3D(scores: Record<number, number> | null) { view?.showScores(scores); }
+
+// Dev builds only: a handle for the Playwright review scripts (wire picking without round.ts, inspect the view).
+if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV && typeof window !== "undefined") {
+  (window as unknown as Record<string, unknown>).__playmaker3d = { pick3D, scores3D, view: () => view };
 }

@@ -63,3 +63,25 @@ test("public content never exposes answers", async ({ request }) => {
   const mo = await (await request.get(`http://localhost:8787/content/moments/${day.moments[0]}.json`)).text();
   for (const k of ["points", "pro_pick", "share_top", "reasons", "after"]) expect(mo).not.toContain(`"${k}"`);
 });
+
+test("in 3D, tapping a teammate selects a pass", async ({ page }) => {
+  await page.goto("/?date=2026-12-01&today=2026-12-01");
+  await page.getByRole("button", { name: "Play today's five" }).click();
+  await expect(page.getByRole("button", { name: "Confirm" })).toBeDisabled({ timeout: 15_000 });
+  const toggle = page.locator(".v3d-toggle");
+  await toggle.click();
+  await expect(toggle).toHaveText(/2D|3D unavailable/, { timeout: 20_000 });
+  test.skip((await toggle.textContent()) === "3D unavailable", "no WebGL in this browser");
+  const host = page.locator(".v3d-host canvas");
+  await expect(host).toBeVisible();
+  const box = (await host.boundingBox())!;
+  let picked = false;
+  for (let y = 0.35; y < 0.95 && !picked; y += 0.05) {
+    for (let x = 0.05; x < 0.95 && !picked; x += 0.05) {
+      await page.mouse.click(box.x + box.width * x, box.y + box.height * y);
+      picked = await page.getByRole("button", { name: "Confirm" }).isEnabled();
+    }
+  }
+  expect(picked).toBe(true);
+  await expect(page.locator(".actions .choice")).not.toHaveText("Nothing selected");
+});

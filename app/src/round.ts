@@ -1,7 +1,7 @@
 import { getMoment, postPick, type Day, type Moment, type PickResult } from "./api.ts";
 import { ballTrail, draw as draw2D, hitOption, optionTargets, type View } from "./pitch.ts";
 import { OUTCOME_TEXT, optionLabel, pct, progress, proReadLine, tier, verdict } from "./text.ts";
-import { is3D, on3DChange, paint3D, setup3D } from "./view3d/toggle.ts";
+import { is3D, on3DChange, paint3D, pick3D, setup3D } from "./view3d/toggle.ts";
 import type { Overlay3D as Overlay } from "./view3d/geom.ts";
 
 type Cm = [number, number] | null;
@@ -50,12 +50,12 @@ interface Question { tag: string; tap: string; list: string }
 export const Q_YOU: Question = {
   tag: "1/2 · What would you do?",
   tap: "Tap a teammate to pass, a yellow arrow to carry, or the goal to shoot.",
-  list: "Through the carrier's eyes: pick an option from the list below.",
+  list: "Through the carrier's eyes: tap a teammate, a yellow chevron or the goal (drag to look around), or use the list.",
 };
 export const Q_PRO: Question = {
   tag: "2/2 · What did the pro actually do?",
   tap: "Your pick is locked in. The pro passed here: tap the teammate who got the ball.",
-  list: "Your pick is locked in. The pro passed here: pick the receiver from the list below.",
+  list: "Your pick is locked in. The pro passed here: tap the receiver (drag to look around), or use the list.",
 };
 
 function setHint(ui: RoundUI, q: Question, text: string) {
@@ -78,10 +78,7 @@ function choose(ui: RoundUI, ctx: CanvasRenderingContext2D, v: View, mo: Moment,
   const ul = el("div", "optgrid");
   details.append(ul);
   ui.list.append(details);
-  const modeHint = () => { // in 3D the pitch is not tappable: the list is the way to choose
-    if (is3D()) details.open = true;
-    setHint(ui, q, is3D() ? q.list : q.tap);
-  };
+  const modeHint = () => setHint(ui, q, is3D() ? q.list : q.tap); // 3D: tap players in the 3D view (pick3D)
   modeHint();
   on3DChange(modeHint);
   return new Promise((resolve) => {
@@ -94,6 +91,7 @@ function choose(ui: RoundUI, ctx: CanvasRenderingContext2D, v: View, mo: Moment,
       selected = k; label.textContent = optionLabel(mo, k); confirm.disabled = false; repaint();
       for (const b of ul.querySelectorAll("button")) b.classList.toggle("on", Number(b.dataset.k) === k);
     };
+    pick3D(mo, select); // taps on players / goal / carry chevrons in the 3D view select too
     const rank = { pass: 0, shot: 1, carry: 2 } as const;
     for (const o of [...mo.options].sort((a, b) => rank[a.kind] - rank[b.kind] || a.k - b.k)) {
       const b = el("button", "opt", optionLabel(mo, o.k)); b.dataset.k = String(o.k); b.onclick = () => select(o.k); ul.append(b);
@@ -106,6 +104,7 @@ function choose(ui: RoundUI, ctx: CanvasRenderingContext2D, v: View, mo: Moment,
     confirm.onclick = () => {
       if (selected === undefined) return;
       ui.canvas.onclick = null; ui.actions.innerHTML = ""; ui.list.innerHTML = ""; ui.hint.textContent = ""; on3DChange(null);
+      pick3D(null, null);
       resolve(selected);
     };
   });

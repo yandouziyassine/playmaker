@@ -2,7 +2,8 @@
 import { describe, expect, it } from "vitest";
 import type { Moment } from "../src/api.ts";
 import {
-  COLORS, EYE_HEIGHT, LOOK_HOME, arrowSpecs, atlasCell, carrierAt, cmToWorld, dragLook, eyesArrow, eyesPose,
+  COLORS, EYE_HEIGHT, FOV_MAX, FRAME_BACK, LOOK_HOME, REST_TILT, badgeColor, badgeItems, frameTips, halfHFov, isTap,
+  pickTargets, rayCylinder, rayPick, arrowSpecs, atlasCell, carrierAt, cmToWorld, dragLook, eyesArrow, eyesPose,
   goalDirection, selectedReceiver, toWorld, zoomFov, type V3,
 } from "../src/view3d/geom.ts";
 
@@ -52,8 +53,8 @@ describe("player's eyes", () => {
     expect(d[0] / Math.hypot(d[0], d[2])).toBeCloseTo(g[0], 6);
     expect(-d[2] / Math.hypot(d[0], d[2])).toBeCloseTo(g[1], 6); // ...and a little to his left (+y)
     const tilt = Math.atan2(-d[1], Math.hypot(d[0], d[2]));
-    expect(tilt).toBeGreaterThan(0);                    // looking down
-    expect(tilt).toBeLessThan(0.1);                     // but only slightly (< 6 degrees)
+    expect(tilt).toBeCloseTo(REST_TILT, 6);             // looking down a little: the horizon sits above the middle
+    expect(tilt).toBeLessThan(0.2);
   });
 
   it("looks straight down the pitch from on the goal line centre", () => {
@@ -107,5 +108,88 @@ describe("arrows", () => {
     expect(atlasCell(0)).toEqual([0, 9]);
     expect(atlasCell(23)).toEqual([3, 7]);
     expect(atlasCell(150)).toEqual([9, 0]);
+  });
+});
+
+describe("picking", () => {
+  const norm = (v: V3): V3 => { const n = Math.hypot(...v); return [v[0] / n, v[1] / n, v[2] / n]; };
+  const rayTo = (o: V3, p: V3) => norm(sub(p, o));
+
+  it("tells a tap (< 8 px, < 300 ms) from a drag", () => {
+    expect(isTap(3, 4, 120)).toBe(true);
+    expect(isTap(6, 6, 120)).toBe(false); // 8.5 px
+    expect(isTap(0, 0, 300)).toBe(false); // a long press
+  });
+
+  it("lists the targets: teammates at release (pass), carry points, the goal mouth", () => {
+    expect(pickTargets(mo)).toEqual([
+      { k: 0, kind: "pass", at: [30, 10] }, { k: 1, kind: "carry", at: [16, -5] }, { k: 2, kind: "shot", at: [52.5, 0] },
+    ]);
+  });
+
+  it("hits a generous cylinder around a teammate, up to over his shirt number", () => {
+    const o: V3 = [10, 1.7, 5];
+    expect(rayCylinder(o, rayTo(o, [30, 1, -10]), [30, 10], 0.9, 2.8)).not.toBeNull();     // his body
+    expect(rayCylinder(o, rayTo(o, [30.7, 2.6, -10]), [30, 10], 0.9, 2.8)).not.toBeNull(); // beside, at number height
+    expect(rayCylinder(o, rayTo(o, [33, 1, -10]), [30, 10], 0.9, 2.8)).toBeNull();          // 3 m away
+    expect(rayCylinder(o, [-1, 0, 0], [30, 10], 0.9, 2.8)).toBeNull();                       // behind the camera
+  });
+
+  it("picks the pass, the shot and the carry from camera rays", () => {
+    const o: V3 = [10, 1.7, 5], t = pickTargets(mo);
+    expect(rayPick(o, rayTo(o, [30.5, 0.4, -10]), t)).toBe(0);
+    expect(rayPick(o, rayTo(o, [52.5, 1.2, 2]), t)).toBe(2);   // inside the goal mouth
+    expect(rayPick(o, rayTo(o, [16.8, 0, 5.6]), t)).toBe(1);   // on the grass, near the carry point
+    expect(rayPick(o, rayTo(o, [10, 8, -40]), t)).toBeNull();  // the sky, far from everything
+  });
+
+  it("prefers the nearer of two overlapping targets", () => {
+    const o: V3 = [0, 1.7, 0];
+    const t = [{ k: 5, kind: "pass" as const, at: [40, 0] as [number, number] }, { k: 6, kind: "pass" as const, at: [20, 0] as [number, number] }];
+    expect(rayPick(o, [1, 0, 0], t)).toBe(6);
+  });
+
+  it("still picks a small far-away teammate with a near miss", () => {
+    const o: V3 = [-40, 1.7, 0], at: [number, number] = [40, 0];
+    expect(rayPick(o, rayTo(o, [40, 1.2, -3]), [{ k: 3, kind: "pass", at }])).toBe(3); // ~2 degrees off
+  });
+});
+
+describe("score badges", () => {
+  it("colours the points like 2D (green 100, yellow 50+, grey below)", () => {
+    expect([badgeColor(100), badgeColor(50), badgeColor(49)]).toEqual(["#06d6a0", "#ffd166", "#8d99ae"]);
+  });
+
+  it("puts one badge over each pass target, the goal and only the best carry", () => {
+    const two = { ...mo, options: [...mo.options, { k: 3, kind: "carry", angle: 1, to: [1000, 0] }] } as Moment;
+    const b = badgeItems(two, { 0: 100, 1: 20, 2: 60, 3: 40 });
+    expect(b.map((x) => [x.k, x.pts, x.color])).toEqual([[0, 100, "#06d6a0"], [2, 60, "#ffd166"], [3, 40, "#8d99ae"]]);
+    expect(b[0]!.at).toEqual([30, 10]);
+    expect(b[0]!.h).toBeGreaterThan(2.3); // above the shirt number
+  });
+});
+
+describe("reveal framing", () => {
+  it("leaves the view alone when nothing is shown", () => {
+    expect(frameTips([0, 0], [], 0.7)).toEqual({ yaw: 0, back: 0, fov: 0 });
+  });
+
+  it("turns towards arrows that fit without widening", () => {
+    const f = frameTips([0, 0], [[20, 2]], 0.7);
+    expect(f.back).toBe(0);
+    expect(f.yaw).toBeCloseTo(Math.atan2(2, 20), 6);
+  });
+
+  it("widens and steps back when the arrows point sideways", () => {
+    const f = frameTips([0, 0], [[0, 15], [20, -3]], 0.7); // one square to his left, one ahead
+    expect(f.back).toBe(FRAME_BACK);
+    expect(f.fov).toBeGreaterThan(70);
+    expect(f.fov).toBeLessThanOrEqual(FOV_MAX);
+    expect(f.yaw).toBeGreaterThan(0.5); // turned left, towards the middle of the span
+    expect(halfHFov(f.fov, 0.7)).toBeGreaterThan(halfHFov(70, 0.7));
+    const pose = eyesPose([0, 0], LOOK_HOME, 70, f);
+    expect(pose.fov).toBe(f.fov);
+    const behind = sub(pose.position, cmToWorld([0, 0], EYE_HEIGHT));
+    expect(Math.hypot(behind[0], behind[2])).toBeCloseTo(FRAME_BACK, 6);
   });
 });

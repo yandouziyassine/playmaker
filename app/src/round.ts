@@ -1,6 +1,8 @@
 import { getMoment, postPick, type Day, type Moment, type PickResult } from "./api.ts";
 import { ballTrail, draw as draw2D, hitOption, optionTargets, stepOption, type View } from "./pitch.ts";
-import { OUTCOME_TEXT, optionLabel, pct, progress, proReadLine, tier, verdict } from "./text.ts";
+import { optionLabel, outcomeText, pct, progress, proReadLine, tier, verdict } from "./text.ts";
+import { t, type Key } from "./i18n/index.ts";
+import { translatePhrase } from "./i18n/phrases.ts";
 import { is3D, on3DChange, paint3D, pick3D, setup3D } from "./view3d/toggle.ts";
 import type { Overlay3D as Overlay } from "./view3d/geom.ts";
 import { icon, setIconText, spinner, type IconName } from "./design/icons.ts";
@@ -15,7 +17,77 @@ function draw(ctx: CanvasRenderingContext2D, v: View, mo: Moment, frame: Cm[], b
 export interface RoundUI {
   canvas: HTMLCanvasElement; title: HTMLElement; dots: HTMLElement; hint: HTMLElement; actions: HTMLElement;
   list: HTMLElement; reveal: HTMLElement; next: HTMLButtonElement;
+  /** Coach-marks of the guided first moment (first visit only). */
+  tour?: Tour | null;
 }
+
+/** One coach-mark of the guided first moment, in order. */
+export type TourStep = "carrier" | "tap" | "confirm" | "legend";
+export const TOUR_STEPS: readonly TourStep[] = ["carrier", "tap", "confirm", "legend"];
+
+/** Coach-marks for the first moment of a first visit. They sit inline between the pitch and the controls (never over
+ * a target or a button), so play never waits on them: taps, the list and the keyboard work as usual and the marks
+ * follow along (selecting jumps to "Confirm"). Next / Skip tour / Got it buttons, Escape skips; focus is never
+ * taken from the pitch. Finishing or skipping calls onEnd once (the page saves a flag: never shown again). */
+export class Tour {
+  step: TourStep | null = null;
+  started = false;
+  ended = false;
+  private text: HTMLParagraphElement;
+  private count: HTMLParagraphElement;
+  private buttons: HTMLDivElement;
+  private onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && this.step) { e.preventDefault(); this.end(true); } };
+
+  constructor(readonly host: HTMLElement, private focusAfter: () => HTMLElement | null, private onEnd: () => void) {
+    host.hidden = true;
+    host.classList.add("coachmark");
+    host.setAttribute("role", "region");
+    host.setAttribute("aria-label", t("tour.aria"));
+    this.count = el("p", "cm-step tnum");
+    this.text = el("p", "cm-text");
+    this.text.setAttribute("aria-live", "polite");
+    this.buttons = el("div", "cm-actions");
+    host.replaceChildren(this.count, this.text, this.buttons);
+  }
+
+  show(step: TourStep) {
+    if (this.ended) return;
+    if (!this.started) { this.started = true; document.addEventListener("keydown", this.onKey); }
+    this.step = step;
+    this.host.dataset.step = step;
+    this.count.textContent = t("tour.step", { i: TOUR_STEPS.indexOf(step) + 1, n: TOUR_STEPS.length });
+    this.text.textContent = t(`tour.${step}`);
+    const btn = (key: "tour.next" | "tour.skip" | "tour.done", cls: string, fn: () => void) => {
+      const b = el("button", cls, t(key)); b.type = "button"; b.onclick = fn; return b;
+    };
+    const skip = btn("tour.skip", "quiet", () => this.end(true));
+    this.buttons.replaceChildren(
+      ...(step === "carrier" ? [skip, btn("tour.next", "ghost", () => { this.show("tap"); this.refocus(); })]
+        : step === "legend" ? [btn("tour.done", "ghost", () => this.end(true))]
+        : [skip]),
+    );
+    this.host.hidden = false;
+  }
+
+  /** Between marks (second question, the server's answer): out of the way, the tour goes on after the reveal. */
+  hide() { this.step = null; this.host.hidden = true; }
+
+  /** Completed or skipped: never again. `byButton`: focus moves on (the button that had it is gone). */
+  end(byButton = false) {
+    if (this.ended) return;
+    this.ended = true; this.step = null; this.host.hidden = true;
+    document.removeEventListener("keydown", this.onKey);
+    this.onEnd();
+    if (byButton) this.refocus();
+  }
+
+  private refocus() {
+    const a = document.activeElement;
+    if (a && a !== document.body && this.host.contains(a) && a.isConnected && (a as HTMLElement).offsetParent) return;
+    this.focusAfter()?.focus({ preventScroll: true });
+  }
+}
+
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const reduced = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -37,7 +109,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text = ""):
 function renderDots(ui: RoundUI, points: number[], total: number, just = false) {
   ui.dots.innerHTML = "";
   progress(points, total).forEach((state, i) => ui.dots.append(el("span", `dot ${state}${just && i === points.length - 1 ? " just" : ""}`)));
-  ui.dots.setAttribute("aria-label", `${points.length} of ${total} moments answered`);
+  ui.dots.setAttribute("aria-label", t("game.dots", { done: points.length, total }));
 }
 
 async function playLeadUp(ctx: CanvasRenderingContext2D, v: View, mo: Moment) {
@@ -49,22 +121,14 @@ async function playLeadUp(ctx: CanvasRenderingContext2D, v: View, mo: Moment) {
 }
 
 /** One question of a moment: its step ("1/2"), the question and the hints for the 2D pitch and the 3D view. */
-interface Question { step: string; tag: string; tap: string; list: string }
-export const Q_YOU: Question = {
-  step: "1/2", tag: "What would you do?",
-  tap: "Tap a teammate to pass, a yellow chevron to carry, or the goal to shoot.",
-  list: "Through the carrier's eyes: tap a teammate, a yellow chevron or the goal (drag to look around), or use the list.",
-};
-export const Q_PRO: Question = {
-  step: "2/2", tag: "What did the pro actually do?",
-  tap: "Your pick is locked in. The pro passed here: tap the teammate who got the ball.",
-  list: "Your pick is locked in. The pro passed here: tap the receiver (drag to look around), or use the list.",
-};
+interface Question { step: string; tag: Key; tap: Key; list: Key }
+export const Q_YOU: Question = { step: "1/2", tag: "q.you.tag", tap: "q.you.tap", list: "q.you.list" };
+export const Q_PRO: Question = { step: "2/2", tag: "q.pro.tag", tap: "q.pro.tap", list: "q.pro.list" };
 
-function setHint(ui: RoundUI, q: Question, text: string) {
+function setHint(ui: RoundUI, q: Question, text: Key) {
   ui.hint.innerHTML = "";
-  const tag = el("b", "qtag"); tag.append(el("span", "step", q.step), document.createTextNode(q.tag));
-  ui.hint.append(tag, document.createTextNode(text));
+  const tag = el("b", "qtag"); tag.append(el("span", "step", q.step), document.createTextNode(t(q.tag)));
+  ui.hint.append(tag, document.createTextNode(t(text)));
 }
 
 /** Waits for a confirmed choice: tap a target (teammate, carry dot, goal) or a list button, then Confirm.
@@ -94,7 +158,7 @@ function choose(ui: RoundUI, ctx: CanvasRenderingContext2D, v: View, mo: Moment,
   };
   ui.list.innerHTML = "";
   const details = el("details", "optlist");
-  const sum = el("summary"); setIconText(sum, "list", "Choose from a list"); details.append(sum);
+  const sum = el("summary"); setIconText(sum, "list", t("choose.list")); details.append(sum);
   const ul = el("div", "optgrid");
   details.append(ul);
   ui.list.append(details);
@@ -102,15 +166,18 @@ function choose(ui: RoundUI, ctx: CanvasRenderingContext2D, v: View, mo: Moment,
   const modeHint = () => { setHint(ui, q, is3D() ? q.list : q.tap); ui.hint.append(said); }; // 3D: tap players in the 3D view (pick3D)
   modeHint();
   on3DChange(modeHint);
+  const tour = q === Q_YOU ? ui.tour : null;
+  if (tour && !tour.started) tour.show("carrier");
   return new Promise((resolve) => {
-    const confirm = el("button", "primary", "Confirm");
+    const confirm = el("button", "primary", t("choose.confirm"));
     confirm.disabled = true;
-    const label = el("span", "choice none", "Nothing selected");
+    const label = el("span", "choice none", t("choose.none"));
     ui.actions.innerHTML = "";
     ui.actions.append(label, confirm);
     const select = (k: number) => {
       selected = k; label.textContent = optionLabel(mo, k); label.classList.remove("none"); confirm.disabled = false; repaint(); pulse(k);
-      said.textContent = ` Selected: ${optionLabel(mo, k)}.`;
+      said.textContent = t("choose.selected", { label: optionLabel(mo, k) });
+      if (tour && (tour.step === "carrier" || tour.step === "tap")) tour.show("confirm");
       for (const b of ul.querySelectorAll("button")) b.classList.toggle("on", Number(b.dataset.k) === k);
     };
     pick3D(mo, select); // taps on players / goal / carry chevrons in the 3D view select too
@@ -149,10 +216,11 @@ function choose(ui: RoundUI, ctx: CanvasRenderingContext2D, v: View, mo: Moment,
     confirm.onclick = () => {
       if (selected === undefined || confirm.getAttribute("aria-busy") === "true") return;
       cancelAnimationFrame(pulseRaf); repaint();
+      if (tour?.step) tour.hide();
       ui.canvas.onclick = null; ui.canvas.onkeydown = null; ui.canvas.tabIndex = -1; ui.list.innerHTML = ""; on3DChange(null);
       if (last) { // the answers go to the server now: the button says so (playMoment clears it with the reveal)
-        confirm.disabled = true; confirm.setAttribute("aria-busy", "true"); confirm.replaceChildren(spinner(), "Checking…");
-        ui.hint.textContent = "Checking your answers…";
+        confirm.disabled = true; confirm.setAttribute("aria-busy", "true"); confirm.replaceChildren(spinner(), t("choose.checking"));
+        ui.hint.textContent = t("choose.checkingAnswers");
       } else { ui.actions.innerHTML = ""; ui.hint.textContent = ""; }
       pick3D(null, null);
       resolve(selected);
@@ -196,10 +264,10 @@ function renderReveal(ui: RoundUI, mo: Moment, res: PickResult, pick: number, re
   r.innerHTML = ""; r.hidden = false;
   const head = el("p", `points ${tier(res.points)}`);
   const num = el("strong");
-  head.append(num, el("span", "", "/100 points"));
+  head.append(num, el("span", "", t("reveal.points")));
   countUp(num, res.points);
   const vd = el("p", "verdict"); vd.append(el("span", "", verdict(res, pick)));
-  if (res.pro_instinct) { const pi = el("span", "instinct"); setIconText(pi, "spark", "Picked like the pro"); vd.append(pi); }
+  if (res.pro_instinct) { const pi = el("span", "instinct"); setIconText(pi, "spark", t("reveal.instinct")); vd.append(pi); }
   r.append(head, vd);
   const read = proReadLine(mo, res);
   if (read) { const p = el("p", `proread ${read.cls}`); p.append(icon(read.cls === "ok" ? "check" : "eye"), el("span", "", read.text)); r.append(p); }
@@ -210,50 +278,52 @@ function renderReveal(ui: RoundUI, mo: Moment, res: PickResult, pick: number, re
     rows.append(d);
     return what;
   };
-  row("mine", "You", pick);
-  row("ai", "AI coach", res.ai_pick);
-  const proWhat = row("pro", "The pro", res.pro_pick);
-  const out = el("span", "out"); out.append(icon(OUTCOME_ICON[res.outcome.kind]), OUTCOME_TEXT[res.outcome.kind]);
+  row("mine", t("who.you"), pick);
+  row("ai", t("who.ai"), res.ai_pick);
+  const proWhat = row("pro", t("who.pro"), res.pro_pick);
+  const out = el("span", "out"); out.append(icon(OUTCOME_ICON[res.outcome.kind]), outcomeText(res.outcome.kind));
   proWhat.append(document.createElement("br"), out);
   r.append(rows);
   const reasons = res.reasons[res.ai_pick] ?? [];
   if (reasons.length) {
-    const why = el("div", "why"); why.append(el("p", "label", "What the AI weighed for its pick"));
+    const why = el("div", "why"); why.append(el("p", "label", t("reveal.why")));
     const ul = el("ul", "reasons");
     for (const x of reasons) {
       const li = el("li", x.effect > 0 ? "plus" : x.effect < 0 ? "minus" : "value");
-      li.append(icon(x.effect > 0 ? "plus" : x.effect < 0 ? "minus" : "approx"), el("span", "", x.text));
+      li.append(icon(x.effect > 0 ? "plus" : x.effect < 0 ? "minus" : "approx"), el("span", "", translatePhrase(x.text)));
       ul.append(li);
     }
     why.append(ul); r.append(why);
   }
   if (res.crowd) {
-    const crowd = el("div", "crowd"); crowd.append(el("p", "label", "Other players"));
+    const crowd = el("div", "crowd"); crowd.append(el("p", "label", t("reveal.crowd")));
     const bar = (name: string, share: number, cls: string) => {
       const b = el("div", "bar"); const fill = el("span", `fill ${cls}`); fill.style.width = pct(share);
       b.append(el("span", "name", name), fill, el("span", "val", pct(share))); crowd.append(b);
     };
-    bar("Your pick", res.crowd[pick] ?? 0, "mine");
-    if (res.ai_pick !== pick) bar("AI's pick", res.crowd[res.ai_pick] ?? 0, "ai");
+    bar(t("crowd.yours"), res.crowd[pick] ?? 0, "mine");
+    if (res.ai_pick !== pick) bar(t("crowd.ai"), res.crowd[res.ai_pick] ?? 0, "ai");
     r.append(crowd);
   } else {
-    r.append(el("p", "fine", "Crowd stats appear once 20 players have answered."));
+    r.append(el("p", "fine", t("crowd.none")));
   }
   const tools = el("div", "tools");
-  if (res.after) { const b = el("button", "ghost"); setIconText(b, "replay", "Replay what happened"); b.onclick = replay; tools.append(b); }
-  const all = el("button", "ghost", "Every option's score"); all.onclick = showAll; tools.append(all);
-  r.append(tools, el("p", "fine", "The AI's ranking is a model opinion, not the truth."));
+  if (res.after) { const b = el("button", "ghost"); setIconText(b, "replay", t("reveal.replay")); b.onclick = replay; tools.append(b); }
+  const all = el("button", "ghost", t("reveal.all")); all.onclick = showAll; tools.append(all);
+  r.append(tools, el("p", "fine", t("reveal.opinion")));
 }
 
 export async function playMoment(ui: RoundUI, mo: Moment, player: string, index: number, total: number, points: number[]): Promise<PickResult> {
   setup3D(ui.canvas); // once: wraps the canvas with the 3D view and its toggle
+  if (ui.tour?.started && !ui.tour.ended) ui.tour.end(); // moved on without "Got it": the tour is done
+  if (ui.tour && !ui.tour.ended && ui.tour.host.parentElement !== ui.canvas.parentElement) ui.canvas.parentElement?.append(ui.tour.host); // over the pitch's bottom edge
   const { ctx, v } = setupCanvas(ui.canvas);
   const side = mo.attacking === "home" ? mo.home : mo.away;
   const score = mo.scoreline ? ` ${mo.scoreline[0]}–${mo.scoreline[1]} ` : " – ";
-  ui.title.replaceChildren(`${mo.home}${score}${mo.away} · ${mo.minute}' · ${side} attack `, icon("arrowUp"));
+  ui.title.replaceChildren(t("game.title", { home: mo.home, score, away: mo.away, minute: mo.minute, side }), icon("arrowUp"));
   renderDots(ui, points, total);
   ui.reveal.hidden = true; ui.next.hidden = true; ui.actions.innerHTML = ""; ui.list.innerHTML = "";
-  ui.hint.textContent = "Watch the build-up…";
+  ui.hint.textContent = t("game.watch");
   await playLeadUp(ctx, v, mo);
   const passes = mo.options.filter((o) => o.kind === "pass");
   const pick = await choose(ui, ctx, v, mo, Q_YOU, !passes.length);
@@ -263,19 +333,20 @@ export async function playMoment(ui: RoundUI, mo: Moment, player: string, index:
   const res = await postPick(player, mo.id, pick, guess).finally(() => { ui.reveal.removeAttribute("aria-busy"); ui.actions.innerHTML = ""; });
   const mine = res.option; // the first answer counts: a replayed moment shows the original pick
   try { navigator.vibrate?.(res.points >= 100 ? [30, 40, 30] : 20); } catch { /* not supported */ }
-  ui.hint.textContent = res.after ? "What really happened next:" : "";
+  ui.hint.textContent = res.after ? t("reveal.after") : "";
   const release = mo.lead_up[mo.lead_up.length - 1]!;
   const showAll = () => {
     draw(ctx, v, mo, release, mo.ball[mo.ball.length - 1] ?? null, { ai: res.ai_pick, pro: res.pro_pick, mine, scores: res.all_points });
-    ui.hint.textContent = "Points of every option: green 100, yellow 50+, grey below";
+    ui.hint.textContent = t("reveal.allHint");
   };
   renderReveal(ui, mo, res, mine, () => void playAfter(ctx, v, mo, res, mine), showAll);
-  if (res.repeat) ui.reveal.prepend(el("p", "fine", "You already answered this moment: your first answer counts."));
+  if (res.repeat) ui.reveal.prepend(el("p", "fine", t("reveal.repeat")));
   renderDots(ui, [...points, res.points], total, true);
   await playAfter(ctx, v, mo, res, mine);
   const legend = el("span", "legend");
-  legend.append(el("span", "ai", "AI coach"), el("span", "pro", "The pro"), el("span", "mine", "You"));
+  legend.append(el("span", "ai", t("who.ai")), el("span", "pro", t("who.pro")), el("span", "mine", t("who.you")));
   ui.hint.replaceChildren(legend);
+  if (ui.tour?.started && !ui.tour.ended) ui.tour.show("legend");
   return res;
 }
 
@@ -289,7 +360,7 @@ async function loading<T>(ui: RoundUI, p: Promise<T>): Promise<T> {
   const c = ui.canvas, game = c.closest("section");
   c.getContext("2d")?.clearRect(0, 0, c.width, c.height);
   c.classList.add("skeleton"); game?.setAttribute("aria-busy", "true");
-  ui.hint.textContent = "Loading the moment…"; ui.actions.innerHTML = ""; ui.reveal.hidden = true; ui.next.hidden = true;
+  ui.hint.textContent = t("game.loading"); ui.actions.innerHTML = ""; ui.reveal.hidden = true; ui.next.hidden = true;
   try { return await p; } finally { c.classList.remove("skeleton"); game?.removeAttribute("aria-busy"); }
 }
 
@@ -303,7 +374,7 @@ export async function playDay(ui: RoundUI, day: Day, player: string, onResult: O
     const res = await playMoment(ui, mo, player, i, total, points);
     points.push(res.points); onResult(mo, res, i);
     ui.next.hidden = false;
-    if (i < total - 1) setIconText(ui.next, "arrowRight", "Next moment", true); else ui.next.replaceChildren("See my score");
+    if (i < total - 1) setIconText(ui.next, "arrowRight", t("game.next"), true); else ui.next.replaceChildren(t("game.seeScore"));
     ui.next.focus();
     await new Promise<void>((r) => (ui.next.onclick = () => r()));
   }

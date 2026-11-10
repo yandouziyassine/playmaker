@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Playmaker · daily football decisions</title>
-  <meta name="description" content="Five real moments a day from pro matches. You have the ball: pick the pass. Then see the AI coach's pick, the pro's choice and what really happened." />
+  <title data-i18n="meta.title">Playmaker · daily football decisions</title>
+  <meta name="description" data-i18n-content="meta.desc" content="Five real moments a day from pro matches. You have the ball: pick the pass. Then see the AI coach's pick, the pro's choice and what really happened." />
   <meta name="theme-color" content="#0b2a1a" />
   <meta property="og:title" content="Playmaker · daily football decisions" />
   <meta property="og:description" content="Five real moments a day. Pick the pass, then see what the AI coach and the pro chose." />
@@ -13,73 +13,75 @@
   <link rel="stylesheet" href="/src/styles.css" />
 </head>
 <body data-screen="intro">
+  <!-- Strings: English here as the no-JS fallback; main.ts fills data-i18n* from app/src/i18n (en / fr). -->
   <header class="topbar">
     <a class="brand" href="/">Play<b>maker</b></a>
     <span id="day-label" class="page tnum"></span>
   </header>
   <main>
     <section id="intro">
-      <h1>Five real pro moments a day. <em>Pick the pass.</em></h1>
-      <p id="intro-text" class="lead">You have the ball for 3 seconds of a real match. Beat the AI coach's pick, then guess the pass the pro really played.</p>
+      <h1 data-i18n-html="intro.h1.html">Five real pro moments a day. <em>Pick the pass.</em></h1>
+      <p id="intro-text" class="lead" data-i18n="intro.lead">You have the ball for 3 seconds of a real match. Beat the AI coach's pick, then guess the pass the pro really played.</p>
       <figure class="preview" id="preview" hidden>
-        <canvas id="preview-pitch" class="skeleton" role="img" aria-label="Preview: a moment from a past day, the ball carrier and the options"></canvas>
+        <canvas id="preview-pitch" class="skeleton" role="img" data-i18n-aria="intro.previewAria" aria-label="Preview: a moment from a past day, the ball carrier and the options"></canvas>
         <figcaption id="preview-cap" class="fine"></figcaption>
       </figure>
-      <button id="play" class="primary big" disabled aria-busy="true"><span class="spinner" aria-hidden="true"></span>Loading today's five</button>
+      <button id="play" class="primary big" disabled aria-busy="true"><span class="spinner" aria-hidden="true"></span><span data-i18n="intro.loading">Loading today's five</span></button>
       <details id="howto" class="card howto">
-        <summary>How to play</summary>
+        <summary data-i18n="howto.summary">How to play</summary>
         <ol>
-          <li>Watch 3 seconds of real play. The ball carrier has a yellow ring; your team (red) attacks up the screen.</li>
-          <li><b>What would you do?</b> Tap a teammate to pass, a yellow chevron to carry, or the goal to shoot, then Confirm.
+          <li data-i18n-html="howto.1.html">Watch 3 seconds of real play. The ball carrier has a yellow ring; your team (red) attacks up the screen.</li>
+          <li data-i18n-html="howto.2.html"><b>What would you do?</b> Tap a teammate to pass, a yellow chevron to carry, or the goal to shoot, then Confirm.
             Up to 100 points if the AI coach rates your choice among the best (a close call scores 100 too).</li>
-          <li><b>What did the pro actually do?</b> The pro passed in every moment: tap the teammate who got the ball. Right or
+          <li data-i18n-html="howto.3.html"><b>What did the pro actually do?</b> The pro passed in every moment: tap the teammate who got the ball. Right or
             wrong, checked against the real match: your Pro reads out of 5.</li>
-          <li>Then watch what really happened. One game a day, same moments for everyone.</li>
+          <li data-i18n-html="howto.4.html">Then watch what really happened. One game a day, same moments for everyone.</li>
         </ol>
       </details>
-      <nav class="more" aria-label="More">
-        <a href="/replay.html">Free play: a full match with the coach</a>
-        <a href="/lab.html">Lab: from a TV picture to tactics</a>
-        <a href="/about.html">About the AI and privacy</a>
+      <nav class="more" aria-label="More" data-i18n-aria="more.aria">
+        <a href="/replay.html" data-i18n="more.replay">Free play: a full match with the coach</a>
+        <a href="/lab.html" data-i18n="more.lab">Lab: from a TV picture to tactics</a>
+        <a href="/about.html" data-i18n="more.about">About the AI and privacy</a>
       </nav>
     </section>
 
     <section id="game" hidden>
-      <h1 class="sr-only">Today's five: pick the pass</h1>
+      <h1 class="sr-only" data-i18n="game.h1">Today's five: pick the pass</h1>
       <div class="gamehead">
         <p id="title" class="tnum"></p>
-        <div id="dots" class="dots" role="img" aria-label="Progress"></div>
+        <div id="dots" class="dots" role="img" aria-label="Progress" data-i18n-aria="game.progress"></div>
       </div>
-      <canvas id="pitch" role="application" aria-roledescription="pitch"
+      <canvas id="pitch" role="application" aria-roledescription="pitch" data-i18n-aria="game.pitchAria"
         aria-label="Pitch with the players; your team attacks up the screen. Arrow keys or Tab: choose an option. Enter: confirm."></canvas>
+      <div id="tour" hidden></div>
       <div class="dock">
         <p id="hint" class="hint" aria-live="polite"></p>
         <div id="actions" class="actions"></div>
       </div>
       <div id="list"></div>
       <div id="reveal" class="reveal" hidden aria-live="polite"></div>
-      <div class="nextbar"><button id="next" class="primary big" hidden>Next moment</button></div>
+      <div class="nextbar"><button id="next" class="primary big" hidden data-i18n="game.next">Next moment</button></div>
     </section>
 
     <section id="done" hidden>
-      <h1 class="sr-only">Your score</h1>
+      <h1 class="sr-only" data-i18n="done.h1">Your score</h1>
       <p class="total tnum"><span id="total"></span><small>/500</small></p>
       <p id="squares" class="squares"></p>
       <div class="donemeta">
         <p id="reads" class="reads tnum" hidden></p>
         <p id="streak" class="streak tnum"></p>
       </div>
-      <button id="share" class="primary big">Share my score</button>
+      <button id="share" class="primary big" data-i18n="done.share">Share my score</button>
       <p id="next-in" class="fine tnum"></p>
     </section>
 
     <section id="archive" class="card" hidden>
-      <h2>Past days</h2>
-      <p class="fine">Missed a day? Play it here. Past days don't count for your streak.</p>
+      <h2 data-i18n="archive.h2">Past days</h2>
+      <p class="fine" data-i18n="archive.fine">Missed a day? Play it here. Past days don't count for your streak.</p>
       <div id="archive-list" class="archive"></div>
     </section>
   </main>
-  <footer class="fine">Data: Bassek et al. (2025), DFL / Sportec Solutions, CC BY 4.0 · SkillCorner open data (MIT).
+  <footer class="fine" data-i18n-html="footer.html">Data: Bassek et al. (2025), DFL / Sportec Solutions, CC BY 4.0 · SkillCorner open data (MIT).
     Positions drawn by Playmaker. <a href="/about.html">About</a> · <a href="https://github.com/yandouziyassine/playmaker">Code</a></footer>
   <script type="module" src="/src/main.ts"></script>
 </body>

@@ -5,7 +5,16 @@ import { explainOptions } from "../coach/explain.ts";
 import type { State } from "../coach/features.ts";
 import { HALF_LENGTH, normalise, type Vec } from "../coach/geometry.ts";
 import type { ModelsJson } from "../coach/models.ts";
-import { carryDirection, pct, signedXg } from "../coach/picture.ts";
+import { pct as pctI18n, t, xg } from "../i18n/index.ts";
+
+/** The page's localised number helpers (English output identical to coach/picture.ts). */
+const pct = (p: number) => pctI18n(p);
+const signedXg = (x: number) => xg(x);
+/** Carry angle in the normalised frame: > 0 is to the carrier's left. */
+const carryDirection = (angle: number) => {
+  const a = Math.round(angle);
+  return a === 0 ? t("rp.straight") : t(a > 0 ? "rp.left" : "rp.right", { a: Math.abs(a) });
+};
 import { ballAt, carrierAt, eventFrame, nearestCarrierFrame, playerAt, stateAt, type Carrier, type HalfData, type MatchEvent, type MatchMeta, type PlayerInfo } from "./data.ts";
 
 export interface Reason { text: string; sign: number }
@@ -107,29 +116,30 @@ export function outcome(m: MatchMeta, half: number, frame: number, team: number)
 // ---------- text ----------
 const who = (players: PlayerInfo[], i: number | null | undefined) => {
   const p = i == null ? undefined : players[i];
-  return p ? `#${p.shirt} ${p.name}` : "a teammate";
+  return p ? `#${p.shirt} ${p.name}` : t("rp.teammate");
 };
 
 export function optionTitle(o: CoachOption, players: PlayerInfo[]): string {
-  if (o.kind === "pass") return `Pass to ${who(players, o.target)}`;
-  if (o.kind === "carry") return `Carry ${carryDirection(o.angle ?? 0)}`;
-  return "Shoot";
+  if (o.kind === "pass") return t("rp.pass", { who: who(players, o.target) });
+  if (o.kind === "carry") return t("rp.carry", { dir: carryDirection(o.angle ?? 0) });
+  return t("rp.shoot");
 }
 export function successLabel(o: CoachOption): string {
-  return o.kind === "pass" ? `${pct(o.p)} arrives` : o.kind === "carry" ? `${pct(o.p)} keeps it` : `${pct(o.p)} goal chance`;
+  return t(o.kind === "pass" ? "rp.arrives" : o.kind === "carry" ? "rp.keeps" : "rp.goalChance", { p: pct(o.p) });
 }
 
 export function proLabel(pro: ProChoice, players: PlayerInfo[]): string {
   const what =
-    pro.kind === "shot" ? `The pro shot${pro.success ? " and scored" : ""}`
-    : pro.kind === "carry" ? `The pro carried the ball ${carryDirection(pro.option?.angle ?? 0)}`
-    : pro.kind === "hold" ? "The pro held the ball"
-    : pro.success ? `The pro passed to ${who(players, pro.recipient)}`
-    : `The pro's pass ${pro.option ? `towards ${who(players, pro.option.target)} ` : ""}did not arrive`;
-  const value = pro.option ? ` (coach value ${signedXg(pro.option.score)})` : pro.kind === "hold" ? "" : " (not one of the coach's options)";
-  return `${what}${value}${pro.approx ? ", time approximate" : ""}.`;
+    pro.kind === "shot" ? t(pro.success ? "rp.proScored" : "rp.proShot")
+    : pro.kind === "carry" ? t("rp.proCarried", { dir: carryDirection(pro.option?.angle ?? 0) })
+    : pro.kind === "hold" ? t("rp.proHeld")
+    : pro.success ? t("rp.proPassed", { who: who(players, pro.recipient) })
+    : pro.option ? t("rp.proMissedTo", { who: who(players, pro.option.target) }) : t("rp.proMissed");
+  const value = pro.option ? t("rp.coachValue", { xg: signedXg(pro.option.score) }) : pro.kind === "hold" ? "" : t("rp.notOption");
+  return `${what}${value}${pro.approx ? t("rp.approx") : ""}.`;
 }
-export const outcomeLabel = (o: Outcome): string => ({ goal: "goal", shot: "a shot", lost: "ball lost", kept: "ball kept" })[o];
+export const outcomeLabel = (o: Outcome): string => t(({ goal: "rp.outGoal", shot: "rp.outShot", lost: "rp.outLost", kept: "rp.outKept" } as const)[o]);
+
 
 export { loadCoach } from "../coach/picture.ts";
 export { pct, signedXg };

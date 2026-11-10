@@ -1,0 +1,13 @@
+/* EN | FR switch in the top bar: a small segmented control (tokens from design/tokens.css). */
+.topbar .page { margin-left: auto; }
+.langsw { display: inline-flex; flex: none; border: 1px solid var(--line-strong); border-radius: var(--r-pill); }
+.langsw button { min-height: 32px; min-width: 40px; padding: 0 var(--s-2); border: 0; border-radius: 0; background: transparent;
+  color: var(--muted); font: 700 var(--fs-xs)/1 var(--font-body); letter-spacing: 0.04em; cursor: pointer; }
+.langsw button + button { border-left: 1px solid var(--line-strong); }
+.langsw button:first-child { border-radius: var(--r-pill) 0 0 var(--r-pill); }
+.langsw button:last-child { border-radius: 0 var(--r-pill) var(--r-pill) 0; }
+.langsw button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.langsw button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* a 32 px tall control keeps a 44 px tap target through its padding box */
+.langsw button { position: relative; }
+.langsw button::after { content: ""; position: absolute; inset: -6px 0; }

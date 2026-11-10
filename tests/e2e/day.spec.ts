@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test";
+// tour=0: the guided first moment (coach-marks) is off here; tests/e2e/fr.spec.ts plays it.
 
 test("plays a full day: both questions, reveal, recap", async ({ page }) => {
-  await page.goto("/?date=2026-12-01&today=2026-12-01");
+  await page.goto("/?date=2026-12-01&today=2026-12-01&tour=0");
   await expect(page.locator("#howto")).toHaveAttribute("open", "");
   await page.getByRole("button", { name: "Play today's five" }).click();
   for (let i = 0; i < 5; i++) {
@@ -41,7 +42,7 @@ test("plays a full day: both questions, reveal, recap", async ({ page }) => {
 });
 
 test("tapping a teammate on the pitch selects a pass", async ({ page }) => {
-  await page.goto("/?date=2026-12-01&today=2026-12-01");
+  await page.goto("/?date=2026-12-01&today=2026-12-01&tour=0");
   await page.getByRole("button", { name: "Play today's five" }).click();
   await expect(page.getByRole("button", { name: "Confirm" })).toBeDisabled({ timeout: 15_000 });
   const box = (await page.locator("#pitch").boundingBox())!;
@@ -58,7 +59,7 @@ test("tapping a teammate on the pitch selects a pass", async ({ page }) => {
 });
 
 test("launch day: the intro shows the product (sample moment preview)", async ({ page }) => {
-  await page.goto("/?date=2026-12-01&today=2026-12-01");
+  await page.goto("/?date=2026-12-01&today=2026-12-01&tour=0");
   await expect(page.locator("#preview")).toBeVisible({ timeout: 10_000 });
   await expect(page.locator("#preview-cap")).toContainText("sample moment");
 });
@@ -71,7 +72,7 @@ test("public content never exposes answers", async ({ request }) => {
 });
 
 test("in 3D, tapping a teammate selects a pass", async ({ page }) => {
-  await page.goto("/?date=2026-12-01&today=2026-12-01");
+  await page.goto("/?date=2026-12-01&today=2026-12-01&tour=0");
   await page.getByRole("button", { name: "Play today's five" }).click();
   await expect(page.getByRole("button", { name: "Confirm" })).toBeDisabled({ timeout: 15_000 });
   const toggle = page.locator(".v3d-toggle");
@@ -93,7 +94,7 @@ test("in 3D, tapping a teammate selects a pass", async ({ page }) => {
 });
 
 test("keyboard play: arrows / Tab move the selection on the pitch, Enter confirms", async ({ page }) => {
-  await page.goto("/?date=2026-12-01&today=2026-12-01");
+  await page.goto("/?date=2026-12-01&today=2026-12-01&tour=0");
   await page.getByRole("button", { name: "Play today's five" }).click();
   const confirm = page.getByRole("button", { name: "Confirm" });
   await expect(confirm).toBeDisabled({ timeout: 15_000 });

@@ -5,6 +5,7 @@ import type { Vec } from "../coach/geometry.ts";
 import type { CoachOption } from "../coach/advice.ts";
 import type { FrameAdvice } from "./coach.ts";
 import { toView, type MatchMeta } from "./data.ts";
+import { pct, xg } from "../i18n/index.ts";
 
 const L = 105, W = 68, PAD = 14;
 export interface View { w: number; h: number }
@@ -21,7 +22,7 @@ export const TOP = 3;
 /** Short label drawn next to an arrow: rank, success and value (same rounding as coach/picture.ts). */
 export function arrowLabel(rank: number, o: Pick<CoachOption, "p" | "score">): string {
   const r = Math.round(o.score * 1000) / 1000;
-  return `${rank + 1} · ${Math.round(o.p * 100)} % · ${r < 0 ? "-" : "+"}${Math.abs(r).toFixed(3)} xG`;
+  return `${rank + 1} · ${pct(o.p)} · ${xg(r)}`;
 }
 
 export const ARROW_COLORS = [COLORS.ai, "#ffd166", "#f1faee"] as const;

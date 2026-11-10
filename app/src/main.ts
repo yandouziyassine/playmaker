@@ -1,19 +1,27 @@
 import { getDay, getIndex, getMoment, localDate, type Day } from "./api.ts";
-import { playDay } from "./round.ts";
+import { playDay, Tour } from "./round.ts";
 import { shareText, square } from "./share.ts";
 import { shareCardFile, shareFileName, shareScore } from "./shareImage.ts";
-import { computeStats, KIND_LABEL, KINDS, proReads, ZONE_LABEL, ZONES, toRecord, type Bucket } from "./stats.ts";
+import { computeStats, kindLabel, KINDS, proReads, zoneLabel, ZONES, toRecord, type Bucket } from "./stats.ts";
 import { readsText } from "./text.ts";
 import { History } from "./storage.ts";
 import { icon, setIconText } from "./design/icons.ts";
 import { startPreview } from "./preview.ts";
 import "./stats.css";
+import { initLang, localizeDom, pct, t, tn } from "./i18n/index.ts";
+import { mountLangSwitch } from "./i18n/ui.ts";
+
+initLang(); // ?lang=, saved choice, browser language; sets <html lang>
+localizeDom();
+mountLangSwitch();
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const history = new History(localStorage);
 const params = new URLSearchParams(location.search);
 const realToday = params.get("today") ?? localDate();
 const date = params.get("date") ?? realToday;
+
+const TOUR_FLAG = "pm.tour";
 
 let stopPreview = () => {};
 function show(id: "intro" | "game" | "done") {
@@ -27,7 +35,7 @@ function show(id: "intro" | "game" | "done") {
 function untilTomorrow(): string {
   const now = new Date(); const next = new Date(now); next.setHours(24, 0, 0, 0);
   const min = Math.max(0, Math.round((next.getTime() - now.getTime()) / 60000));
-  return `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, "0")} min`;
+  return t("time.hm", { h: Math.floor(min / 60), m: String(min % 60).padStart(2, "0") });
 }
 
 async function renderArchive() {
@@ -44,7 +52,7 @@ async function renderArchive() {
       a.href = `?date=${d.date}`;
       const pts = played[d.date];
       a.append(el("b", "", `#${d.day_number}`), el("span", "", d.date));
-      a.append(el("span", "pts", pts ? `${pts.reduce((x, y) => x + y, 0)}/${pts.length * 100}` : "Play"));
+      a.append(el("span", "pts", pts ? `${pts.reduce((x, y) => x + y, 0)}/${pts.length * 100}` : t("archive.play")));
       list.append(a);
     }
   } catch { box.hidden = true; }
@@ -53,7 +61,7 @@ async function renderArchive() {
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text = "") => {
   const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e;
 };
-const pctText = (x: number | null) => (x == null ? "–" : `${Math.round(x * 100)}%`);
+const pctText = (x: number | null) => (x == null ? "–" : pct(x));
 const tierOf = (v: number) => (v >= 80 ? "top" : v >= 50 ? "mid" : "low");
 
 function statBars(title: string, rows: [string, Bucket][]) {
@@ -66,7 +74,7 @@ function statBars(title: string, rows: [string, Bucket][]) {
     const val = el("span", "val", b.avg == null ? "–" : `${b.avg}`);
     if (b.n) val.append(el("small", "", ` (${b.n})`));
     row.append(el("span", "name", name), track, val);
-    row.setAttribute("aria-label", `${name}: ${b.avg == null ? "no moments yet" : `${b.avg} points on average over ${b.n} moments`}`);
+    row.setAttribute("aria-label", b.avg == null ? t("stats.barEmpty", { name }) : t("stats.bar", { name, avg: b.avg, n: b.n }));
     box.append(row);
   }
   return box;
@@ -78,28 +86,28 @@ function renderStats(host: HTMLElement, compact: boolean) {
   const s = computeStats(history.days(), history.moments());
   if (!s.games) return;
   const card = el("section", `card stats${compact ? " compact" : ""}`);
-  card.setAttribute("aria-label", "Your stats");
+  card.setAttribute("aria-label", t("stats.title"));
   const head = el("div", "shead");
-  head.append(el("h2", "", "Your stats"), el("span", "fine", `${s.games} game${s.games === 1 ? "" : "s"}`));
+  head.append(el("h2", "", t("stats.title")), el("span", "fine", tn("stats.games", s.games)));
   const tiles = el("div", "stiles");
   const tile = (v: string, k: string, accent = "") => { const t = el("div", `stat stile ${accent}`); t.append(el("b", "", v), el("span", "", k)); tiles.append(t); };
   if (compact) {
-    tile(s.avgDay == null ? "–" : `${s.avgDay}`, "Avg day");
-    tile(s.bestDay ? `${s.bestDay.total}` : "–", "Best day");
-    tile(pctText(s.perfect), "Perfect picks", "top");
+    tile(s.avgDay == null ? "–" : `${s.avgDay}`, t("stats.avgDay"));
+    tile(s.bestDay ? `${s.bestDay.total}` : "–", t("stats.bestDay"));
+    tile(pctText(s.perfect), t("stats.perfect"), "top");
   } else {
-    tile(s.proRead == null ? "–" : `${Math.round(s.proRead * 100)}%`, "Pro reads", "pro"); // games are in the header
-    tile(s.avgDay == null ? "–" : `${s.avgDay}`, "Avg day");
-    tile(s.bestDay ? `${s.bestDay.total}` : "–", "Best day");
-    tile(pctText(s.perfect), "Scored 100", "top");
-    tile(pctText(s.proInstinct), "Picked like the pro");
-    tile(pctText(s.aiAgree), "Same as AI", "ai");
+    tile(pctText(s.proRead), t("stats.proReads"), "pro"); // games are in the header
+    tile(s.avgDay == null ? "–" : `${s.avgDay}`, t("stats.avgDay"));
+    tile(s.bestDay ? `${s.bestDay.total}` : "–", t("stats.bestDay"));
+    tile(pctText(s.perfect), t("stats.scored100"), "top");
+    tile(pctText(s.proInstinct), t("stats.likePro"));
+    tile(pctText(s.aiAgree), t("stats.sameAi"), "ai");
   }
   card.append(head, tiles);
   if (!compact && s.moments) {
     card.append(
-      statBars("Avg points by zone", ZONES.map((z) => [ZONE_LABEL[z], s.byZone[z]])),
-      statBars("Avg points by pick", KINDS.map((k) => [KIND_LABEL[k], s.byKind[k]])),
+      statBars(t("stats.byZone"), ZONES.map((z) => [zoneLabel(z), s.byZone[z]])),
+      statBars(t("stats.byKind"), KINDS.map((k) => [kindLabel(k), s.byKind[k]])),
     );
   }
   if (s.insight) card.append(el("p", "insight", s.insight));
@@ -121,18 +129,18 @@ function finish(day: Day, pts: number[]) {
   const reads = proReads(history.moments()[date]); // from the per-moment records (null for days played before question 2)
   if (reads) setIconText($("reads"), "eye", readsText(reads.right, reads.of)); else $("reads").textContent = "";
   $("reads").hidden = !reads;
-  setIconText($("streak"), "flame", `Streak: ${streak} day${streak === 1 ? "" : "s"}`);
-  $("next-in").textContent = date === realToday ? `Next five in ${untilTomorrow()}` : "";
+  setIconText($("streak"), "flame", tn("done.streak", streak));
+  $("next-in").textContent = date === realToday ? t("done.nextIn", { time: untilTomorrow() }) : "";
   const text = `${shareText(day.day_number, pts, reads)}
 ${location.origin}`;
   const btn = $<HTMLButtonElement>("share");
-  setIconText(btn, "share", "Share my score");
+  setIconText(btn, "share", t("done.share"));
   // the PNG is rendered up front: share() must run within the tap's user activation
   let file: File | null = null;
   let save = document.getElementById("save-image") as HTMLAnchorElement | null;
   if (!save) {
     save = el("a", "quiet saveimg");
-    setIconText(save, "download", "Save image");
+    setIconText(save, "download", t("done.saveImage"));
     save.id = "save-image"; save.hidden = true;
     btn.after(save);
   }
@@ -147,7 +155,7 @@ ${location.origin}`;
   btn.onclick = async () => {
     try {
       const how = await shareScore(navigator, text, file);
-      if (how === "copied") setIconText(btn, "check", "Copied");
+      if (how === "copied") setIconText(btn, "check", t("done.copied"));
     } catch { /* cancelled */ }
   };
   renderStats($("done"), false);
@@ -161,16 +169,16 @@ async function start() {
   const play = $<HTMLButtonElement>("play");
   let day: Day;
   try { day = await getDay(date); } catch {
-    $("intro-text").textContent = "No challenge for this day. Come back tomorrow.";
+    $("intro-text").textContent = t("intro.noDay");
     play.hidden = true;
     void renderArchive();
     return;
   }
-  $("day-label").textContent = `Day #${day.day_number}${date !== realToday ? ` · ${date}` : ""}`;
+  $("day-label").textContent = `${t("day.label", { n: day.day_number })}${date !== realToday ? ` · ${date}` : ""}`;
   const done = history.days()[date];
   if (done) return finish(day, done);
   play.disabled = false; play.removeAttribute("aria-busy");
-  play.replaceChildren(icon("play"), "Play today's five");
+  play.replaceChildren(icon("play"), t("intro.play"));
   play.classList.add("with-icon");
   stopPreview = startPreview($("preview"), $<HTMLCanvasElement>("preview-pitch"), $("preview-cap"), date);
   renderStats($("intro"), true);
@@ -179,10 +187,13 @@ async function start() {
   play.onclick = async () => {
     history.setFlag("pm.howto");
     show("game");
+    // guided first moment: first visit only (no day played, never finished or skipped); ?tour=0 turns it off
+    const tourOn = !history.flag(TOUR_FLAG) && params.get("tour") !== "0" && !Object.keys(history.days()).length;
+    const tour = tourOn ? new Tour($("tour"), () => (!$("next").hidden ? $("next") : $("pitch")), () => history.setFlag(TOUR_FLAG)) : null;
     const pts = await playDay(
       {
         canvas: $<HTMLCanvasElement>("pitch"), title: $("title"), dots: $("dots"), hint: $("hint"), actions: $("actions"),
-        list: $("list"), reveal: $("reveal"), next: $<HTMLButtonElement>("next"),
+        list: $("list"), reveal: $("reveal"), next: $<HTMLButtonElement>("next"), tour,
       },
       day,
       history.player(),

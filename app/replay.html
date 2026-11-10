@@ -3,65 +3,66 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Playmaker Free play · a full match with the coach</title>
-  <meta name="description" content="Watch a full Bundesliga match from above and pause any time: the AI coach shows the ball carrier's best options." />
+  <title data-i18n="rp.title">Playmaker Free play · a full match with the coach</title>
+  <meta name="description" data-i18n-content="rp.desc" content="Watch a full Bundesliga match from above and pause any time: the AI coach shows the ball carrier's best options." />
   <meta name="theme-color" content="#0b2a1a" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="/src/replay/replay.css" />
 </head>
 <body>
+  <!-- Strings: English here as the no-JS fallback; replay/main.ts fills data-i18n* from app/src/i18n (en / fr). -->
   <header class="topbar">
     <a class="brand" href="/">Play<b>maker</b></a>
-    <span class="page">Free play</span>
+    <span class="page" data-i18n="rp.page">Free play</span>
   </header>
   <main>
-    <h1 class="sr-only">Free play: a full match with the coach</h1>
+    <h1 class="sr-only" data-i18n="rp.h1">Free play: a full match with the coach</h1>
     <div class="score" aria-live="off">
-      <span class="team home"><span class="kit" id="home-dot"></span><span id="home">Home</span></span>
+      <span class="team home"><span class="kit" id="home-dot"></span><span id="home" data-i18n="rp.home">Home</span></span>
       <b id="scoreline" class="tnum">0–0</b>
-      <span class="team guest"><span id="guest">Guest</span><span class="kit" id="guest-dot"></span></span>
+      <span class="team guest"><span id="guest" data-i18n="rp.guest">Guest</span><span class="kit" id="guest-dot"></span></span>
     </div>
-    <p class="when"><span id="half">1st half</span> · <span id="minute">1'</span> · <span id="clock">00:00</span></p>
+    <p class="when"><span id="half" data-i18n="rp.half1">1st half</span> · <span id="minute">1'</span> · <span id="clock">00:00</span></p>
 
     <div class="stage">
-      <canvas id="pitch" class="skeleton" role="img" aria-busy="true" aria-label="Pitch seen from above; the match is loading"></canvas>
+      <canvas id="pitch" class="skeleton" role="img" aria-busy="true" data-i18n-aria="rp.pitchLoading" aria-label="Pitch seen from above; the match is loading"></canvas>
     </div>
 
     <div class="timeline">
       <div class="marks" id="marks" aria-hidden="true"></div>
-      <label class="sr-only" for="time">Match time</label>
+      <label class="sr-only" for="time" data-i18n="rp.time">Match time</label>
       <input id="time" type="range" min="0" max="0" step="1" value="0" disabled />
     </div>
 
     <div class="bar">
-      <button id="play" class="primary" type="button" disabled>Play</button>
-      <div class="group" role="group" aria-label="Playback speed">
+      <button id="play" class="primary" type="button" disabled data-i18n="rp.play">Play</button>
+      <div class="group" role="group" aria-label="Playback speed" data-i18n-aria="rp.speed">
         <button type="button" class="seg" data-speed="1" aria-pressed="true">1×</button>
         <button type="button" class="seg" data-speed="2" aria-pressed="false">2×</button>
         <button type="button" class="seg" data-speed="4" aria-pressed="false">4×</button>
       </div>
-      <button id="ask" class="ghost" type="button" disabled>Ask the coach</button>
+      <button id="ask" class="ghost" type="button" disabled data-i18n="rp.ask">Ask the coach</button>
     </div>
 
-    <p id="status" class="status" role="status" aria-live="polite"><span class="spinner" aria-hidden="true"></span>Loading the match (about 3.5 MB for the first half)…</p>
+    <p id="status" class="status" role="status" aria-live="polite"><span class="spinner" aria-hidden="true"></span><span data-i18n="rp.loadingMatch">Loading the match (about 3.5 MB for the first half)…</span></p>
 
     <section id="coach" class="card coach" hidden aria-labelledby="coach-title">
-      <h2 id="coach-title">The coach's top 3 <span id="coach-who"></span></h2>
+      <h2 id="coach-title"><span data-i18n="rp.coachTitle">The coach's top 3</span> <span id="coach-who"></span></h2>
       <ol id="options" class="opts"></ol>
       <div class="row-actions">
-        <button id="follow" class="primary" type="button">Follow the coach</button>
-        <button id="playon" class="ghost" type="button">Play on</button>
+        <button id="follow" class="primary" type="button" data-i18n="rp.follow">Follow the coach</button>
+        <button id="playon" class="ghost" type="button" data-i18n="rp.playOn">Play on</button>
       </div>
-      <p class="fine">Or tap another option to go your own way, then watch what the pro really did.</p>
+      <p class="fine" data-i18n="rp.coachFine">Or tap another option to go your own way, then watch what the pro really did.</p>
     </section>
 
     <p id="reveal" class="card reveal" role="status" aria-live="polite" hidden></p>
     <p id="tally" class="fine" hidden></p>
 
-    <p class="fine keys">Keys: Space play / pause · ← → 5 s · A ask the coach · F follow.</p>
-    <p class="fine credit"><span id="credit">Bundesliga tracking and event data: Bassek et al. (2025), DFL / Sportec Solutions, CC BY 4.0</span>.
-      The coach is a set of small linear models trained on open tracking data: an opinion, not the truth. Nothing you do here is sent anywhere.</p>
-    <p class="fine"><a href="/">The daily game</a> · <a href="/about.html">About the AI and privacy</a></p>
+    <p class="fine keys" data-i18n="rp.keys">Keys: Space play / pause · ← → 5 s · A ask the coach · F follow.</p>
+    <p class="fine credit"><span id="credit" data-i18n="rp.credit">Bundesliga tracking and event data: Bassek et al. (2025), DFL / Sportec Solutions, CC BY 4.0</span><span data-i18n="rp.creditTail">.
+      The coach is a set of small linear models trained on open tracking data: an opinion, not the truth. Nothing you do here is sent anywhere.</span></p>
+    <p class="fine"><a href="/" data-i18n="nav.game">The daily game</a> · <a href="/about.html" data-i18n="nav.about">About the AI and privacy</a></p>
   </main>
   <script type="module" src="/src/replay/main.ts"></script>
 </body>

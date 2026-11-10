@@ -10,6 +10,13 @@ import {
 } from "./data.ts";
 import { ARROW_COLORS, TOP, drawPitch, drawScene, type View } from "./draw.ts";
 import { setIconText, spinner } from "../design/icons.ts";
+import { getLang, initLang, localizeDom, num, t } from "../i18n/index.ts";
+import { translatePhrase } from "../i18n/phrases.ts";
+import { mountLangSwitch } from "../i18n/ui.ts";
+
+initLang();
+localizeDom();
+mountLangSwitch();
 
 const BASE = "/replay/";
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -32,8 +39,8 @@ const say = (t: string, busy = false) => {
   status.replaceChildren(...(busy ? [spinner()] : []), t);
   if (busy) canvas.setAttribute("aria-busy", "true"); else canvas.removeAttribute("aria-busy");
 };
-const setPlayLabel = (on: boolean) => setIconText(playBtn, on ? "pause" : "play", on ? "Pause" : "Play");
-const failed = (e: unknown) => { console.warn(e); say("Could not load the match data. Please reload the page."); };
+const setPlayLabel = (on: boolean) => setIconText(playBtn, on ? "pause" : "play", on ? t("rp.pause") : t("rp.play"));
+const failed = (e: unknown) => { console.warn(e); say(t("rp.failed")); };
 const where = () => fromGlobal(meta, Math.floor(g));
 
 function getHalf(i: number): Promise<HalfData> {
@@ -69,11 +76,11 @@ function draw() {
 function showTime() {
   const { half, frame } = where(), s = scoreAt(meta, half, frame);
   $("scoreline").textContent = `${s[0]}–${s[1]}`;
-  $("half").textContent = half ? "2nd half" : "1st half";
+  $("half").textContent = half ? t("rp.half2") : t("rp.half1");
   $("minute").textContent = minuteLabel(half, frame, meta.fps);
   $("clock").textContent = clock(half, frame, meta.fps);
   time.value = String(Math.floor(g));
-  time.setAttribute("aria-valuetext", `${clock(half, frame, meta.fps)}, ${half ? "second" : "first"} half, ${meta.meta.home} ${s[0]}–${s[1]} ${meta.meta.guest}`);
+  time.setAttribute("aria-valuetext", t(half ? "rp.valueText2" : "rp.valueText1", { clock: clock(half, frame, meta.fps), home: meta.meta.home, a: s[0], b: s[1], guest: meta.meta.guest }));
 }
 
 // ---------- coach ----------
@@ -88,34 +95,34 @@ function askCoach() {
   advice = f === null ? null : C.adviceAt(meta, half, h, f, brain.coach, brain.models);
   if (!advice || f === null) {
     hideCoach(); draw();
-    say("Nobody has the ball at this moment: play on a little and ask again.");
+    say(t("rp.nobody"));
     return;
   }
   const shift = f - frame;
   g = toGlobal(meta, half, f);
   showTime();
   const p = meta.players[advice.carrier.player]!, team = advice.carrier.team ? meta.meta.guest : meta.meta.home;
-  $("coach-who").textContent = `for #${p.shirt} ${p.name}`;
+  $("coach-who").textContent = t("rp.coachWho", { shirt: p.shirt, name: p.name });
   list.replaceChildren(...advice.ranked.slice(0, TOP).map((r, i) => {
     const li = document.createElement("li");
     const b = document.createElement("button");
     b.type = "button"; b.className = "opt"; b.style.setProperty("--c", ARROW_COLORS[i] ?? "#f1faee");
     const title = document.createElement("span"); title.className = "t"; title.textContent = `${i + 1}. ${C.optionTitle(r.option, meta.players)}`;
-    const nums = document.createElement("span"); nums.className = "n"; nums.textContent = `${C.successLabel(r.option)} · value ${C.signedXg(r.option.score)}`;
+    const nums = document.createElement("span"); nums.className = "n"; nums.textContent = t("rp.optNums", { success: C.successLabel(r.option), xg: C.signedXg(r.option.score) });
     b.append(title, nums);
     b.addEventListener("click", () => choose(i));
     const why = document.createElement("ul"); why.className = "why";
     for (const reason of r.reasons) {
       const w = document.createElement("li");
       w.className = reason.sign === 1 ? "helps" : reason.sign === -1 ? "hurts" : "val";
-      w.textContent = reason.text; why.append(w);
+      w.textContent = translatePhrase(reason.text); why.append(w);
     }
     li.append(b, why);
     return li;
   }));
   coachBox.hidden = false; playBtn.className = "ghost";
-  const moved = shift ? `Moved ${(Math.abs(shift) / meta.fps).toFixed(1)} s ${shift < 0 ? "back" : "on"}: ` : "";
-  say(`${moved}#${p.shirt} ${p.name} (${team}) has the ball. ${advice.ranked.length} options ranked, top 3 shown.`);
+  const moved = shift ? t(shift < 0 ? "rp.movedBack" : "rp.movedOn", { s: num(Math.abs(shift) / meta.fps, 1) }) : "";
+  say(t("rp.hasBall", { moved, shirt: p.shirt, name: p.name, team, n: advice.ranked.length }));
   draw();
 }
 
@@ -130,15 +137,15 @@ function choose(i: number) {
   };
   revealBox.hidden = true;
   play();
-  say(`${i === 0 ? "You followed the coach" : "You went your own way"}: ${pending.mine}. Watch what the pro does…`);
+  say(t("rp.watchPro", { who: t(i === 0 ? "rp.followed" : "rp.ownWay"), mine: pending.mine }));
 }
 
 function doReveal() {
   if (!pending) return;
   const p = pending; pending = null;
-  revealBox.textContent = `${p.followed ? "You followed the coach" : "Your choice"}: ${p.mine}. ${C.proLabel(p.pro, meta.players)} Within 15 s: ${C.outcomeLabel(p.result)}.`;
+  revealBox.textContent = t("rp.reveal", { who: t(p.followed ? "rp.followed" : "rp.yourChoice"), mine: p.mine, pro: C.proLabel(p.pro, meta.players), outcome: C.outcomeLabel(p.result) });
   revealBox.hidden = false;
-  tallyBox.textContent = `You followed the coach ${tally.followed} of ${tally.decisions} times · your picks ${C.signedXg(tally.you)}, the coach's ${C.signedXg(tally.coach)}.`;
+  tallyBox.textContent = t("rp.tally", { followed: tally.followed, decisions: tally.decisions, you: C.signedXg(tally.you), coach: C.signedXg(tally.coach) });
   tallyBox.hidden = false;
 }
 
@@ -150,7 +157,7 @@ function tick(now: number) {
   last = now;
   const at = fromGlobal(meta, next);
   if (!halves[at.half]) { // crossing into a half that is not loaded yet
-    pause(false); say("Loading the second half…", true);
+    pause(false); say(t("rp.loadingSecond"), true);
     getHalf(at.half).then(() => { g = next; play(); }).catch(failed);
     return;
   }
@@ -158,7 +165,7 @@ function tick(now: number) {
   if (at.half === 0 && g > meta.halves[0]!.frames - 60 * meta.fps) getHalf(1).catch(() => {}); // prefetch
   if (pending && (at.half !== pending.half || at.frame >= pending.pro.revealFrame)) doReveal();
   showTime(); draw();
-  if (g >= end) { pause(false); say("Full time."); return; }
+  if (g >= end) { pause(false); say(t("rp.fullTime")); return; }
   requestAnimationFrame(tick);
 }
 
@@ -182,7 +189,7 @@ async function seek(global: number, ask: boolean) {
   g = Math.max(0, Math.min(totalFrames(meta) - 1, Math.round(global)));
   hideCoach();
   const { half } = where();
-  if (!halves[half]) { say(`Loading the ${half ? "second" : "first"} half…`, true); await getHalf(half); say(""); }
+  if (!halves[half]) { say(t(half ? "rp.loadingHalf2" : "rp.loadingHalf1"), true); await getHalf(half); say(""); }
   showTime();
   if (ask) askCoach(); else draw();
 }
@@ -222,21 +229,21 @@ async function boot() {
   await getHalf(0);
   $("home").textContent = meta.meta.home; $("guest").textContent = meta.meta.guest;
   $("home-dot").style.background = meta.meta.colors[0]; $("guest-dot").style.background = meta.meta.colors[1];
-  $("credit").textContent = meta.credit;
+  if (getLang() === "en") $("credit").textContent = meta.credit; // French: the translated credit from the page
   const total = totalFrames(meta);
   time.max = String(total - 1); time.disabled = false; playBtn.disabled = false; askBtn.disabled = false;
   const marks = $("marks"), half0 = meta.halves[0]!.frames;
-  const ht = document.createElement("span"); ht.className = "mark ht"; ht.style.left = `${(100 * half0) / (total - 1)}%`; ht.title = "Half time";
+  const ht = document.createElement("span"); ht.className = "mark ht"; ht.style.left = `${(100 * half0) / (total - 1)}%`; ht.title = t("rp.halfTime");
   marks.replaceChildren(ht, ...goals(meta).map((gl) => {
     const s = document.createElement("span");
-    s.className = `mark goal t${gl.team}`; s.style.left = `${(100 * toGlobal(meta, gl.half, gl.frame)) / (total - 1)}%`; s.title = `Goal ${gl.label}`;
+    s.className = `mark goal t${gl.team}`; s.style.left = `${(100 * toGlobal(meta, gl.half, gl.frame)) / (total - 1)}%`; s.title = t("rp.goal", { label: gl.label });
     return s;
   }));
-  canvas.setAttribute("aria-label", `Pitch seen from above: ${meta.meta.home} (attacking up in the first half) against ${meta.meta.guest}`);
+  canvas.setAttribute("aria-label", t("rp.pitchAria", { home: meta.meta.home, guest: meta.meta.guest }));
   ready = true;
   canvas.classList.remove("skeleton");
-  setPlayLabel(false); setIconText(askBtn, "coach", "Ask the coach");
+  setPlayLabel(false); setIconText(askBtn, "coach", t("rp.ask"));
   showTime(); draw();
-  say(`${meta.meta.home} against ${meta.meta.guest}. Press Play; pause any time and the coach shows the ball carrier's best options.`);
+  say(t("rp.ready", { home: meta.meta.home, guest: meta.meta.guest }));
 }
 boot().catch(failed);

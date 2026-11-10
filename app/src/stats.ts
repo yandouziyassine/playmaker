@@ -1,12 +1,13 @@
 import type { Moment, PickResult } from "./api.ts";
 import type { MomentRecord, PickKind, Zone } from "./storage.ts";
+import { pct, t, tn } from "./i18n/index.ts";
 
 /** Thirds of the pitch, from the release position (cm, attack towards +x, pitch x in [-5250, 5250]). */
 export const ZONE_EDGE_CM = 1750;
 export const ZONES: Zone[] = ["build", "middle", "final"];
 export const KINDS: PickKind[] = ["pass", "carry", "shot"];
-export const ZONE_LABEL: Record<Zone, string> = { build: "Build-up", middle: "Midfield", final: "Final third" };
-export const KIND_LABEL: Record<PickKind, string> = { pass: "Passes", carry: "Carries", shot: "Shots" };
+export const zoneLabel = (z: Zone) => t(`zone.${z}`);
+export const kindLabel = (k: PickKind) => t(`kind.${k}`);
 
 export function zoneOf(x: number | null | undefined): Zone {
   if (x == null || !Number.isFinite(x)) return "middle";
@@ -53,12 +54,6 @@ const valid = (r: unknown): r is MomentRecord =>
 /** Minimum answered moments before the stats say anything about style. */
 export const MIN_FOR_INSIGHT = 5;
 const MIN_PER_BUCKET = 2;
-const ZONE_ADVICE: Record<Zone, string> = {
-  build: "look for the safe pass when pressed deep",
-  middle: "look for the pass that breaks a line in midfield",
-  final: "near the box, the extra pass often beats the hopeful shot",
-};
-const ZONE_PHRASE: Record<Zone, string> = { build: "build-up", middle: "midfield", final: "the final third" };
 
 export function computeStats(days: Record<string, number[]>, moments: Record<string, MomentRecord[]>): Stats {
   const totals = Object.entries(days)
@@ -95,12 +90,12 @@ export function insightFor(s: Stats): string {
   if (s.games === 0) return "";
   if (s.moments < MIN_FOR_INSIGHT) {
     const left = MIN_FOR_INSIGHT - s.moments;
-    return `Answer ${left} more moment${left === 1 ? "" : "s"} to unlock your playing profile.`;
+    return tn("insight.unlock", left);
   }
   // 1. shooting much more than the AI would
   const { chosen, aiAgreed } = s.shots;
   if (chosen >= 3 && aiAgreed * 2 < chosen)
-    return `You shoot more than the AI would: shots chosen ${chosen} times, AI agreed ${aiAgreed}.`;
+    return t("insight.shots", { chosen, agreed: aiAgreed });
   // 2. a clear gap between the best and the worst third of the pitch
   const zones = ZONES.filter((z) => s.byZone[z].n >= MIN_PER_BUCKET && s.byZone[z].avg != null);
   if (zones.length >= 2) {
@@ -108,23 +103,23 @@ export function insightFor(s: Stats): string {
     const hi = sorted[0]!, lo = sorted[sorted.length - 1]!;
     const gap = s.byZone[hi].avg! - s.byZone[lo].avg!;
     if (gap >= 20)
-      return `You score best in ${ZONE_PHRASE[hi]} (${s.byZone[hi].avg}) and worst in ${ZONE_PHRASE[lo]} (${s.byZone[lo].avg}): ${ZONE_ADVICE[lo]}.`;
+      return t("insight.zones", { hi: t(`zonePhrase.${hi}`), hiAvg: s.byZone[hi].avg!, lo: t(`zonePhrase.${lo}`), loAvg: s.byZone[lo].avg!, advice: t(`zoneAdvice.${lo}`) });
   }
   // 3. carries well below passes
   const pass = s.byKind.pass, carry = s.byKind.carry;
   if (pass.n >= MIN_PER_BUCKET && carry.n >= MIN_PER_BUCKET && pass.avg! - carry.avg! >= 20)
-    return `Your carries average ${carry.avg} against ${pass.avg} for passes: release the ball a touch earlier.`;
+    return t("insight.carries", { carry: carry.avg!, pass: pass.avg! });
   // 4. reading the pros (second question, objective: the real pass)
   if (s.proRead != null && s.proReadN >= MIN_FOR_INSIGHT) {
-    const p = Math.round(s.proRead * 100);
-    if (s.proRead >= 0.6) return `You read the pros: you guessed their real pass in ${p} % of moments.`;
-    if (s.proRead <= 0.2) return `The pros keep surprising you (${p} % of reads right): watch which teammate is free just before the release.`;
+    const p = pct(s.proRead);
+    if (s.proRead >= 0.6) return t("insight.readsHigh", { p });
+    if (s.proRead <= 0.2) return t("insight.readsLow", { p });
   }
   // 5. strong reads
   if (s.proInstinct != null && s.proInstinct >= 0.5)
-    return `Pro instinct: you made the pro's choice in ${Math.round(s.proInstinct * 100)} % of moments.`;
+    return t("insight.instinct", { p: pct(s.proInstinct) });
   if (s.aiAgree != null && s.aiAgree >= 0.5)
-    return `You read the game like the AI coach: same pick in ${Math.round(s.aiAgree * 100)} % of moments.`;
-  if (s.perfect != null && s.perfect >= 0.6) return `${Math.round(s.perfect * 100)} % of your answers score 100. Keep the streak going.`;
-  return "Balanced profile so far: no weak zone stands out. Keep playing to sharpen the picture.";
+    return t("insight.ai", { p: pct(s.aiAgree) });
+  if (s.perfect != null && s.perfect >= 0.6) return t("insight.perfect", { p: pct(s.perfect) });
+  return t("insight.balanced");
 }

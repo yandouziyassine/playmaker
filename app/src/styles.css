@@ -121,3 +121,23 @@ body[data-screen="game"] main { padding: 0 var(--s-2) var(--s-4); }
   .reveal, .proread.ok, .proread.miss, .dot.just, .tile { animation: none; }
   #pitch.skeleton { animation: none; }
 }
+
+/* ---------- guided first moment: coach-marks over the bottom edge of the pitch ----------
+   Non-blocking: the card lets taps through to the pitch (pointer-events: none) except on its own buttons, and it sits
+   over the defending end, away from the toggle (top right) and the controls under the pitch. */
+.coachmark { position: absolute; left: var(--s-2); right: var(--s-2); bottom: var(--s-2); z-index: 3; pointer-events: none;
+  background: rgba(7, 23, 14, 0.92); border: 1px solid var(--accent); border-radius: var(--r-inner); padding: var(--s-2) var(--s-3);
+  box-shadow: var(--shadow-float); }
+.coachmark[hidden] { display: none; }
+.coachmark .cm-step { margin: 0; font-size: var(--fs-xs); font-weight: 700; color: var(--accent); }
+.coachmark .cm-text { margin: 2px 0 0; font-size: var(--fs-sm); line-height: var(--lh-snug); color: var(--fg); }
+.coachmark .cm-actions { display: flex; justify-content: flex-end; gap: var(--s-2); margin-top: var(--s-1); }
+.coachmark .cm-actions:empty { display: none; }
+.coachmark button { pointer-events: auto; min-height: 36px; font-size: var(--fs-sm); position: relative; }
+.coachmark button::after { content: ""; position: absolute; inset: -4px 0; } /* 44 px tap target */
+/* "Confirm" and the legend are under the pitch: the card points down at them */
+.coachmark[data-step="confirm"]::after, .coachmark[data-step="legend"]::after { content: ""; position: absolute; bottom: -7px; left: 50%;
+  width: 12px; height: 12px; margin-left: -6px; background: inherit; border: solid var(--accent); border-width: 0 1px 1px 0; transform: rotate(45deg); }
+@media (prefers-reduced-motion: no-preference) {
+  .coachmark { animation: rise var(--t-med) var(--ease); }
+}

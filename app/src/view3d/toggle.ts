@@ -7,6 +7,7 @@ import type { Moment } from "../api.ts";
 import type { Overlay3D } from "./geom.ts";
 import type { View3D } from "./view.ts";
 import { icon, spinner } from "../design/icons.ts";
+import { t } from "../i18n/index.ts";
 import "./view3d.css";
 
 type Cm = [number, number] | null;
@@ -19,7 +20,7 @@ let canvas2d: HTMLCanvasElement | null = null, stage: HTMLElement | null = null,
 let last: Paint | null = null;
 let hook: (() => void) | null = null;
 let pick: { fn: (k: number) => void; mo: Moment } | null = null, help: HTMLElement | null = null;
-const HELP = "Drag to look around · double-tap to re-centre", HELP_PICK = "Tap a teammate, a yellow chevron or the goal · drag to look";
+const HELP = () => t("v3d.help"), HELP_PICK = () => t("v3d.helpPick");
 
 export const is3D = () => on && !!view;
 
@@ -28,11 +29,11 @@ export function on3DChange(cb: (() => void) | null) { hook = cb; }
 
 function label() {
   if (!button) return;
-  button.replaceChildren(...(failed ? [] : [icon(on ? "pitch" : "cube")]), failed ? "3D unavailable" : on ? "2D" : "3D");
+  button.replaceChildren(...(failed ? [] : [icon(on ? "pitch" : "cube")]), failed ? t("v3d.unavailable") : on ? t("v3d.2d") : t("v3d.3d"));
   button.disabled = failed;
   button.removeAttribute("aria-busy");
   button.setAttribute("aria-pressed", String(on && !failed));
-  button.title = failed ? "This browser cannot draw the 3D view (WebGL)" : on ? "Back to the 2D pitch" : "See the moment through the ball carrier's eyes";
+  button.title = failed ? t("v3d.titleFailed") : on ? t("v3d.title2d") : t("v3d.title3d");
 }
 
 function apply() {
@@ -60,7 +61,7 @@ async function setOn(next: boolean) {
   if (on) {
     host!.hidden = false; // the canvas needs a size when the renderer is created
     stage?.classList.add("is3d");
-    if (button) { button.replaceChildren(spinner(), "Loading 3D…"); button.setAttribute("aria-busy", "true"); }
+    if (button) { button.replaceChildren(spinner(), t("v3d.loading")); button.setAttribute("aria-busy", "true"); }
     await load();
     if (failed) on = false;
   }
@@ -79,7 +80,7 @@ export function setup3D(canvas: HTMLCanvasElement) {
   host.hidden = true;
   help = document.createElement("p");
   help.className = "v3d-help";
-  help.textContent = pick ? HELP_PICK : HELP;
+  help.textContent = pick ? HELP_PICK() : HELP();
   host.append(help);
   button = document.createElement("button");
   button.type = "button";
@@ -100,7 +101,7 @@ export function paint3D(mo: Moment, frame: Cm[], ball: Cm, overlay: Overlay3D = 
  *  Pass null once the choice is confirmed. Survives turning 3D on later in the same choice. */
 export function pick3D(mo: Moment | null, fn: ((k: number) => void) | null) {
   pick = mo && fn ? { fn, mo } : null;
-  if (help) help.textContent = pick ? HELP_PICK : HELP;
+  if (help) help.textContent = pick ? HELP_PICK() : HELP();
   if (!view) return;
   if (pick) view.setPickHandler(pick.fn, pick.mo); else view.clearPickHandler();
 }

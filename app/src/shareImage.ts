@@ -1,3 +1,5 @@
+import { t, tn } from "./i18n/index.ts";
+
 /** 1080x1350 share card (portrait, Instagram-friendly). Spoiler-free: score, squares and streak only, no player data. */
 export const CARD_W = 1080, CARD_H = 1350;
 const C = {
@@ -18,7 +20,7 @@ export function tileLayout(n: number, y = 930, size = 148, gap = 26, width = CAR
   return Array.from({ length: n }, (_, i) => ({ x: x0 + i * (s + gap), y, w: s, h: s }));
 }
 
-export const streakLabel = (n: number) => (n > 0 ? `STREAK ${n} DAY${n === 1 ? "" : "S"}` : "");
+export const streakLabel = (n: number) => (n > 0 ? tn("card.streak", n) : "");
 export const shareFileName = (day: number) => `playmaker-day-${day}.png`;
 
 export interface CardData { dayNumber: number; points: number[]; streak: number; site?: string }
@@ -70,7 +72,7 @@ export function drawShareCard(ctx: CanvasRenderingContext2D, d: CardData) {
   ctx.fillStyle = C.attack; ctx.fillText(b, cx - (wa + wb) / 2 + wa, 220);
   ctx.textAlign = "center";
   ctx.fillStyle = C.muted; ctx.font = `700 50px ${DISPLAY}`;
-  ctx.fillText(`DAY #${d.dayNumber}`, cx, 310);
+  ctx.fillText(t("card.day", { n: d.dayNumber }), cx, 310);
 
   // the score
   const total = d.points.reduce((x, y) => x + y, 0), max = d.points.length * 100;
@@ -84,7 +86,7 @@ export function drawShareCard(ctx: CanvasRenderingContext2D, d: CardData) {
   ctx.fillStyle = C.muted; ctx.font = `800 96px ${DISPLAY}`; ctx.fillText(ms, left + wt + 12, 700);
   ctx.textAlign = "center";
   ctx.font = `600 40px ${DISPLAY}`; ctx.fillStyle = C.muted;
-  ctx.fillText("FIVE REAL MOMENTS · ONE PICK EACH", cx, 800);
+  ctx.fillText(t("card.tagline"), cx, 800);
 
   // the five tiles
   tileLayout(d.points.length).forEach((r, i) => {

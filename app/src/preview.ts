@@ -3,6 +3,7 @@
 // sample pick. Loaded lazily after the day; falls back to the release sample.json on launch day; hidden if it fails.
 import { getDay, getIndex, getMoment, type Moment } from "./api.ts";
 import { draw, toScreen, type View } from "./pitch.ts";
+import { t } from "./i18n/index.ts";
 
 const getSample = (): Promise<Moment> => fetch("/content/sample.json").then((r) => { if (!r.ok) throw new Error(String(r.status)); return r.json() as Promise<Moment>; });
 
@@ -25,8 +26,8 @@ export function startPreview(fig: HTMLElement, canvas: HTMLCanvasElement, cap: H
     fig.removeAttribute("aria-busy");
     canvas.classList.remove("skeleton");
     cap.textContent = src
-      ? `A moment from day #${src.day_number}: watch 3 seconds of play, then make your pick.`
-      : "A sample moment: watch 3 seconds of play, then make your pick.";
+      ? t("preview.day", { n: src.day_number })
+      : t("preview.sample");
     run(canvas, mo, reduced, (f, ms) => { if (!stopped) timer = window.setTimeout(f, ms); });
   })().catch(() => { fig.hidden = true; });
   return stop;

@@ -2,31 +2,70 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Playmaker · daily football decisions</title>
-  <meta name="description" content="Five real moments a day: pick the pass, then see the AI coach's pick, the pro's choice and what happened." />
+  <meta name="description" content="Five real moments a day from pro matches. You have the ball: pick the pass. Then see the AI coach's pick, the pro's choice and what really happened." />
+  <meta name="theme-color" content="#0b2a1a" />
+  <meta property="og:title" content="Playmaker · daily football decisions" />
+  <meta property="og:description" content="Five real moments a day. Pick the pass, then see what the AI coach and the pro chose." />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="/src/styles.css" />
 </head>
 <body>
+  <header class="top">
+    <a class="brand" href="/">Play<b>maker</b></a>
+    <span id="day-label" class="daylabel"></span>
+  </header>
   <main>
     <section id="intro">
-      <h1>Playmaker</h1>
-      <p id="intro-text">Five real moments from pro matches. You have the ball: pick the pass. Then see what the AI coach and the pro chose, and what happened.</p>
-      <button id="play">Play today's five</button>
-      <p class="fine"><a href="https://yandouziyassine.github.io/demos/football/">Free play: full-match replay with the coach</a> · <a href="/about.html">About the AI and privacy</a></p>
+      <h1>You have the ball.<br /><span>Pick the pass.</span></h1>
+      <p id="intro-text" class="lead">Five real moments from professional matches. Choose what the player should do, then see what
+        the AI coach picked, what the pro did, and what really happened next.</p>
+      <button id="play" class="primary big">Play today's five</button>
+      <details id="howto" class="card">
+        <summary>How to play</summary>
+        <ol>
+          <li>Watch 3 seconds of real play. The ball carrier has a yellow ring; your team (red) attacks up the screen.</li>
+          <li>Tap a teammate to pass, a white dot to carry the ball, or the goal to shoot. Then <b>Confirm</b>.</li>
+          <li>100 points if your choice is among the best according to the AI coach. When the coach cannot tell two
+            options apart, both score 100.</li>
+          <li>Then watch what really happened. One game a day, same moments for everyone.</li>
+        </ol>
+      </details>
+      <p class="fine"><a href="https://yandouziyassine.github.io/demos/football/">Free play: a full match with the coach</a> ·
+        <a href="/about.html">About the AI and privacy</a></p>
     </section>
+
     <section id="game" hidden>
-      <p id="title"></p>
-      <canvas id="pitch" aria-label="Pitch with the 22 players; tap a teammate to pass"></canvas>
-      <div id="actions"></div>
-      <div id="reveal" hidden aria-live="polite"></div>
-      <button id="next" hidden>Next moment</button>
+      <div class="gamehead">
+        <p id="title"></p>
+        <div id="dots" class="dots" aria-label="Progress"></div>
+      </div>
+      <canvas id="pitch" aria-label="Pitch with the players; your team attacks up the screen"></canvas>
+      <p id="hint" class="hint" aria-live="polite"></p>
+      <div id="actions" class="actions"></div>
+      <div id="list"></div>
+      <div id="reveal" class="reveal" hidden aria-live="polite"></div>
+      <button id="next" class="primary big" hidden>Next moment →</button>
     </section>
+
     <section id="done" hidden>
-      <pre id="score"></pre><p id="streak"></p><button id="share">Share</button>
+      <p class="label">Your score</p>
+      <p class="total"><span id="total"></span><small>/500</small></p>
+      <p id="squares" class="squares"></p>
+      <p id="streak"></p>
+      <button id="share" class="primary big">Share my score</button>
+      <p id="next-in" class="fine"></p>
+    </section>
+
+    <section id="archive" class="card" hidden>
+      <h2>Past days</h2>
+      <p class="fine">Missed a day? Play it here. Past days don't count for your streak.</p>
+      <div id="archive-list" class="archive"></div>
     </section>
   </main>
-  <footer class="fine">Data: Bassek et al. (2025), DFL / Sportec Solutions, CC BY 4.0 · SkillCorner open data (MIT). Positions drawn by Playmaker.</footer>
+  <footer class="fine">Data: Bassek et al. (2025), DFL / Sportec Solutions, CC BY 4.0 · SkillCorner open data (MIT).
+    Positions drawn by Playmaker. <a href="/about.html">About</a> · <a href="https://github.com/yandouziyassine/playmaker">Code</a></footer>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

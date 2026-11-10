@@ -2,12 +2,15 @@ export interface AnswerOption { k: number; score: number; p: number; share_top: 
 export interface Answer {
   schema: 1; id: string; options: AnswerOption[]; ai_pick: number; pro_pick: number;
   outcome: { kind: "goal" | "shot" | "kept" | "lost"; net_xg_15s: number };
+  after?: After;
   models: { content_version: number; trained_without: string; refits: number };
 }
+export type Cm = [number, number] | null;
+export interface After { fps: number; frames: Cm[][]; ball: Cm[] }
 export interface PickRequest { player: string; moment: string; option: number }
 export interface PickResult {
-  points: number; among_best: boolean; pro_instinct: boolean; ai_pick: number; pro_pick: number;
-  outcome: Answer["outcome"]; reasons: Record<number, string[]>; crowd: Record<number, number> | null; repeat: boolean;
+  option: number; points: number; among_best: boolean; pro_instinct: boolean; ai_pick: number; pro_pick: number;
+  outcome: Answer["outcome"]; reasons: Record<number, string[]>; crowd: Record<number, number> | null; repeat: boolean; all_points: Record<number, number>; after: After | null;
 }
 export interface StoredPick { option: number; points: number; at: string }
 export interface Store {

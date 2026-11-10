@@ -1,0 +1,10 @@
+:root { color-scheme: dark; --bg: #0d1b14; --fg: #f1faee; --accent: #4cc9f0; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.45 system-ui, sans-serif; }
+main { max-width: 480px; margin: 0 auto; padding: 16px; }
+h1 { font-size: 2rem; margin: 0.5rem 0; }
+canvas { width: 100%; height: min(70vh, 640px); display: block; border-radius: 8px; touch-action: manipulation; }
+button { font: inherit; padding: 0.7rem 1.1rem; border-radius: 999px; border: 0; background: var(--accent); color: #032; margin: 0.4rem 0.4rem 0 0; min-height: 44px; }
+#reveal p { margin: 0.4rem 0; } .points { font-weight: 700; font-size: 1.2rem; }
+.fine { font-size: 0.8rem; opacity: 0.75; } footer { max-width: 480px; margin: 0 auto; padding: 16px; }
+a { color: var(--accent); } pre { font-size: 1.3rem; }

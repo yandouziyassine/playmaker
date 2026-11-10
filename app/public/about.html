@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>About Playmaker</title>
+  <link rel="stylesheet" href="/about.css" />
+</head>
+<body>
+  <main>
+    <h1>About Playmaker</h1>
+    <h2>The AI coach</h2>
+    <p>Every moment comes from a real professional match. For each option (a pass to each teammate, a carry, a shot) the
+      coach estimates the chance it works and what it is worth in expected goals over the next 15 seconds, minus what is
+      lost if it fails. It was trained on other matches only: it has never seen the match you are playing.</p>
+    <p>Honest limits:</p>
+    <ul>
+      <li>The value model is weak: it explains about 2 % of what happens in the next 15 s, little more than "closer to the goal is better".</li>
+      <li>The coach is bolder than professional players: its top options are riskier.</li>
+      <li>In our benchmark against published methods, expected threat (xT) is slightly ahead of the coach at valuing passes.</li>
+      <li>So we score with close calls: when the models cannot tell two options apart (20 refits of the models on resampled matches), both get full points.</li>
+    </ul>
+    <p>The AI's pick is a model opinion, not the truth. What really happened next is always shown.</p>
+    <h2>Privacy</h2>
+    <p>No account, no email, no cookie. Your browser keeps a random id, your streak and your history. The server stores
+      your anonymous pick for each moment (to stop answer changes and to show how other players chose). Your IP address
+      is never stored: a salted hash of it is kept for one day to limit abuse.</p>
+    <h2>Data and code</h2>
+    <p>Bundesliga tracking and event data: Bassek et al. (2025), DFL / Sportec Solutions, CC BY 4.0.
+      Tracking and event data: SkillCorner open data (MIT). Positions are drawn by Playmaker; no broadcast images.</p>
+    <p><a href="/">Back to the game</a> · <a href="https://github.com/yandouziyassine/playmaker">Code</a> ·
+      <a href="https://yandouziyassine.github.io/projects/football-analytics/">How the coach was built</a></p>
+  </main>
+</body>
+</html>

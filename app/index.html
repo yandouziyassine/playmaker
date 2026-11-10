@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Playmaker · daily football decisions</title>
+  <meta name="description" content="Five real moments a day: pick the pass, then see the AI coach's pick, the pro's choice and what happened." />
+  <link rel="stylesheet" href="/src/styles.css" />
+</head>
+<body>
+  <main>
+    <section id="intro">
+      <h1>Playmaker</h1>
+      <p id="intro-text">Five real moments from pro matches. You have the ball: pick the pass. Then see what the AI coach and the pro chose, and what happened.</p>
+      <button id="play">Play today's five</button>
+      <p class="fine"><a href="https://yandouziyassine.github.io/demos/football/">Free play: full-match replay with the coach</a> · <a href="/about.html">About the AI and privacy</a></p>
+    </section>
+    <section id="game" hidden>
+      <p id="title"></p>
+      <canvas id="pitch" aria-label="Pitch with the 22 players; tap a teammate to pass"></canvas>
+      <div id="actions"></div>
+      <div id="reveal" hidden aria-live="polite"></div>
+      <button id="next" hidden>Next moment</button>
+    </section>
+    <section id="done" hidden>
+      <pre id="score"></pre><p id="streak"></p><button id="share">Share</button>
+    </section>
+  </main>
+  <footer class="fine">Data: Bassek et al. (2025), DFL / Sportec Solutions, CC BY 4.0 · SkillCorner open data (MIT). Positions drawn by Playmaker.</footer>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

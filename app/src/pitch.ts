@@ -93,9 +93,16 @@ export function draw(ctx: CanvasRenderingContext2D, v: View, mo: Moment, frame: 
   if (o.targets && carrierAt) {
     for (const opt of mo.options) {
       if (opt.kind === "carry") {
+        // a chevron pointing away from the carrier (yellow: never confused with the white defenders)
         const at = c(opt.to); const sel = o.selected === opt.k;
-        ctx.fillStyle = sel ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.35)";
-        ctx.beginPath(); ctx.arc(...at, sel ? 7 : 5, 0, 2 * Math.PI); ctx.fill();
+        const dx = at[0] - carrierAt[0], dy = at[1] - carrierAt[1], len = Math.hypot(dx, dy) || 1;
+        const ux = dx / len, uy = dy / len, r = sel ? 7 : 5.5;
+        ctx.strokeStyle = sel ? "#fff" : "rgba(255,224,102,0.85)"; ctx.lineWidth = sel ? 3 : 2.2; ctx.lineCap = "round"; ctx.lineJoin = "round";
+        ctx.beginPath();
+        ctx.moveTo(at[0] - ux * r - uy * r, at[1] - uy * r + ux * r);
+        ctx.lineTo(at[0], at[1]);
+        ctx.lineTo(at[0] - ux * r + uy * r, at[1] - uy * r - ux * r);
+        ctx.stroke();
       }
       if (opt.kind === "shot") {
         const g = c([5250, 0]); const sel = o.selected === opt.k;
@@ -139,7 +146,10 @@ export function draw(ctx: CanvasRenderingContext2D, v: View, mo: Moment, frame: 
     if (o.ai !== undefined) arrowTo(ctx, carrierAt, tip(o.ai), COLORS.ai, 3.5);
     if (o.mine !== undefined && o.mine !== o.ai && o.mine !== o.pro) arrowTo(ctx, carrierAt, tip(o.mine), COLORS.mine, 2.5);
     if (o.scores) {
+      const carries = mo.options.filter((q) => q.kind === "carry");
+      const bestCarry = carries.reduce<number | undefined>((b, q) => (b === undefined || (o.scores![q.k] ?? -1) > (o.scores![b] ?? -1) ? q.k : b), undefined);
       for (const opt of mo.options) {
+        if (opt.kind === "carry" && opt.k !== bestCarry) continue; // one badge for the best carry: 6 m carries overlap
         const pts = o.scores[opt.k]; if (pts === undefined) continue;
         const [x, y] = opt.kind === "shot" ? c([5250, 0]) : tip(opt.k);
         const col = pts >= 100 ? "#06d6a0" : pts >= 50 ? "#ffd166" : "#8d99ae";

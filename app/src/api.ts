@@ -5,11 +5,12 @@ export interface Moment {
   options: { k: number; kind: "pass" | "carry" | "shot"; player?: number; angle?: number; to: [number, number] }[];
   credit: string;
 }
+export interface Reason { text: string; effect: -1 | 0 | 1 }
 export interface Day { day_number: number; date: string; moments: string[] }
 export interface PickResult {
   option: number; points: number; among_best: boolean; pro_instinct: boolean; ai_pick: number; pro_pick: number;
   outcome: { kind: "goal" | "shot" | "kept" | "lost"; net_xg_15s: number };
-  reasons: Record<number, string[]>; crowd: Record<number, number> | null; repeat: boolean; all_points: Record<number, number>;
+  reasons: Record<number, Reason[]>; crowd: Record<number, number> | null; repeat: boolean; all_points: Record<number, number>;
   after: { fps: number; frames: ([number, number] | null)[][]; ball: ([number, number] | null)[] } | null;
 }
 export interface DayIndex { days: { date: string; day_number: number }[] }

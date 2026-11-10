@@ -6,9 +6,9 @@ import type { Answer, Deps } from "../src/types.ts";
 const answer: Answer = {
   schema: 1, id: "M1",
   options: [
-    { k: 0, score: 0.02, p: 0.8, share_top: 0.7, points: 100, reasons: ["receiver has 6.2 m of space"] },
+    { k: 0, score: 0.02, p: 0.8, share_top: 0.7, points: 100, reasons: [{ text: "receiver has 6.2 m of space", effect: 1 }] },
     { k: 1, score: 0.01, p: 0.9, share_top: 0.3, points: 100, reasons: [] },
-    { k: 2, score: -0.01, p: 0.5, share_top: 0, points: 0, reasons: ["2 defenders in the lane"] },
+    { k: 2, score: -0.01, p: 0.5, share_top: 0, points: 0, reasons: [{ text: "2 defenders in the lane", effect: -1 }] },
   ],
   ai_pick: 0, pro_pick: 2, outcome: { kind: "kept", net_xg_15s: 0.004 },
   models: { content_version: 1, trained_without: "X", refits: 20 },

@@ -10,6 +10,7 @@ it("reads answers and the publication date of a moment", async () => {
   fs.mkdirSync(path.join(root, "public", "days"), { recursive: true });
   fs.writeFileSync(path.join(root, "answers", "M1.json"), JSON.stringify({ id: "M1" }));
   fs.writeFileSync(path.join(root, "public", "days", "2026-12-01.json"), JSON.stringify({ moments: ["M1"] }));
+  fs.writeFileSync(path.join(root, "public", "days", "index.json"), JSON.stringify({ days: [{ date: "2026-12-01", day_number: 1 }] }));
   const d = fsDeps(root);
   expect((await d.answer("M1"))?.id).toBe("M1");
   expect(await d.answer("M9")).toBeNull();

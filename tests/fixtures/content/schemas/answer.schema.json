@@ -3,7 +3,7 @@
   "$id": "playmaker/answer.schema.json",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "id", "options", "ai_pick", "pro_pick", "outcome", "models"],
+  "required": ["schema", "id", "options", "ai_pick", "pro_pick", "outcome", "after", "models"],
   "properties": {
     "schema": {"const": 1},
     "id": {"type": "string"},
@@ -25,6 +25,16 @@
     "outcome": {
       "type": "object", "additionalProperties": false, "required": ["kind", "net_xg_15s"],
       "properties": {"kind": {"enum": ["goal", "shot", "kept", "lost"]}, "net_xg_15s": {"type": "number"}}
+    },
+    "after": {
+      "description": "tracking after the release (same player order as the moment file), revealed after the pick",
+      "type": "object", "additionalProperties": false, "required": ["fps", "frames", "ball"],
+      "properties": {
+        "fps": {"type": "number", "exclusiveMinimum": 0},
+        "frames": {"type": "array", "minItems": 1, "items": {"type": "array", "minItems": 18, "maxItems": 22,
+          "items": {"oneOf": [{"type": "null"}, {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer"}}]}}},
+        "ball": {"type": "array", "minItems": 1, "items": {"oneOf": [{"type": "null"}, {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer"}}]}}
+      }
     },
     "models": {
       "type": "object", "additionalProperties": false, "required": ["content_version", "trained_without", "refits"],

@@ -12,6 +12,7 @@
     "away": {"type": "string"},
     "attacking": {"enum": ["home", "away"]},
     "minute": {"type": "integer", "minimum": 0, "maximum": 130},
+    "scoreline": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer", "minimum": 0}},
     "fps": {"type": "number", "exclusiveMinimum": 0},
     "carrier": {"type": "integer", "minimum": 0},
     "players": {
@@ -27,7 +28,7 @@
       "items": {"type": "array", "minItems": 18, "maxItems": 22,
         "items": {"oneOf": [{"type": "null"}, {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer"}}]}}
     },
-    "ball": {"type": "array", "minItems": 2, "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer"}}},
+    "ball": {"type": "array", "minItems": 2, "items": {"oneOf": [{"type": "null"}, {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer"}}]}},
     "options": {
       "type": "array", "minItems": 3,
       "items": {

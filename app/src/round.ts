@@ -44,7 +44,7 @@ function choose(ui: RoundUI, ctx: CanvasRenderingContext2D, v: View, mo: Moment)
   let selected: number | undefined;
   const repaint = () => draw(ctx, v, mo, release, ball, { targets: true, selected });
   repaint();
-  ui.hint.textContent = "Tap a teammate to pass, a white dot to carry, or the goal to shoot.";
+  ui.hint.textContent = "Tap a teammate to pass, a yellow arrow to carry, or the goal to shoot.";
   ui.list.innerHTML = "";
   const details = el("details", "optlist");
   details.append(el("summary", "", "Choose from a list"));
@@ -61,7 +61,8 @@ function choose(ui: RoundUI, ctx: CanvasRenderingContext2D, v: View, mo: Moment)
       selected = k; label.textContent = optionLabel(mo, k); confirm.disabled = false; repaint();
       for (const b of ul.querySelectorAll("button")) b.classList.toggle("on", Number(b.dataset.k) === k);
     };
-    for (const o of [...mo.options].sort((a, b) => a.kind.localeCompare(b.kind) || a.k - b.k)) {
+    const rank = { pass: 0, shot: 1, carry: 2 } as const;
+    for (const o of [...mo.options].sort((a, b) => rank[a.kind] - rank[b.kind] || a.k - b.k)) {
       const b = el("button", "opt", optionLabel(mo, o.k)); b.dataset.k = String(o.k); b.onclick = () => select(o.k); ul.append(b);
     }
     ui.canvas.onclick = (e) => {
@@ -110,8 +111,14 @@ function renderReveal(ui: RoundUI, mo: Moment, res: PickResult, pick: number, re
   r.append(rows);
   const reasons = res.reasons[res.ai_pick] ?? [];
   if (reasons.length) {
-    const why = el("div", "why"); why.append(el("p", "label", "Why the AI liked it"));
-    const ul = el("ul"); for (const t of reasons) ul.append(el("li", "", t)); why.append(ul); r.append(why);
+    const why = el("div", "why"); why.append(el("p", "label", "What the AI weighed for its pick"));
+    const ul = el("ul", "reasons");
+    for (const x of reasons) {
+      const li = el("li", x.effect > 0 ? "plus" : x.effect < 0 ? "minus" : "value");
+      li.append(el("span", "icon", x.effect > 0 ? "+" : x.effect < 0 ? "−" : "≈"), el("span", "", x.text));
+      ul.append(li);
+    }
+    why.append(ul); r.append(why);
   }
   if (res.crowd) {
     const crowd = el("div", "crowd"); crowd.append(el("p", "label", "Other players"));

@@ -7,7 +7,7 @@ import type { Answer, Deps } from "./types.ts";
 export function fsDeps(root: string): Deps {
   const dates = new Map<string, string>();
   const dir = path.join(root, "public", "days");
-  for (const f of fs.existsSync(dir) ? fs.readdirSync(dir) : []) {
+  for (const f of (fs.existsSync(dir) ? fs.readdirSync(dir) : []).filter((n) => /^\d{4}-\d{2}-\d{2}\.json$/.test(n))) {
     const day = JSON.parse(fs.readFileSync(path.join(dir, f), "utf8"));
     for (const m of day.moments) dates.set(m, f.replace(/\.json$/, ""));
   }

@@ -45,6 +45,10 @@ npm run dev:app                           # game on :5173
 npm test && npm run e2e
 ```
 
+**On your phone (same Wi-Fi):** run `npm run dev` and `npm run dev:phone`, then open the `https://<laptop-ip>:5173`
+address Vite prints and accept the self-signed certificate once. The Lab's live camera needs this HTTPS address
+(browsers only allow the camera on secure pages). Point the phone at the TV, freeze, tap 4 landmarks, resume.
+
 ## Data credits
 
 Bundesliga tracking and event data: Bassek et al. (2025), DFL / Sportec Solutions, CC BY 4.0.

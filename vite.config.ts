@@ -1,8 +1,12 @@
 import { fileURLToPath } from "node:url";
+import basicSsl from "@vitejs/plugin-basic-ssl";
 import { defineConfig } from "vite";
 
-export default defineConfig({
+// `npm run dev:phone`: HTTPS with a local self-signed certificate on the LAN, so a phone on the same Wi-Fi can open the
+// game and the Lab's live camera (browsers only allow getUserMedia in a secure context).
+export default defineConfig(({ mode }) => ({
   root: "app",
+  plugins: mode === "phone" ? [basicSsl()] : [],
   build: {
     outDir: "../dist", emptyOutDir: true, chunkSizeWarningLimit: 600, // the lazy three.js 3D chunk is ~540 kB (137 kB gzip)
     rollupOptions: {
@@ -15,4 +19,4 @@ export default defineConfig({
     },
   },
   server: { port: 5173, proxy: { "/api": "http://localhost:8787", "/content": "http://localhost:8787" } },
-});
+}));

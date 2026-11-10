@@ -66,3 +66,15 @@ main { padding: var(--s-2) var(--s-4) var(--s-8); }
 .coach-list .val { color: var(--muted); }
 .coach-list .msg { box-shadow: inset 4px 0 0 var(--mid); }
 @media (prefers-reduced-motion: reduce) { .drop, .opts summary::before { transition: none; } }
+/* live camera mode */
+.mode { display: flex; flex-wrap: wrap; gap: var(--s-2); margin: 0 0 var(--s-2); }
+.mode .chip { font-weight: 600; }
+/* the <video> only feeds the canvas: kept in the layout (some mobile browsers pause a display:none video) but invisible */
+.stage .cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.live-only { display: none; }
+body.live .live-only { display: inline; }
+body.live .picture-only { display: none; }
+.stage.frozen::after { content: "Frozen"; position: absolute; top: var(--s-2); left: var(--s-2); padding: 2px var(--s-2); border-radius: var(--r-pill);
+  background: rgba(7, 23, 14, 0.8); color: var(--pro); font-size: var(--fs-xs); font-weight: 700; pointer-events: none; }
+/* buttons set display, which would beat the hidden attribute */
+.row-actions [hidden] { display: none; }

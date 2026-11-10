@@ -1,10 +1,17 @@
 // Lab page: picture -> people detection -> team colours -> 4-point pitch calibration -> top-down map -> AI coach.
+// Live mode: the same pipeline on camera frames (VIDEO-mode detector, throttled), with tracking (live.ts).
 import { applyH, computeHomography, hasCollinearTriple, orientH, wOf, type Mat3, type Pt } from "./homography.ts";
 import { DEFAULT_LANDMARKS, LANDMARKS, PITCH, landmark, pitchLines } from "./landmarks.ts";
 import { feet, toPitch, type Person } from "./players.ts";
 import type { Advice, LoadedCoach } from "../coach/picture.ts"; // types only: the engine is loaded lazily
 import { meanColour, splitTeams, torsoBox, type RGB, type TeamLabel } from "./teams.ts";
-import { detectPeople, loadDetector } from "./detector.ts";
+import { detectPeople, detectVideoFrame, loadDetector, loadVideoDetector } from "./detector.ts";
+import { CAMERA_MESSAGES, cameraProblem, openCamera, stopStream } from "./camera.ts";
+import {
+  assignTeam, cameraMoved, delayUntilNext, fixCentroids, MOVE_FRAMES, moveStreak, nextFps, nextThrottle, patchDiffs, START_THROTTLE,
+  stepTracks, thumbnail, trackVelocity, type Centroids, type Throttle, type Track,
+} from "./live.ts";
+import type { State } from "../coach/features.ts";
 import { drawScene, SCENE_H, SCENE_W } from "./scene.ts";
 import { setIconText, spinner, type IconName } from "../design/icons.ts";
 
@@ -56,7 +63,7 @@ function buildCalib() {
       }
       sel.append(og);
     }
-    sel.addEventListener("change", () => { st.ids[i] = sel.value; render(); });
+    sel.addEventListener("change", () => { st.ids[i] = sel.value; calibChanged(); render(); });
     const state = document.createElement("span");
     state.className = "state";
     if (st.pts[i]) {
@@ -89,6 +96,7 @@ function calibration(): Calib | null {
 
 function mapped(cal: Calib | null): (Pt | null)[] {
   if (!cal || "error" in cal) return st.persons.map(() => null);
+  if (live.on && live.pos.length === st.persons.length) return live.pos; // tracked, smoothed positions
   return st.persons.map((p) => toPitch(cal.i2p, feet(p.box)));
 }
 
@@ -101,9 +109,10 @@ function teamName(l: TeamLabel): string {
   return l === "other" ? "other" : l === 0 ? "A" : "B";
 }
 
-function drawImage(cal: Calib | null) {
+/** The picture (or, live, the current video frame) with the overlays. */
+function drawImage(cal: Calib | null, source: CanvasImageSource = src) {
   const ctx = img.getContext("2d")!;
-  ctx.drawImage(src, 0, 0);
+  ctx.drawImage(source, 0, 0, img.width, img.height);
   const u = img.width / 800; // line unit
   if ($<HTMLInputElement>("show-lines").checked && cal && !("error" in cal)) {
     ctx.save();
@@ -202,6 +211,12 @@ function drawTop(cal: Calib | null, pos: (Pt | null)[], advice: Advice | null) {
   const from = top3.length ? toTop(pos[st.carrier!]!) : null;
   for (let k = top3.length - 1; k >= 0; k--) arrow(ctx, from!, toTop(top3[k]!.to), RANK_COLOURS[k]!, s);
   const r = Math.max(6, s * 1.5);
+  // live: estimated velocities, drawn as the distance covered in the next second
+  if (live.on) pos.forEach((p, i) => {
+    const v = live.vel[i];
+    if (!p || !v || Math.hypot(v.x, v.y) < 0.8) return;
+    arrow(ctx, toTop(p), toTop({ x: p.x + v.x, y: p.y + v.y }), "rgba(241,250,238,0.85)", s * 0.45);
+  });
   pos.forEach((p, i) => {
     if (!p) return;
     const q = toTop(p), l = st.labels[i] ?? "other";
@@ -222,7 +237,8 @@ function drawTop(cal: Calib | null, pos: (Pt | null)[], advice: Advice | null) {
   if (!cal || "error" in cal) {
     ctx.fillStyle = "rgba(7,23,14,0.7)"; ctx.fillRect(0, 0, top.width, top.height);
     ctx.fillStyle = "#f1faee"; ctx.font = `600 ${s * 2.4}px system-ui, sans-serif`; ctx.textAlign = "center";
-    ctx.fillText(cal ? "Fix the calibration to see the map" : "Place the 4 calibration points", top.width / 2, top.height / 2);
+    ctx.fillText(cal ? "Fix the calibration to see the map" : live.on ? "Freeze, then place the 4 calibration points" : "Place the 4 calibration points",
+      top.width / 2, top.height / 2);
     ctx.textAlign = "start";
   }
 }
@@ -286,13 +302,24 @@ type CoachView = { advice: Advice } | { msg: string } | null;
 function coachData(pos: (Pt | null)[]): CoachView {
   const c = st.carrier;
   if (c === null) return null;
+  if (live.on && !live.frozen) return { msg: "Tap “Freeze & ask the coach” first: the coach reads a frozen frame." };
   const team = st.labels[c];
   if (!pos[c] || team === undefined || team === "other") return { msg: "The carrier must be in team A or B and on the map (tap his box on the picture to change the team)." };
   if (!coachW || !coachText) { ensureCoach(); return { msg: coachErr || "Loading the AI coach…" }; }
   const ps = coachText.stateFromPicture(pos, st.labels, c, st.dir);
   if (!ps) return { msg: "The carrier must be in team A or B and on the map." };
+  if (live.on) withVelocities(ps.state, st.dir);
   const advice = coachText.advise(ps, coachW.coach, coachW.models);
   return advice ? { advice } : { msg: "No opponent on the map: the coach needs at least one defender (the other team)." };
+}
+
+/** Live: the tracked velocities (pitch frame) into the coach State (attack-normalised: rotated 180° for the left goal). */
+function withVelocities(s: State, dir: 1 | -1) {
+  const fill = (idx: number[], out: [number, number][]) => idx.forEach((i, r) => {
+    const v = live.vel[i];
+    if (v) out[r] = dir === 1 ? [v.x, v.y] : [-v.x, -v.y];
+  });
+  fill(s.attIdx, s.attV as [number, number][]); fill(s.defIdx, s.defV as [number, number][]);
 }
 
 function renderSide(pos: (Pt | null)[], view: CoachView) {
@@ -302,6 +329,12 @@ function renderSide(pos: (Pt | null)[], view: CoachView) {
   $("st-ms").textContent = st.ms === null ? "–" : String(Math.round(st.ms));
   $("st-teams").textContent = st.ms === null ? "–" : `${counts["0"]} / ${counts["1"]} / ${counts["other"]}`;
   $("st-mapped").textContent = st.ms === null ? "–" : String(pos.filter(Boolean).length);
+  const nVel = live.on ? live.vel.filter(Boolean).length : 0;
+  $("coach-tag").textContent = live.on ? "Live, approximate positions from the camera (a frozen frame): a model opinion, not a fact."
+    : "A model opinion from a single picture: positions are approximate.";
+  $("coach-still").textContent = !live.on ? "Standing still: no velocities from a single picture."
+    : nVel ? `Velocities: rough estimates from the last frames for ${nVel} player${nVel > 1 ? "s" : ""} (white arrows: the next second).`
+    : "No velocities yet (players need a few frames on the map): everyone stands still for the coach.";
   const legend = $("legend");
   legend.innerHTML = "";
   if (st.persons.length) {
@@ -370,6 +403,7 @@ function render() {
     const cal = calibration();
     calibMsg.textContent = cal && "error" in cal ? cal.error
       : cal ? "Calibrated. If the blue lines do not sit on the painted lines, drag the points or check the landmarks."
+      : live.on && !live.frozen ? `Freeze the frame, then tap point ${(st.active ?? 0) + 1} on it.`
       : `Tap point ${(st.active ?? 0) + 1} on the picture.`;
     calibMsg.classList.toggle("bad", !!cal && "error" in cal);
     const pos = mapped(cal);
@@ -419,6 +453,19 @@ function loadDemo() {
   void runDetect();
 }
 
+/** Team split of one frame's torso colours (k-means, teams.ts). */
+function labelTeams(colours: (RGB | null)[]): { labels: TeamLabel[]; teamRgb: RGB[]; separation: number } {
+  const valid = colours.map((c, i) => ({ c, i })).filter((x): x is { c: RGB; i: number } => !!x.c);
+  const split = splitTeams(valid.map((v) => v.c));
+  const labels: TeamLabel[] = colours.map(() => "other");
+  valid.forEach((v, k) => { labels[v.i] = split.labels[k]!; });
+  const teamRgb: RGB[] = [0, 1].map((t) => {
+    const cs = valid.filter((_, k) => split.labels[k] === t).map((v) => v.c);
+    return cs.length ? (cs.reduce((a, c) => [a[0] + c[0], a[1] + c[1], a[2] + c[2]], [0, 0, 0]).map((v) => v / cs.length) as RGB) : st.teamRgb[t]!;
+  });
+  return { labels, teamRgb, separation: split.separation };
+}
+
 async function runDetect() {
   if (st.busy || !st.loaded) return;
   st.busy = true;
@@ -437,15 +484,8 @@ async function runDetect() {
     const persons = run.persons.sort((a, b) => feet(a.box).x - feet(b.box).x);
     const data = src.getContext("2d", { willReadFrequently: true })!.getImageData(0, 0, src.width, src.height);
     const colours = persons.map((p) => meanColour(data, torsoBox(p.box)));
-    const valid = colours.map((c, i) => ({ c, i })).filter((x): x is { c: RGB; i: number } => !!x.c);
-    const split = splitTeams(valid.map((v) => v.c));
-    const labels: TeamLabel[] = persons.map(() => "other");
-    valid.forEach((v, k) => { labels[v.i] = split.labels[k]!; });
-    const teamRgb: RGB[] = [0, 1].map((t) => {
-      const cs = valid.filter((_, k) => split.labels[k] === t).map((v) => v.c);
-      return cs.length ? (cs.reduce((a, c) => [a[0] + c[0], a[1] + c[1], a[2] + c[2]], [0, 0, 0]).map((v) => v / cs.length) as RGB) : st.teamRgb[t]!;
-    });
-    Object.assign(st, { persons, colours, labels, teamRgb, separation: split.separation, ms: run.ms, carrier: null });
+    const { labels, teamRgb, separation } = labelTeams(colours);
+    Object.assign(st, { persons, colours, labels, teamRgb, separation, ms: run.ms, carrier: null });
     status.textContent = `${persons.length} people in ${Math.round(run.ms)} ms (${run.passes} pass${run.passes > 1 ? "es" : ""}` +
       `${loadMs > 50 ? `, detector loaded in ${(loadMs / 1000).toFixed(1)} s` : ""}).` +
       (persons.length === 0 ? " Nobody found: try the tiled scan, or a closer shot." : "");
@@ -476,7 +516,7 @@ img.addEventListener("pointerdown", (e) => {
     st.pts[st.active] = p;
     const next = st.pts.findIndex((q) => !q);
     st.active = next >= 0 ? next : null;
-    buildCalib(); render(); return;
+    calibChanged(); buildCalib(); render(); return;
   }
   const inBox = st.persons.map((q, i) => ({ q, i }))
     .filter(({ q }) => p.x >= q.box.x && p.x <= q.box.x + q.box.w && p.y >= q.box.y && p.y <= q.box.y + q.box.h)
@@ -491,7 +531,7 @@ img.addEventListener("pointermove", (e) => {
   if (st.drag === null) return;
   const p = canvasPoint(img, e);
   st.pts[st.drag] = { x: Math.max(0, Math.min(img.width, p.x)), y: Math.max(0, Math.min(img.height, p.y)) };
-  render();
+  calibChanged(); render();
 });
 const endDrag = () => { st.drag = null; };
 img.addEventListener("pointerup", endDrag);
@@ -520,7 +560,7 @@ for (const b of document.querySelectorAll<HTMLElement>("[data-icon], [data-icon-
 $("dir-left").addEventListener("click", () => setDir(-1));
 $("dir-right").addEventListener("click", () => setDir(1));
 $("clear-carrier").addEventListener("click", () => { st.carrier = null; render(); });
-$("reset-pts").addEventListener("click", () => { st.pts = [null, null, null, null]; st.active = 0; buildCalib(); render(); });
+$("reset-pts").addEventListener("click", () => { st.pts = [null, null, null, null]; st.active = 0; calibChanged(); buildCalib(); render(); });
 $("detect").addEventListener("click", () => void runDetect());
 $("demo").addEventListener("click", loadDemo);
 for (const id of ["show-lines", "show-boxes"]) $(id).addEventListener("change", render);
@@ -535,8 +575,290 @@ for (const el of [drop, img]) {
   el.addEventListener("drop", (e) => {
     e.preventDefault(); drop.classList.remove("over");
     const f = (e as DragEvent).dataTransfer?.files[0];
-    if (f) void loadFile(f);
+    if (f && !live.on) void loadFile(f);
   });
 }
+
+
+// ---------- live camera mode ----------
+// The video is drawn into `src` on every animation frame (smooth picture, boxes from the last detection on top); the
+// detector runs on a throttled loop whose interval follows the measured processing time (live.ts: nextThrottle).
+const LIVE_MAX_SIDE = 1280;
+const lastBox = new Map<number, Person>(); // track id -> its last detected box
+const video = $<HTMLVideoElement>("cam"), camMsg = $("cam-msg");
+
+const live = {
+  on: false,
+  stream: null as MediaStream | null,
+  frozen: false,
+  raf: 0,
+  timer: 0 as ReturnType<typeof setTimeout> | 0,
+  throttle: START_THROTTLE as Throttle,
+  fps: null as number | null,
+  lastStart: 0,
+  lastT: 0,
+  tracks: [] as Track[],
+  nextId: 1,
+  pos: [] as (Pt | null)[], // smoothed pitch position per st.persons index
+  vel: [] as (Pt | null)[], // m/s, null until a track has a few hits
+  cents: null as Centroids | null,
+  ref: null as Float32Array | null, // grey thumbnail at calibration time
+  streak: 0,
+  moved: false,
+  err: "",
+};
+
+function camStatus(text: string, bad = false, busy = false) {
+  camMsg.replaceChildren(...(busy ? [spinner()] : []), text);
+  camMsg.classList.toggle("bad", bad);
+}
+
+function resetTracking() {
+  lastBox.clear();
+  Object.assign(live, { tracks: [], pos: [], vel: [], lastT: 0, streak: 0, moved: false });
+}
+
+/** Called whenever the calibration points or landmarks change: tracks and the camera reference restart. */
+function calibChanged() {
+  if (!live.on) return;
+  resetTracking();
+  live.ref = null;
+}
+
+function setMode(on: boolean) {
+  if (live.on === on) return;
+  live.on = on;
+  document.body.classList.toggle("live", on);
+  $("mode-picture").setAttribute("aria-pressed", String(!on));
+  $("mode-live").setAttribute("aria-pressed", String(on));
+  $("load-card").hidden = on;
+  $("live-card").hidden = !on;
+  $("live-actions").hidden = !on;
+  stopCamera();
+  // the picture (or the last camera frame) belongs to the other mode
+  Object.assign(st, { loaded: false, persons: [], colours: [], labels: [], ms: null, carrier: null, pts: [null, null, null, null], active: 0 });
+  live.cents = null; live.ref = null; resetTracking(); setFrozen(false);
+  $("work").hidden = true;
+  status.textContent = "";
+  camStatus(on ? "Nothing is recorded or uploaded: frames are analysed in this page, then dropped." : "");
+  buildCalib();
+}
+
+async function startCamera() {
+  if (live.stream) return;
+  const btn = $<HTMLButtonElement>("cam-start");
+  btn.disabled = true;
+  camStatus("Asking for the camera…", false, true);
+  let stream: MediaStream;
+  try {
+    stream = await openCamera();
+  } catch (e) {
+    console.warn(e);
+    camStatus(CAMERA_MESSAGES[cameraProblem(e)], true);
+    btn.disabled = false;
+    return;
+  }
+  if (!live.on) { stopStream(stream); btn.disabled = false; return; } // the user left live mode meanwhile
+  live.stream = stream;
+  video.srcObject = stream;
+  try {
+    await video.play();
+    if (!video.videoWidth) await new Promise((r) => video.addEventListener("loadedmetadata", r, { once: true }));
+  } catch (e) {
+    console.warn(e);
+    stopCamera(); camStatus(CAMERA_MESSAGES.other, true); btn.disabled = false;
+    return;
+  }
+  const k = Math.min(1, LIVE_MAX_SIDE / Math.max(video.videoWidth, video.videoHeight));
+  src.width = Math.round(video.videoWidth * k); src.height = Math.round(video.videoHeight * k);
+  img.width = src.width; img.height = src.height;
+  top.width = 840; top.height = Math.round(840 * (PITCH.width + 2 * TOP_M) / (PITCH.length + 2 * TOP_M));
+  Object.assign(st, { loaded: true, persons: [], colours: [], labels: [], ms: null, carrier: null, separation: 99 });
+  live.throttle = START_THROTTLE; live.fps = null; live.lastStart = 0; live.err = "";
+  resetTracking(); setFrozen(false);
+  $("work").hidden = false;
+  btn.hidden = true; btn.disabled = false;
+  $("cam-stop").hidden = false;
+  camStatus("Camera on. Frames are analysed on this device: nothing is recorded or uploaded.");
+  drawLoop();
+  $("work").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+  status.replaceChildren(spinner(), "Loading the detector (first time only: 7 MB model + ~15 MB engine)…");
+  try {
+    await loadVideoDetector();
+  } catch (e) {
+    console.error(e);
+    status.textContent = "The detector could not start in this browser (WebAssembly / network). The camera view still works.";
+    return;
+  }
+  schedule(0);
+  buildCalib(); render();
+}
+
+function stopCamera() {
+  stopStream(live.stream);
+  live.stream = null;
+  video.srcObject = null;
+  if (live.raf) cancelAnimationFrame(live.raf);
+  if (live.timer) clearTimeout(live.timer);
+  live.raf = 0; live.timer = 0;
+  $("cam-start").hidden = false;
+  $("cam-stop").hidden = true;
+}
+
+const sctx = () => src.getContext("2d", { willReadFrequently: true })!;
+// the frame being detected; copied into `src` only when its result is used, so a frozen frame always matches its boxes
+const work = document.createElement("canvas");
+const wctx = () => work.getContext("2d", { willReadFrequently: true })!;
+
+function drawLoop() {
+  live.raf = requestAnimationFrame(() => {
+    if (!live.stream) return;
+    // the video goes straight to the screen; `src` only gets a copy at each detection (it stays as the frozen frame)
+    if (!live.frozen && video.readyState >= 2) drawImage(calibration(), video);
+    drawLoop();
+  });
+}
+
+function schedule(ms: number) {
+  if (live.timer) clearTimeout(live.timer);
+  live.timer = setTimeout(() => void tick(), ms);
+}
+
+async function tick() {
+  live.timer = 0;
+  if (!live.stream || live.frozen || document.hidden || video.readyState < 2) { if (live.stream && !live.frozen) schedule(200); return; }
+  const t0 = performance.now();
+  if (live.lastStart && t0 - live.lastStart < 3000) live.fps = nextFps(live.fps, t0 - live.lastStart); // skip the detector warm-up
+  live.lastStart = t0;
+  try {
+    if (work.width !== src.width || work.height !== src.height) { work.width = src.width; work.height = src.height; }
+    wctx().drawImage(video, 0, 0, work.width, work.height);
+    const run = await detectVideoFrame(work, $<HTMLInputElement>("live-tiled").checked);
+    if (!live.stream || live.frozen) return; // stopped or frozen while detecting
+    processFrame(run.persons, run.ms, t0);
+  } catch (e) {
+    console.error(e);
+    status.textContent = "Live detection failed in this browser. Stop and start the camera to try again.";
+    return;
+  }
+  const spent = performance.now() - t0;
+  live.throttle = nextThrottle(live.throttle, spent);
+  schedule(delayUntilNext(live.throttle.interval, spent));
+  render();
+}
+
+/** One detection result: team colours, camera-move check, mapping through the homography and tracking. */
+function processFrame(found: Person[], ms: number, t: number) {
+  sctx().drawImage(work, 0, 0);
+  const data = wctx().getImageData(0, 0, work.width, work.height);
+  const cal = calibration();
+  const ok = !!cal && !("error" in cal);
+  let persons = found;
+  let colours = persons.map((p) => meanColour(data, torsoBox(p.box)));
+  // camera moved since the calibration? (phone or broadcast camera)
+  if (ok) {
+    const th = thumbnail(data);
+    if (!live.ref) { live.ref = th; live.streak = 0; } else live.streak = moveStreak(live.streak, cameraMoved(patchDiffs(live.ref, th)));
+    live.moved = live.streak >= MOVE_FRAMES;
+  } else live.moved = false;
+  // teams: per-frame split until calibrated, then fixed centroids so the labels do not flip between frames
+  if (ok && !live.cents) {
+    live.cents = fixCentroids(colours.filter((c): c is RGB => !!c));
+    if (live.cents) st.teamRgb = live.cents.rgb.slice(0, 2);
+  }
+  let labels: TeamLabel[], separation: number;
+  if (live.cents) {
+    labels = colours.map((c) => (c ? assignTeam(c, live.cents!) : "other"));
+    separation = live.cents.separation;
+  } else {
+    const lt = labelTeams(colours);
+    labels = lt.labels; separation = lt.separation; st.teamRgb = lt.teamRgb;
+  }
+  let pos: (Pt | null)[] = [], vel: (Pt | null)[] = [];
+  if (ok) {
+    const raw = persons.map((p) => toPitch(cal.i2p, feet(p.box)));
+    const idx = raw.map((p, i) => (p ? i : -1)).filter((i) => i >= 0);
+    const dt = live.lastT ? (t - live.lastT) / 1000 : live.throttle.interval / 1000;
+    live.lastT = t;
+    const res = stepTracks(live.tracks, idx.map((i) => ({ p: raw[i]!, team: labels[i]! })), dt, live.nextId);
+    live.tracks = res.tracks; live.nextId = res.nextId;
+    const trackOf: (Track | null)[] = persons.map(() => null);
+    idx.forEach((i, k) => { trackOf[i] = res.byDet[k]!; lastBox.set(res.byDet[k]!.id, persons[i]!); });
+    type Row = { person: Person; colour: RGB | null; label: TeamLabel; track: Track | null };
+    const rows: Row[] = persons.map((person, i) => ({ person, colour: colours[i]!, label: trackOf[i]?.team ?? labels[i]!, track: trackOf[i]! }));
+    // a player missed for a frame or two stays on the map at his predicted position (last box on the picture)
+    for (const t of live.tracks) {
+      const box = lastBox.get(t.id);
+      if (t.misses > 0 && box) rows.push({ person: box, colour: null, label: t.team, track: t });
+    }
+    const alive = new Set(live.tracks.map((t) => t.id));
+    for (const id of lastBox.keys()) if (!alive.has(id)) lastBox.delete(id);
+    // order players by track id: their numbers stay the same from frame to frame while they are tracked
+    rows.sort((a, b) => (a.track?.id ?? 1e9) - (b.track?.id ?? 1e9));
+    persons = rows.map((r) => r.person);
+    colours = rows.map((r) => r.colour);
+    labels = rows.map((r) => r.label);
+    pos = rows.map((r) => r.track?.p ?? null);
+    vel = rows.map((r) => (r.track ? trackVelocity(r.track) : null));
+  }
+  live.pos = pos; live.vel = vel;
+  Object.assign(st, { persons, colours, labels, separation, ms, carrier: null });
+  const fps = live.fps === null ? "–" : live.fps.toFixed(1);
+  if (live.moved) {
+    status.textContent = "Camera moved: recalibrate (freeze, then place the 4 points again).";
+  } else {
+    status.textContent = `Live · ${fps} detections/s · ${Math.round(ms)} ms each · ${persons.length} people` +
+      (ok ? (live.cents ? " · team colours fixed" : "") : " · not calibrated yet");
+  }
+  status.classList.toggle("bad", live.moved);
+}
+
+function setFrozen(f: boolean) {
+  live.frozen = f;
+  const b = $("freeze");
+  b.textContent = f ? "Resume" : "Freeze frame";
+  b.setAttribute("aria-pressed", String(f));
+  $("work").querySelector(".stage")!.classList.toggle("frozen", f && live.on);
+  if (!live.stream) return;
+  if (f) {
+    if (live.timer) clearTimeout(live.timer);
+    live.timer = 0;
+  } else {
+    // a resumed stream: the old tracks are stale (the time gap breaks the velocities)
+    st.carrier = null; resetTracking(); live.lastStart = 0;
+    schedule(0);
+  }
+  render();
+}
+
+$("mode-picture").addEventListener("click", () => setMode(false));
+$("mode-live").addEventListener("click", () => setMode(true));
+$("cam-start").addEventListener("click", () => void startCamera());
+$("cam-stop").addEventListener("click", () => { stopCamera(); setFrozen(true); camStatus("Camera stopped. The last frame stays on screen."); });
+$("freeze").addEventListener("click", () => setFrozen(!live.frozen));
+$("ask-coach").addEventListener("click", () => {
+  setFrozen(true);
+  $<HTMLDetailsElement>("opts").open = true;
+  status.textContent = "Frozen. Tap the ball carrier on the map, then pick the goal their team attacks.";
+  status.classList.remove("bad");
+  top.scrollIntoView({ behavior: "smooth", block: "center" });
+});
+$("recal").addEventListener("click", () => {
+  setFrozen(true);
+  st.pts = [null, null, null, null]; st.active = 0;
+  live.cents = null; live.ref = null; resetTracking();
+  status.textContent = "Frozen. Tap the 4 calibration points on the picture, then Resume.";
+  status.classList.remove("bad");
+  buildCalib(); render();
+});
+// privacy and battery: no camera while the page is hidden or left
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden && live.stream) {
+    stopCamera(); setFrozen(true);
+    camStatus("Camera stopped while the page was hidden. Tap Start the camera to go on.");
+  }
+});
+addEventListener("pagehide", () => stopCamera());
+if (new URLSearchParams(location.search).has("debug")) Object.assign(window, { __labLive: live, __labState: st }); // headless checks
 
 buildCalib();

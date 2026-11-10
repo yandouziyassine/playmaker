@@ -17,7 +17,12 @@
   <main>
     <h1>From a TV picture <em>to tactics</em></h1>
     <p class="lead">Load a broadcast-style picture: players are detected in your browser, 4 taps calibrate the pitch, and
-      the shape appears from above with the AI coach's options. Nothing is uploaded. Step 1 towards a live mode.</p>
+      the shape appears from above with the AI coach's options. Or point your camera at a TV in live mode. Nothing is uploaded.</p>
+
+    <div class="mode" role="group" aria-label="Lab mode">
+      <button id="mode-picture" class="chip" type="button" aria-pressed="true">Picture</button>
+      <button id="mode-live" class="chip" type="button" aria-pressed="false">Live camera</button>
+    </div>
 
     <section class="card" id="load-card">
       <h2>1 · Picture</h2>
@@ -32,6 +37,20 @@
       </div>
     </section>
 
+    <section class="card" id="live-card" hidden>
+      <h2>1 · Live camera</h2>
+      <p class="fine">Point the camera at a TV showing a match from the main camera angle, and hold it steady (lean it on
+        something). The video is analysed on this device: nothing is uploaded or recorded.</p>
+      <div class="row-actions">
+        <button id="cam-start" class="primary" type="button">Start the camera</button>
+        <button id="cam-stop" class="ghost" type="button" hidden>Stop the camera</button>
+        <label class="check"><input id="live-tiled" type="checkbox" /> Tiled scan (smaller players, slower)</label>
+      </div>
+      <p id="cam-msg" class="hint" role="status"></p>
+      <p class="fine">The camera needs a secure page (HTTPS, or localhost while developing). It stops when you leave live mode
+        or switch to another tab or app.</p>
+    </section>
+
     <section id="work" hidden>
       <div class="stats" aria-live="polite">
         <div class="stat"><b id="st-count">–</b><span>people</span></div>
@@ -40,13 +59,19 @@
         <div class="stat"><b id="st-mapped">–</b><span>on the map</span></div>
       </div>
       <p id="status" class="hint"></p>
-      <div class="stage"><canvas id="img" role="img" aria-label="Your picture with detections and calibration points"></canvas></div>
+      <div class="row-actions" id="live-actions" hidden>
+        <button id="freeze" class="ghost" type="button">Freeze frame</button>
+        <button id="ask-coach" class="primary" type="button">Freeze &amp; ask the coach</button>
+        <button id="recal" class="ghost" type="button">Recalibrate</button>
+      </div>
+      <div class="stage"><video id="cam" class="cam" playsinline muted aria-hidden="true"></video><canvas id="img" role="img" aria-label="Your picture with detections and calibration points"></canvas></div>
       <div class="row-actions">
-        <button id="detect" class="primary" type="button">Detect players</button>
+        <button id="detect" class="primary picture-only" type="button">Detect players</button>
         <label class="check"><input id="show-lines" type="checkbox" checked /> Show pitch lines</label>
         <label class="check"><input id="show-boxes" type="checkbox" checked /> Show boxes</label>
       </div>
-      <p class="fine">Tap a box to change its team (A → B → other). Drag a numbered point to refine the calibration.</p>
+      <p class="fine">Tap a box to change its team (A → B → other). Drag a numbered point to refine the calibration.
+        <span class="live-only">Live: freeze the frame first, then tap the 4 points; the calibration is kept while the camera stays still.</span></p>
 
       <div class="grid">
         <section class="card">
@@ -97,7 +122,11 @@
           people in the crowd or on the bench can be detected.</li>
         <li>Feet = bottom of the box: occlusions and cut boxes move players on the map by a few metres.</li>
         <li>Team colours come from the average shirt colour and can fail (similar kits, shadows, keepers, referees).</li>
-        <li>No ball detection yet, and the calibration is manual: one picture at a time, no video.</li>
+        <li>No ball detection yet, and the calibration is manual.</li>
+        <li>Live camera: positions are approximate (a few metres) and the speeds are rough estimates from the last frames. The
+          calibration only holds while both your phone and the TV camera stay still: broadcast cameras pan and zoom all the
+          time, so recalibrate after each change of view. A few detections per second on a phone, players can blink in
+          and out.</li>
       </ul>
       <p class="fine">Detector: MediaPipe Tasks Vision with EfficientDet-Lite0 (both Apache-2.0), running on your device.
         <a href="/">The daily game</a> · <a href="/about.html">About</a></p>

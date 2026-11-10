@@ -77,4 +77,11 @@ body.live .picture-only { display: none; }
 .stage.frozen::after { content: "Frozen"; position: absolute; top: var(--s-2); left: var(--s-2); padding: 2px var(--s-2); border-radius: var(--r-pill);
   background: rgba(7, 23, 14, 0.8); color: var(--pro); font-size: var(--fs-xs); font-weight: 700; pointer-events: none; }
 /* buttons set display, which would beat the hidden attribute */
-.row-actions [hidden] { display: none; }
+.row-actions [hidden], .row-actions[hidden], .hint[hidden] { display: none; }
+/* calibration assist: fit quality */
+.fit::before { content: ""; flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--low); }
+.fit.good::before { background: var(--top); }
+.fit.check::before { background: var(--mid); }
+.fit.poor::before { background: var(--attack); }
+.fit.poor { color: var(--attack-ink); }
+.opts .auto { color: var(--pro); }

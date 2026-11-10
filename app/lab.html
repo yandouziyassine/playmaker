@@ -33,7 +33,7 @@
       </label>
       <div class="row-actions">
         <button id="demo" class="ghost" type="button">Try a synthetic scene</button>
-        <label class="check"><input id="tiled" type="checkbox" checked /> Tiled scan for small players</label>
+        <label class="check"><input id="tiled" type="checkbox" checked /> Tiled scan for small players and the ball</label>
       </div>
     </section>
 
@@ -69,6 +69,7 @@
         <button id="detect" class="primary picture-only" type="button">Detect players</button>
         <label class="check"><input id="show-lines" type="checkbox" checked /> Show pitch lines</label>
         <label class="check"><input id="show-boxes" type="checkbox" checked /> Show boxes</label>
+        <label class="check"><input id="show-detected" type="checkbox" /> Show detected lines</label>
       </div>
       <p class="fine">Tap a box to change its team (A → B → other). Drag a numbered point to refine the calibration.
         <span class="live-only">Live: freeze the frame first, then tap the 4 points; the calibration is kept while the camera stays still.</span></p>
@@ -77,12 +78,15 @@
         <section class="card">
           <h2>2 · Calibrate the pitch</h2>
           <p class="fine">Pick 4 landmarks you can see (no 3 on one line), then tap them on the picture in order. "Near" is the
-            touchline closest to the camera, "left" is the goal on the left of the TV picture.</p>
+            touchline closest to the camera, "left" is the goal on the left of the TV picture. A tap snaps to the nearest corner
+            of the painted lines found in the picture (orange diamonds) within about 20 px; drag the point to undo.</p>
           <ol id="calib" class="calib"></ol>
           <div class="row-actions">
             <button id="reset-pts" class="ghost" type="button">Reset points</button>
+            <button id="snap-all" class="ghost" type="button">Snap points to lines</button>
           </div>
           <p id="calib-msg" class="hint"></p>
+          <p id="fit" class="hint fit" role="status" hidden></p>
         </section>
 
         <section class="card">
@@ -92,7 +96,9 @@
           <details class="opts" id="opts">
             <summary>AI coach: the carrier's best options</summary>
             <p class="fine" id="coach-tag">A model opinion from a single picture: positions are approximate.</p>
-            <p class="fine">Tap the ball carrier on the pitch above, then pick the goal their team attacks on the picture.</p>
+            <p class="fine">When the ball is found, the nearest player within 3 m is preselected as the carrier and the attacking
+              direction is guessed; otherwise tap the ball carrier on the pitch above, then pick the goal their team attacks.</p>
+            <p class="hint auto" id="coach-auto" hidden></p>
             <div class="row-actions" role="group" aria-label="Attacking direction">
               <button id="dir-left" class="ghost" type="button" aria-pressed="false" data-icon="arrowLeft">Attacks the left goal</button>
               <button id="dir-right" class="ghost" type="button" aria-pressed="true" data-icon-after="arrowRight">Attacks the right goal</button>
@@ -122,7 +128,11 @@
           people in the crowd or on the bench can be detected.</li>
         <li>Feet = bottom of the box: occlusions and cut boxes move players on the map by a few metres.</li>
         <li>Team colours come from the average shirt colour and can fail (similar kits, shadows, keepers, referees).</li>
-        <li>No ball detection yet, and the calibration is manual.</li>
+        <li>The ball is tiny on a TV picture: often missed, sometimes confused with a head or a boot. On the map it is the
+          point under the ball, so a ball in the air is drawn too far from the camera (approximate). The carrier is just the
+          nearest player within 3 m, and the attacking direction is a guess from where each team's deepest player is: check both.</li>
+        <li>The calibration is manual; tap snapping only finds straight painted lines on green (curves, worn or shaded lines and
+          heavy occlusion are missed), and the fit score only checks the lines it can see.</li>
         <li>Live camera: positions are approximate (a few metres) and the speeds are rough estimates from the last frames. The
           calibration only holds while both your phone and the TV camera stay still: broadcast cameras pan and zoom all the
           time, so recalibrate after each change of view. A few detections per second on a phone, players can blink in

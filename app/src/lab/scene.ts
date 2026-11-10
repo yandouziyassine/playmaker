@@ -26,6 +26,11 @@ export const SCENE_PLAYERS: { p: Pt; kit: Kit }[] = [
   { p: { x: 51, y: 0.5 }, kit: KEEPER },
 ];
 
+/** The ball, on the ground at the feet of the red player at (42, 8): he is the expected carrier. */
+export const SCENE_BALL: Pt = { x: 42.8, y: 7.4 };
+/** Drawn radius in pixels: a real ball would be ~2 px here, too small for the 320 px detector, so it is drawn oversized. */
+export const SCENE_BALL_R = 9;
+
 export function drawScene(ctx: CanvasRenderingContext2D): Mat3 {
   const H = sceneHomography();
   const P = (x: number, y: number) => applyH(H, { x, y })!;
@@ -58,25 +63,68 @@ export function drawScene(ctx: CanvasRenderingContext2D): Mat3 {
     const s = Math.hypot(side.x - f.x, side.y - f.y); // pixels per metre here
     figure(ctx, f, s * 1.8, kit);
   }
+  drawBall(ctx, P(SCENE_BALL.x, SCENE_BALL.y), SCENE_BALL_R);
   return H;
 }
 
+/** A classic black-and-white ball resting on its ground point g (shadow, shading, pentagon patches). */
+export function drawBall(ctx: CanvasRenderingContext2D, g: Pt, r: number) {
+  const c = { x: g.x, y: g.y - r };
+  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  ctx.beginPath(); ctx.ellipse(g.x + r * 0.3, g.y, r * 1.1, r * 0.35, 0, 0, Math.PI * 2); ctx.fill();
+  const grad = ctx.createRadialGradient(c.x - r * 0.35, c.y - r * 0.35, r * 0.1, c.x, c.y, r);
+  grad.addColorStop(0, "#ffffff"); grad.addColorStop(1, "#c9c9c9");
+  ctx.fillStyle = grad;
+  ctx.beginPath(); ctx.arc(c.x, c.y, r, 0, Math.PI * 2); ctx.fill();
+  ctx.save();
+  ctx.beginPath(); ctx.arc(c.x, c.y, r, 0, Math.PI * 2); ctx.clip();
+  ctx.fillStyle = "#151515";
+  const pent = (x: number, y: number, rr: number, rot: number) => {
+    ctx.beginPath();
+    for (let k = 0; k < 5; k++) { const a = rot + (k * 2 * Math.PI) / 5; ctx.lineTo(x + rr * Math.cos(a), y + rr * Math.sin(a)); }
+    ctx.closePath(); ctx.fill();
+  };
+  pent(c.x, c.y, r * 0.36, -Math.PI / 2);
+  for (let k = 0; k < 5; k++) {
+    const a = -Math.PI / 2 + (k * 2 * Math.PI) / 5 + Math.PI / 5;
+    pent(c.x + r * 0.86 * Math.cos(a), c.y + r * 0.86 * Math.sin(a), r * 0.26, a);
+  }
+  ctx.restore();
+  ctx.strokeStyle = "rgba(0,0,0,0.5)"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(c.x, c.y, r, 0, Math.PI * 2); ctx.stroke();
+}
+
+/** A simple player figure with rounded limbs, arms by the body and a head with hair (h = height in pixels). */
 function figure(ctx: CanvasRenderingContext2D, feet: Pt, h: number, kit: Kit) {
-  const w = h * 0.28, x = feet.x, y = feet.y;
-  ctx.fillStyle = "rgba(0,0,0,0.25)";
-  ctx.beginPath(); ctx.ellipse(x, y, w * 0.8, w * 0.22, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = "#e0b48a";
-  ctx.fillRect(x - w * 0.32, y - h * 0.47, w * 0.22, h * 0.42); // legs
-  ctx.fillRect(x + w * 0.1, y - h * 0.47, w * 0.22, h * 0.42);
-  ctx.fillStyle = "#111";
-  ctx.fillRect(x - w * 0.36, y - h * 0.06, w * 0.3, h * 0.06); // boots
-  ctx.fillRect(x + w * 0.06, y - h * 0.06, w * 0.3, h * 0.06);
-  ctx.fillStyle = kit.shorts;
-  ctx.fillRect(x - w * 0.42, y - h * 0.55, w * 0.84, h * 0.17);
+  const w = h * 0.3, x = feet.x, y = feet.y;
+  const rr = (x0: number, y0: number, ww: number, hh: number, fill: string, r = Math.min(ww, hh) / 2) => {
+    ctx.fillStyle = fill; ctx.beginPath(); ctx.roundRect(x0, y0, ww, hh, r); ctx.fill();
+  };
+  ctx.fillStyle = "rgba(0,0,0,0.28)";
+  ctx.beginPath(); ctx.ellipse(x + w * 0.15, y, w * 0.85, w * 0.22, 0, 0, Math.PI * 2); ctx.fill();
+  // legs (skin, then socks in the shorts colour), a gap between them, boots
+  rr(x - w * 0.36, y - h * 0.48, w * 0.26, h * 0.46, "#d9a77e");
+  rr(x + w * 0.1, y - h * 0.48, w * 0.26, h * 0.46, "#d9a77e");
+  rr(x - w * 0.37, y - h * 0.24, w * 0.28, h * 0.2, kit.shorts === "#ffffff" ? "#d7263d" : kit.shorts, w * 0.08);
+  rr(x + w * 0.09, y - h * 0.24, w * 0.28, h * 0.2, kit.shorts === "#ffffff" ? "#d7263d" : kit.shorts, w * 0.08);
+  rr(x - w * 0.42, y - h * 0.055, w * 0.34, h * 0.055, "#111", w * 0.05);
+  rr(x + w * 0.08, y - h * 0.055, w * 0.34, h * 0.055, "#111", w * 0.05);
+  // shorts and shirt (wider at the shoulders)
+  rr(x - w * 0.44, y - h * 0.58, w * 0.88, h * 0.16, kit.shorts, w * 0.1);
   ctx.fillStyle = kit.shirt;
-  ctx.fillRect(x - w * 0.5, y - h * 0.84, w, h * 0.32); // torso
-  ctx.fillRect(x - w * 0.78, y - h * 0.83, w * 0.28, h * 0.27); // arms
-  ctx.fillRect(x + w * 0.5, y - h * 0.83, w * 0.28, h * 0.27);
+  ctx.beginPath();
+  ctx.moveTo(x - w * 0.55, y - h * 0.8); ctx.lineTo(x + w * 0.55, y - h * 0.8);
+  ctx.lineTo(x + w * 0.44, y - h * 0.54); ctx.lineTo(x - w * 0.44, y - h * 0.54); ctx.closePath(); ctx.fill();
+  rr(x - w * 0.5, y - h * 0.83, w, h * 0.08, kit.shirt, w * 0.2);
+  // arms hanging by the body: sleeve, then forearm and hand
+  rr(x - w * 0.78, y - h * 0.81, w * 0.26, h * 0.16, kit.shirt, w * 0.1);
+  rr(x + w * 0.52, y - h * 0.81, w * 0.26, h * 0.16, kit.shirt, w * 0.1);
+  rr(x - w * 0.76, y - h * 0.67, w * 0.21, h * 0.2, "#d9a77e");
+  rr(x + w * 0.55, y - h * 0.67, w * 0.21, h * 0.2, "#d9a77e");
+  // neck, head, hair
+  rr(x - w * 0.1, y - h * 0.87, w * 0.2, h * 0.06, "#c99a70", w * 0.05);
   ctx.fillStyle = "#c99a70";
-  ctx.beginPath(); ctx.arc(x, y - h * 0.91, h * 0.08, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(x, y - h * 0.925, h * 0.062, h * 0.075, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#2b1d14";
+  ctx.beginPath(); ctx.ellipse(x, y - h * 0.955, h * 0.065, h * 0.05, 0, Math.PI, 2 * Math.PI); ctx.fill();
 }

@@ -13,6 +13,8 @@ import {
 } from "./live.ts";
 import type { State } from "../coach/features.ts";
 import { drawScene, SCENE_H, SCENE_W } from "./scene.ts";
+import { attackDirection, ballGround, pickBall, pickCarrier, stepBall, trackBox, type Ball, type BallTrack } from "./ball.ts";
+import { calibrationCheck, fitQuality, LINE_SIDE, pointAt, scanLines, snapPoint, toSource, type LineScan } from "./lines.ts";
 import { setIconText, spinner, type IconName } from "../design/icons.ts";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -40,7 +42,15 @@ const st = {
   carrier: null as number | null,
   dir: 1 as 1 | -1,
   busy: false,
+  balls: [] as Ball[],            // picture mode: every "sports ball" candidate of the last detection
+  carrierManual: false,           // the user tapped a carrier (or cleared it): no automatic pick until the next detection
+  dirManual: false,               // the user picked the attacking direction
+  autoNote: "",                   // why the carrier / direction were preselected
+  snaps: [null, null, null, null] as ({ from: Pt; t0: number; d: number } | null)[], // where a snapped point was tapped
 };
+const SNAP_CSS_PX = 20; // tap snapping radius, in CSS pixels on screen
+const SNAP_MS = 320;
+const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 // ---------- calibration list ----------
 function buildCalib() {
@@ -100,6 +110,75 @@ function mapped(cal: Calib | null): (Pt | null)[] {
   return st.persons.map((p) => toPitch(cal.i2p, feet(p.box)));
 }
 
+/** The ball on the picture: live, the smoothed track; picture mode, the best plausible candidate (crowd filter once calibrated). */
+function currentBall(cal: Calib | null): (Ball & { predicted?: boolean }) | null {
+  if (live.on) return live.ball && (live.ball.hits >= 2 || live.ball.misses === 0)
+    ? { box: trackBox(live.ball), score: live.ball.score, predicted: live.ball.misses > 0 } : null;
+  return pickBall(st.balls, st.persons, cal && !("error" in cal) ? cal.i2p : null, img.width);
+}
+
+/** Ball ground point on the pitch (approximate: a ball in the air is mapped too far away). */
+function ballOnPitch(cal: Calib | null, ball: Ball | null): Pt | null {
+  if (!ball || !cal || "error" in cal) return null;
+  return toPitch(cal.i2p, ballGround(ball.box));
+}
+
+// ---------- detected pitch lines (calibration assist) ----------
+let scan: LineScan | null = null;
+const lineCanvas = document.createElement("canvas");
+/** Painted lines of the current picture (or frozen frame), computed on demand on a <= 640 px copy, players masked out. */
+function getScan(): LineScan | null {
+  if (scan) return scan;
+  if (!st.loaded || !src.width) return null;
+  const k = Math.min(1, LINE_SIDE / Math.max(src.width, src.height));
+  lineCanvas.width = Math.max(1, Math.round(src.width * k)); lineCanvas.height = Math.max(1, Math.round(src.height * k));
+  const lc = lineCanvas.getContext("2d", { willReadFrequently: true })!;
+  lc.drawImage(src, 0, 0, lineCanvas.width, lineCanvas.height);
+  const data = lc.getImageData(0, 0, lineCanvas.width, lineCanvas.height);
+  const boxes = st.persons.map((p) => ({ x: p.box.x * k, y: p.box.y * k, w: p.box.w * k, h: p.box.h * k }));
+  scan = scanLines(data, k, boxes);
+  return scan;
+}
+/** Detected corners in picture pixels. */
+function corners(): Pt[] {
+  const s = getScan();
+  return s ? s.corners.map((c) => toSource(s.scale, c)) : [];
+}
+const lineScanAllowed = () => !live.on || live.frozen;
+
+function snapRadius(): number {
+  const w = img.getBoundingClientRect().width;
+  return w > 0 ? (SNAP_CSS_PX * img.width) / w : SNAP_CSS_PX;
+}
+
+/** Snaps point i to the nearest detected corner within the radius; returns the distance moved, or null. */
+function snapPointAt(i: number, tap: Pt): number | null {
+  const s = snapPoint(tap, corners(), snapRadius());
+  if (!s) { st.pts[i] = tap; st.snaps[i] = null; return null; }
+  st.pts[i] = { ...s.p };
+  st.snaps[i] = { from: tap, t0: performance.now(), d: s.d };
+  if (!reducedMotion()) animateSnap();
+  return s.d;
+}
+
+let animUntil = 0;
+function animateSnap() {
+  animUntil = performance.now() + SNAP_MS;
+  const step = () => { render(); if (performance.now() < animUntil) requestAnimationFrame(step); };
+  requestAnimationFrame(step);
+}
+
+const LINE_CORNER_IDS = LANDMARKS.filter((l) => !/spot|^centre$/.test(l.id));
+type Fit = { quality: ReturnType<typeof fitQuality>; check: ReturnType<typeof calibrationCheck> };
+function fitReport(cal: Calib | null): Fit | null {
+  if (!cal || "error" in cal || !lineScanAllowed()) return null;
+  const s = getScan();
+  if (!s) return null;
+  const pitch4 = st.ids.map((id) => landmark(id)!);
+  const extra = LINE_CORNER_IDS.filter((l) => !st.ids.includes(l.id));
+  return { quality: fitQuality(s, cal.p2i, pitchLines()), check: calibrationCheck(pitch4, st.pts as Pt[], extra, corners()) };
+}
+
 // ---------- drawing ----------
 const rgb = (c: RGB) => `rgb(${c.map((v) => Math.round(v)).join(",")})`;
 function teamColour(l: TeamLabel): string {
@@ -157,8 +236,56 @@ function drawImage(cal: Calib | null, source: CanvasImageSource = src) {
       ctx.beginPath(); ctx.arc(f.x, f.y, 2.6 * u, 0, Math.PI * 2); ctx.fill();
     });
   }
+  // detected painted lines and their corners (calibration assist)
+  const sc = lineScanAllowed() ? (($<HTMLInputElement>("show-detected").checked || st.active !== null) ? getScan() : null) : null;
+  if (sc) {
+    ctx.save();
+    if ($<HTMLInputElement>("show-detected").checked) {
+      ctx.strokeStyle = "rgba(255, 159, 28, 0.9)"; ctx.lineWidth = 2 * u;
+      for (const l of sc.lines) for (const [a, b] of l.runs) {
+        const pa = toSource(sc.scale, pointAt(l, a)), pb = toSource(sc.scale, pointAt(l, b));
+        ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); ctx.stroke();
+      }
+    }
+    ctx.strokeStyle = "rgba(255,255,255,0.95)"; ctx.fillStyle = "rgba(255, 159, 28, 0.85)"; ctx.lineWidth = 1.5 * u;
+    for (const c0 of sc.corners) {
+      const { x, y } = toSource(sc.scale, c0), r = 4 * u;
+      ctx.beginPath(); ctx.moveTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r, y); ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
+    ctx.restore();
+  }
+  // the ball
+  const ball = currentBall(cal);
+  if (ball) {
+    const c = { x: ball.box.x + ball.box.w / 2, y: ball.box.y + ball.box.h / 2 }, r = Math.max(ball.box.w, ball.box.h) / 2 + 5 * u;
+    ctx.save();
+    ctx.strokeStyle = "#ff9f1c"; ctx.lineWidth = 2.5 * u; ctx.setLineDash(ball.predicted ? [4 * u, 3 * u] : []);
+    ctx.shadowColor = "rgba(0,0,0,0.7)"; ctx.shadowBlur = 3 * u;
+    ctx.beginPath(); ctx.arc(c.x, c.y, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.font = `700 ${11 * u}px system-ui, sans-serif`; ctx.fillStyle = "#ff9f1c";
+    ctx.fillText(`ball ${Math.round(ball.score * 100)}%`, c.x + r + 3 * u, c.y - r);
+    ctx.restore();
+  }
+  const now = performance.now();
   st.pts.forEach((p, i) => {
     if (!p) return;
+    const sn = st.snaps[i];
+    if (sn) {
+      // where the tap landed, and (briefly) a ring closing on the detected corner
+      ctx.save();
+      ctx.strokeStyle = "rgba(255,255,255,0.85)"; ctx.lineWidth = 1.5 * u; ctx.setLineDash([3 * u, 3 * u]);
+      ctx.beginPath(); ctx.moveTo(sn.from.x, sn.from.y); ctx.lineTo(p.x, p.y); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath(); ctx.arc(sn.from.x, sn.from.y, 4 * u, 0, Math.PI * 2); ctx.stroke();
+      const k = Math.min(1, (now - sn.t0) / SNAP_MS);
+      if (k < 1 && !reducedMotion()) {
+        const e = 1 - (1 - k) ** 3;
+        ctx.strokeStyle = PT_COLOURS[i]!; ctx.globalAlpha = 1 - k; ctx.lineWidth = 3 * u;
+        ctx.beginPath(); ctx.arc(p.x, p.y, (30 - 18 * e) * u, 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.restore();
+    }
     ctx.lineWidth = 2.5 * u; ctx.strokeStyle = "#000"; ctx.fillStyle = PT_COLOURS[i]!;
     ctx.beginPath(); ctx.arc(p.x, p.y, 9 * u, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(p.x - 15 * u, p.y); ctx.lineTo(p.x + 15 * u, p.y); ctx.moveTo(p.x, p.y - 15 * u); ctx.lineTo(p.x, p.y + 15 * u); ctx.stroke();
@@ -181,7 +308,7 @@ function toTop(p: Pt): Pt {
   return { x: (p.x + PITCH.halfL + TOP_M) * s, y: (PITCH.halfW + TOP_M - p.y) * s };
 }
 
-function drawTop(cal: Calib | null, pos: (Pt | null)[], advice: Advice | null) {
+function drawTop(cal: Calib | null, pos: (Pt | null)[], advice: Advice | null, ballPt: Pt | null) {
   const ctx = top.getContext("2d")!, s = topScale();
   ctx.fillStyle = "#14532d"; ctx.fillRect(0, 0, top.width, top.height);
   for (let i = 0; i < 20; i += 2) {
@@ -229,6 +356,20 @@ function drawTop(cal: Calib | null, pos: (Pt | null)[], advice: Advice | null) {
     ctx.fillText(String(i + 1), q.x, q.y + 0.5);
   });
   ctx.textAlign = "start"; ctx.textBaseline = "alphabetic";
+  if (ballPt) {
+    // approximate: the ground point under the ball box (a lofted ball lands too far from the camera)
+    const q = toTop(ballPt), br = Math.max(4, s * 0.9);
+    ctx.save();
+    ctx.strokeStyle = "rgba(255,159,28,0.95)"; ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.arc(q.x, q.y, br * 2.6, 0, Math.PI * 2); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#fff"; ctx.strokeStyle = "#111"; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(q.x, q.y, br, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.font = `700 ${Math.max(11, s * 1.5)}px system-ui, sans-serif`; ctx.fillStyle = "#ff9f1c";
+    ctx.shadowColor = "rgba(0,0,0,0.8)"; ctx.shadowBlur = 3;
+    ctx.fillText("ball ≈", q.x + br * 2.8, q.y - br * 1.5);
+    ctx.restore();
+  }
   if (coachText) {
     const m = coachText;
     const placed: Rect[] = [];
@@ -354,6 +495,8 @@ function renderSide(pos: (Pt | null)[], view: CoachView) {
       legend.append(w);
     }
   }
+  const auto = $("coach-auto");
+  auto.textContent = st.autoNote; auto.hidden = !st.autoNote;
   const ol = $("coach-list");
   ol.innerHTML = "";
   if (view && "msg" in view) {
@@ -407,11 +550,56 @@ function render() {
       : `Tap point ${(st.active ?? 0) + 1} on the picture.`;
     calibMsg.classList.toggle("bad", !!cal && "error" in cal);
     const pos = mapped(cal);
+    const ballPt = ballOnPitch(cal, currentBall(cal));
+    autoCarrier(pos, ballPt);
     const view = coachData(pos);
     drawImage(cal);
-    drawTop(cal, pos, view && "advice" in view ? view.advice : null);
+    drawTop(cal, pos, view && "advice" in view ? view.advice : null, ballPt);
     renderSide(pos, view);
+    renderFit(fitReport(cal));
   });
+}
+
+/**
+ * Ball found and pitch calibrated: preselect the carrier (nearest team player within 3 m of the ball) and, unless the user
+ * chose it, the attacking direction (ball.ts heuristics). A tap on the map overrides it until the next detection.
+ */
+function autoCarrier(pos: (Pt | null)[], ballPt: Pt | null) {
+  if (st.carrierManual || (live.on && !live.frozen)) return;
+  const pick = ballPt ? pickCarrier(ballPt, pos, st.labels) : null;
+  if (!pick) {
+    if (st.autoNote) { st.carrier = null; st.autoNote = ""; }
+    return;
+  }
+  const team = st.labels[pick.index] as 0 | 1;
+  const first = st.carrier !== pick.index || !st.autoNote;
+  st.carrier = pick.index;
+  let dirNote = "";
+  if (!st.dirManual) {
+    const ad = attackDirection(pos, st.labels, team);
+    if (ad) {
+      if (ad.dir !== st.dir) setDir(ad.dir, false);
+      dirNote = ` Direction: attacks the ${ad.dir === 1 ? "right" : "left"} goal, a guess (relative to the other team, team ${teamName(team)} has its deepest player on the ${ad.ownSide === 1 ? "right" : "left"}): flip it if wrong.`;
+    }
+  }
+  st.autoNote = `Carrier picked from the ball: player ${pick.index + 1} (team ${teamName(team)}), ${pick.dist.toFixed(1)} m from it.${dirNote} Tap another player on the map to override.`;
+  if (first && !live.on) $<HTMLDetailsElement>("opts").open = true; // picture mode: the coach runs straight away
+}
+
+function renderFit(f: Fit | null) {
+  const el = $("fit");
+  el.className = "hint fit";
+  if (!f) { el.textContent = ""; el.hidden = true; return; }
+  el.hidden = false;
+  const parts: string[] = [];
+  if (f.quality) {
+    el.classList.add(f.quality.rating);
+    parts.push(`Fit ${f.quality.rating}: the blue lines are ${f.quality.mean.toFixed(1)} px from the painted lines on average`);
+  } else parts.push("Fit: too few painted lines found to check");
+  if (f.check) parts.push(f.check.n > 4
+    ? `4-point reprojection error ${f.check.err.toFixed(1)} px (checked against ${f.check.n - 4} more line corner${f.check.n > 5 ? "s" : ""})`
+    : "4-point reprojection error 0 px (4 points fit exactly: no other line corner to check against)");
+  el.textContent = parts.join(" · ") + ".";
 }
 
 // ---------- picture loading ----------
@@ -422,7 +610,9 @@ function setPicture(draw: (ctx: CanvasRenderingContext2D) => void, w: number, h:
   ctx.save(); ctx.scale(k, k); draw(ctx); ctx.restore();
   img.width = src.width; img.height = src.height;
   top.width = 840; top.height = Math.round(840 * (PITCH.width + 2 * TOP_M) / (PITCH.length + 2 * TOP_M));
-  Object.assign(st, { loaded: true, persons: [], colours: [], labels: [], ms: null, carrier: null, separation: 99 });
+  Object.assign(st, { loaded: true, persons: [], colours: [], labels: [], ms: null, carrier: null, separation: 99, balls: [],
+    carrierManual: false, dirManual: false, autoNote: "", snaps: [null, null, null, null] });
+  scan = null;
   $("work").hidden = false;
 }
 
@@ -449,7 +639,7 @@ function loadDemo() {
   st.pts = st.ids.map((id, i) => { const p = applyH(H!, landmark(id)!)!; return { x: p.x + nudge[i]!.x, y: p.y + nudge[i]!.y }; });
   st.active = null;
   buildCalib(); render();
-  status.textContent = "Synthetic scene drawn by code. The 4 points are placed slightly off: drag them to refine.";
+  status.textContent = "Synthetic scene drawn by code. The 4 points are placed slightly off: tap “Snap points to lines” or drag them.";
   void runDetect();
 }
 
@@ -485,10 +675,14 @@ async function runDetect() {
     const data = src.getContext("2d", { willReadFrequently: true })!.getImageData(0, 0, src.width, src.height);
     const colours = persons.map((p) => meanColour(data, torsoBox(p.box)));
     const { labels, teamRgb, separation } = labelTeams(colours);
-    Object.assign(st, { persons, colours, labels, teamRgb, separation, ms: run.ms, carrier: null });
+    Object.assign(st, { persons, colours, labels, teamRgb, separation, ms: run.ms, carrier: null, balls: run.balls, carrierManual: false, autoNote: "" });
+    scan = null; // the players are masked out of the line search
+    const cal = calibration();
+    const ball = pickBall(run.balls, persons, cal && !("error" in cal) ? cal.i2p : null, img.width);
     status.textContent = `${persons.length} people in ${Math.round(run.ms)} ms (${run.passes} pass${run.passes > 1 ? "es" : ""}` +
       `${loadMs > 50 ? `, detector loaded in ${(loadMs / 1000).toFixed(1)} s` : ""}).` +
-      (persons.length === 0 ? " Nobody found: try the tiled scan, or a closer shot." : "");
+      (persons.length === 0 ? " Nobody found: try the tiled scan, or a closer shot." : "") +
+      (ball ? ` Ball found (${Math.round(ball.score * 100)} %).` : " No ball found" + ($<HTMLInputElement>("tiled").checked ? "." : ": the tiled scan helps."));
   } catch (e) {
     console.error(e);
     status.textContent = "The detector could not start in this browser (WebAssembly / network). The calibration still works.";
@@ -513,10 +707,13 @@ img.addEventListener("pointerdown", (e) => {
     st.drag = near; img.setPointerCapture(e.pointerId); e.preventDefault(); return;
   }
   if (st.active !== null) {
-    st.pts[st.active] = p;
+    const i = st.active;
+    const d = snapPointAt(i, p);
     const next = st.pts.findIndex((q) => !q);
     st.active = next >= 0 ? next : null;
-    calibChanged(); buildCalib(); render(); return;
+    calibChanged(); buildCalib(); render();
+    if (d !== null) status.textContent = `Point ${i + 1} snapped to a detected line corner (${d.toFixed(0)} px away). Drag it to undo.`;
+    return;
   }
   const inBox = st.persons.map((q, i) => ({ q, i }))
     .filter(({ q }) => p.x >= q.box.x && p.x <= q.box.x + q.box.w && p.y >= q.box.y && p.y <= q.box.y + q.box.h)
@@ -530,6 +727,7 @@ img.addEventListener("pointerdown", (e) => {
 img.addEventListener("pointermove", (e) => {
   if (st.drag === null) return;
   const p = canvasPoint(img, e);
+  st.snaps[st.drag] = null; // dragging undoes a snap (and never snaps)
   st.pts[st.drag] = { x: Math.max(0, Math.min(img.width, p.x)), y: Math.max(0, Math.min(img.height, p.y)) };
   calibChanged(); render();
 });
@@ -544,10 +742,14 @@ top.addEventListener("pointerdown", (e) => {
   const m = { x: p.x / s - PITCH.halfL - TOP_M, y: PITCH.halfW + TOP_M - p.y / s };
   let best = -1, bestD = 5;
   pos.forEach((q, i) => { if (q && Math.hypot(q.x - m.x, q.y - m.y) < bestD) { bestD = Math.hypot(q.x - m.x, q.y - m.y); best = i; } });
-  if (best >= 0) { st.carrier = best === st.carrier ? null : best; ($<HTMLDetailsElement>("opts")).open = true; render(); }
+  if (best >= 0) {
+    st.carrier = best === st.carrier ? null : best; st.carrierManual = true; st.autoNote = "";
+    ($<HTMLDetailsElement>("opts")).open = true; render();
+  }
 });
 
-function setDir(d: 1 | -1) {
+function setDir(d: 1 | -1, manual = true) {
+  if (manual) st.dirManual = true;
   st.dir = d;
   $("dir-left").setAttribute("aria-pressed", String(d === -1));
   $("dir-right").setAttribute("aria-pressed", String(d === 1));
@@ -559,11 +761,17 @@ for (const b of document.querySelectorAll<HTMLElement>("[data-icon], [data-icon-
 }
 $("dir-left").addEventListener("click", () => setDir(-1));
 $("dir-right").addEventListener("click", () => setDir(1));
-$("clear-carrier").addEventListener("click", () => { st.carrier = null; render(); });
-$("reset-pts").addEventListener("click", () => { st.pts = [null, null, null, null]; st.active = 0; calibChanged(); buildCalib(); render(); });
+$("clear-carrier").addEventListener("click", () => { st.carrier = null; st.carrierManual = true; st.autoNote = ""; render(); });
+$("snap-all").addEventListener("click", () => {
+  let n = 0;
+  st.pts.forEach((p, i) => { if (p && snapPointAt(i, st.snaps[i]?.from ?? p) !== null) n++; });
+  status.textContent = n ? `Snapped ${n} point${n > 1 ? "s" : ""} to detected line corners. Drag a point to undo.` : "No detected line corner near the points.";
+  calibChanged(); buildCalib(); render();
+});
+$("reset-pts").addEventListener("click", () => { st.pts = [null, null, null, null]; st.snaps = [null, null, null, null]; st.active = 0; calibChanged(); buildCalib(); render(); });
 $("detect").addEventListener("click", () => void runDetect());
 $("demo").addEventListener("click", loadDemo);
-for (const id of ["show-lines", "show-boxes"]) $(id).addEventListener("change", render);
+for (const id of ["show-lines", "show-boxes", "show-detected"]) $(id).addEventListener("change", render);
 
 const fileInput = $<HTMLInputElement>("file");
 fileInput.addEventListener("change", () => { const f = fileInput.files?.[0]; if (f) void loadFile(f); fileInput.value = ""; });
@@ -603,6 +811,8 @@ const live = {
   vel: [] as (Pt | null)[], // m/s, null until a track has a few hits
   cents: null as Centroids | null,
   ref: null as Float32Array | null, // grey thumbnail at calibration time
+  ball: null as BallTrack | null,   // smoothed ball, image pixels
+  ballT: 0,
   streak: 0,
   moved: false,
   err: "",
@@ -615,7 +825,7 @@ function camStatus(text: string, bad = false, busy = false) {
 
 function resetTracking() {
   lastBox.clear();
-  Object.assign(live, { tracks: [], pos: [], vel: [], lastT: 0, streak: 0, moved: false });
+  Object.assign(live, { tracks: [], pos: [], vel: [], lastT: 0, streak: 0, moved: false, ball: null, ballT: 0 });
 }
 
 /** Called whenever the calibration points or landmarks change: tracks and the camera reference restart. */
@@ -636,7 +846,9 @@ function setMode(on: boolean) {
   $("live-actions").hidden = !on;
   stopCamera();
   // the picture (or the last camera frame) belongs to the other mode
-  Object.assign(st, { loaded: false, persons: [], colours: [], labels: [], ms: null, carrier: null, pts: [null, null, null, null], active: 0 });
+  Object.assign(st, { loaded: false, persons: [], colours: [], labels: [], ms: null, carrier: null, pts: [null, null, null, null], active: 0,
+    snaps: [null, null, null, null], balls: [], carrierManual: false, dirManual: false, autoNote: "" });
+  scan = null;
   live.cents = null; live.ref = null; resetTracking(); setFrozen(false);
   $("work").hidden = true;
   status.textContent = "";
@@ -673,7 +885,8 @@ async function startCamera() {
   src.width = Math.round(video.videoWidth * k); src.height = Math.round(video.videoHeight * k);
   img.width = src.width; img.height = src.height;
   top.width = 840; top.height = Math.round(840 * (PITCH.width + 2 * TOP_M) / (PITCH.length + 2 * TOP_M));
-  Object.assign(st, { loaded: true, persons: [], colours: [], labels: [], ms: null, carrier: null, separation: 99 });
+  Object.assign(st, { loaded: true, persons: [], colours: [], labels: [], ms: null, carrier: null, separation: 99, carrierManual: false, autoNote: "" });
+  scan = null;
   live.throttle = START_THROTTLE; live.fps = null; live.lastStart = 0; live.err = "";
   resetTracking(); setFrozen(false);
   $("work").hidden = false;
@@ -735,7 +948,7 @@ async function tick() {
     wctx().drawImage(video, 0, 0, work.width, work.height);
     const run = await detectVideoFrame(work, $<HTMLInputElement>("live-tiled").checked);
     if (!live.stream || live.frozen) return; // stopped or frozen while detecting
-    processFrame(run.persons, run.ms, t0);
+    processFrame(run.persons, run.balls, run.ms, t0);
   } catch (e) {
     console.error(e);
     status.textContent = "Live detection failed in this browser. Stop and start the camera to try again.";
@@ -748,8 +961,9 @@ async function tick() {
 }
 
 /** One detection result: team colours, camera-move check, mapping through the homography and tracking. */
-function processFrame(found: Person[], ms: number, t: number) {
+function processFrame(found: Person[], balls: Ball[], ms: number, t: number) {
   sctx().drawImage(work, 0, 0);
+  scan = null; // a new frame
   const data = wctx().getImageData(0, 0, work.width, work.height);
   const cal = calibration();
   const ok = !!cal && !("error" in cal);
@@ -802,13 +1016,18 @@ function processFrame(found: Person[], ms: number, t: number) {
     vel = rows.map((r) => (r.track ? trackVelocity(r.track) : null));
   }
   live.pos = pos; live.vel = vel;
-  Object.assign(st, { persons, colours, labels, separation, ms, carrier: null });
+  // the ball: best candidate of this frame (crowd filter once calibrated), smoothed by its own tracker
+  const meas = pickBall(balls, found, ok ? cal.i2p : null, work.width);
+  const bdt = live.ballT ? (t - live.ballT) / 1000 : live.throttle.interval / 1000;
+  live.ballT = t;
+  live.ball = stepBall(live.ball, meas, bdt, work.width);
+  Object.assign(st, { persons, colours, labels, separation, ms, carrier: null, carrierManual: false, autoNote: "" });
   const fps = live.fps === null ? "–" : live.fps.toFixed(1);
   if (live.moved) {
     status.textContent = "Camera moved: recalibrate (freeze, then place the 4 points again).";
   } else {
     status.textContent = `Live · ${fps} detections/s · ${Math.round(ms)} ms each · ${persons.length} people` +
-      (ok ? (live.cents ? " · team colours fixed" : "") : " · not calibrated yet");
+      (ok ? (live.cents ? " · team colours fixed" : "") : " · not calibrated yet") + (live.ball ? " · ball tracked" : "");
   }
   status.classList.toggle("bad", live.moved);
 }
@@ -839,13 +1058,15 @@ $("freeze").addEventListener("click", () => setFrozen(!live.frozen));
 $("ask-coach").addEventListener("click", () => {
   setFrozen(true);
   $<HTMLDetailsElement>("opts").open = true;
-  status.textContent = "Frozen. Tap the ball carrier on the map, then pick the goal their team attacks.";
+  status.textContent = live.ball
+    ? "Frozen. The carrier and direction are preselected from the ball when a player is close to it: tap another player to override."
+    : "Frozen. No ball tracked: tap the ball carrier on the map, then pick the goal their team attacks.";
   status.classList.remove("bad");
   top.scrollIntoView({ behavior: "smooth", block: "center" });
 });
 $("recal").addEventListener("click", () => {
   setFrozen(true);
-  st.pts = [null, null, null, null]; st.active = 0;
+  st.pts = [null, null, null, null]; st.snaps = [null, null, null, null]; st.active = 0;
   live.cents = null; live.ref = null; resetTracking();
   status.textContent = "Frozen. Tap the 4 calibration points on the picture, then Resume.";
   status.classList.remove("bad");
@@ -859,6 +1080,6 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 addEventListener("pagehide", () => stopCamera());
-if (new URLSearchParams(location.search).has("debug")) Object.assign(window, { __labLive: live, __labState: st }); // headless checks
+if (new URLSearchParams(location.search).has("debug")) Object.assign(window, { __labLive: live, __labState: st, __labScan: () => getScan(), __labFit: () => fitReport(calibration()), __labBall: () => currentBall(calibration()) }); // headless checks
 
 buildCalib();

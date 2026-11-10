@@ -1,0 +1,14 @@
+/* The 3D "player's eyes" view and its toggle (view3d/toggle.ts). */
+.v3d-stage { position: relative; }
+/* In 3D the 2D canvas keeps its size (round.ts measures it) but is invisible and out of the flow. */
+.v3d-stage.is3d > canvas:first-child { position: absolute; top: 0; left: 0; visibility: hidden; pointer-events: none; }
+.v3d-host { position: relative; }
+.v3d-host[hidden] { display: none; }
+.v3d-host canvas { cursor: grab; touch-action: none; }
+.v3d-host canvas:active { cursor: grabbing; }
+.v3d-help { position: absolute; left: 10px; bottom: 8px; margin: 0; padding: 2px 8px; border-radius: 999px;
+  font-size: 0.75rem; color: var(--fg); background: rgba(7, 23, 14, 0.6); pointer-events: none; }
+.v3d-toggle { position: absolute; top: 8px; right: 8px; min-height: 34px; padding: 0.3rem 0.8rem; font-size: 0.8rem; font-weight: 600;
+  color: var(--fg); background: rgba(7, 23, 14, 0.72); border: 1px solid var(--line); backdrop-filter: blur(4px); }
+.v3d-toggle[aria-pressed="true"] { border-color: var(--accent); }
+.v3d-toggle:disabled { opacity: 0.6; cursor: default; }

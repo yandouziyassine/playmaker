@@ -1,6 +1,15 @@
 import { getMoment, postPick, type Day, type Moment, type PickResult } from "./api.ts";
-import { ballTrail, draw, hitOption, optionTargets, type Overlay, type View } from "./pitch.ts";
+import { ballTrail, draw as draw2D, hitOption, optionTargets, type View } from "./pitch.ts";
 import { OUTCOME_TEXT, optionLabel, pct, progress, tier, verdict } from "./text.ts";
+import { is3D, on3DChange, paint3D, setup3D } from "./view3d/toggle.ts";
+import type { Overlay3D as Overlay } from "./view3d/geom.ts";
+
+type Cm = [number, number] | null;
+/** Paints the 2D pitch and mirrors the frame into the 3D view (shown instead of the canvas when 3D is on). */
+function draw(ctx: CanvasRenderingContext2D, v: View, mo: Moment, frame: Cm[], ball: Cm, o: Overlay = {}) {
+  draw2D(ctx, v, mo, frame, ball, o);
+  paint3D(mo, frame, ball, o);
+}
 
 export interface RoundUI {
   canvas: HTMLCanvasElement; title: HTMLElement; dots: HTMLElement; hint: HTMLElement; actions: HTMLElement;
@@ -44,13 +53,19 @@ function choose(ui: RoundUI, ctx: CanvasRenderingContext2D, v: View, mo: Moment)
   let selected: number | undefined;
   const repaint = () => draw(ctx, v, mo, release, ball, { targets: true, selected });
   repaint();
-  ui.hint.textContent = "Tap a teammate to pass, a yellow arrow to carry, or the goal to shoot.";
   ui.list.innerHTML = "";
   const details = el("details", "optlist");
   details.append(el("summary", "", "Choose from a list"));
   const ul = el("div", "optgrid");
   details.append(ul);
   ui.list.append(details);
+  const modeHint = () => { // in 3D the pitch is not tappable: the list is the way to choose
+    if (is3D()) details.open = true;
+    ui.hint.textContent = is3D() ? "Through the carrier's eyes: pick an option from the list below."
+      : "Tap a teammate to pass, a yellow arrow to carry, or the goal to shoot.";
+  };
+  modeHint();
+  on3DChange(modeHint);
   return new Promise((resolve) => {
     const confirm = el("button", "primary", "Confirm");
     confirm.disabled = true;
@@ -72,7 +87,7 @@ function choose(ui: RoundUI, ctx: CanvasRenderingContext2D, v: View, mo: Moment)
     };
     confirm.onclick = () => {
       if (selected === undefined) return;
-      ui.canvas.onclick = null; ui.actions.innerHTML = ""; ui.list.innerHTML = ""; ui.hint.textContent = "";
+      ui.canvas.onclick = null; ui.actions.innerHTML = ""; ui.list.innerHTML = ""; ui.hint.textContent = ""; on3DChange(null);
       resolve(selected);
     };
   });
@@ -86,11 +101,11 @@ async function playAfter(ctx: CanvasRenderingContext2D, v: View, mo: Moment, res
   if (!a || reduced()) return;
   await sleep(1400);
   for (let f = 0; f < a.frames.length; f++) {
-    draw(ctx, v, mo, a.frames[f]!, a.ball[f] ?? null, { trail: ballTrail(a.ball.slice(0, f + 1), v), dim: true });
+    draw(ctx, v, mo, a.frames[f]!, a.ball[f] ?? null, { trail: ballTrail(a.ball.slice(0, f + 1), v), balls: a.ball.slice(0, f + 1), dim: true });
     await sleep(1000 / a.fps);
   }
   await sleep(500);
-  draw(ctx, v, mo, a.frames[a.frames.length - 1]!, a.ball[a.ball.length - 1] ?? null, { ...arrows, trail: ballTrail(a.ball, v), dim: true });
+  draw(ctx, v, mo, a.frames[a.frames.length - 1]!, a.ball[a.ball.length - 1] ?? null, { ...arrows, trail: ballTrail(a.ball, v), balls: a.ball, dim: true });
 }
 
 function renderReveal(ui: RoundUI, mo: Moment, res: PickResult, pick: number, replay: () => void, showAll: () => void) {
@@ -139,6 +154,7 @@ function renderReveal(ui: RoundUI, mo: Moment, res: PickResult, pick: number, re
 }
 
 export async function playMoment(ui: RoundUI, mo: Moment, player: string, index: number, total: number, points: number[]): Promise<PickResult> {
+  setup3D(ui.canvas); // once: wraps the canvas with the 3D view and its toggle
   const { ctx, v } = setupCanvas(ui.canvas);
   const side = mo.attacking === "home" ? mo.home : mo.away;
   const score = mo.scoreline ? ` ${mo.scoreline[0]}–${mo.scoreline[1]} ` : " – ";

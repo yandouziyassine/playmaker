@@ -1,7 +1,10 @@
 import { getDay, getIndex, localDate, type Day } from "./api.ts";
 import { playDay } from "./round.ts";
 import { shareText, square } from "./share.ts";
+import { shareCardFile, shareFileName, shareScore } from "./shareImage.ts";
+import { computeStats, KIND_LABEL, KINDS, ZONE_LABEL, ZONES, toRecord, type Bucket } from "./stats.ts";
 import { History } from "./storage.ts";
+import "./stats.css";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const history = new History(localStorage);
@@ -40,22 +43,99 @@ async function renderArchive() {
   } catch { box.hidden = true; }
 }
 
+const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text = "") => {
+  const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e;
+};
+const pctText = (x: number | null) => (x == null ? "–" : `${Math.round(x * 100)}%`);
+const tierOf = (v: number) => (v >= 80 ? "top" : v >= 50 ? "mid" : "low");
+
+function statBars(title: string, rows: [string, Bucket][]) {
+  const box = el("div", "sbars");
+  box.append(el("p", "label", title));
+  for (const [name, b] of rows) {
+    const row = el("div", "sbar");
+    const track = el("span", "track"), fill = el("span", `fill ${b.avg == null ? "" : tierOf(b.avg)}`);
+    fill.style.width = `${b.avg ?? 0}%`; track.append(fill);
+    const val = el("span", "val", b.avg == null ? "–" : `${b.avg}`);
+    if (b.n) val.append(el("small", "", ` (${b.n})`));
+    row.append(el("span", "name", name), track, val);
+    row.setAttribute("aria-label", `${name}: ${b.avg == null ? "no moments yet" : `${b.avg} points on average over ${b.n} moments`}`);
+    box.append(row);
+  }
+  return box;
+}
+
+/** "Your stats": full card on the done screen, compact one on the intro. Built from local history only. */
+function renderStats(host: HTMLElement, compact: boolean) {
+  host.querySelector(".stats")?.remove();
+  const s = computeStats(history.days(), history.moments());
+  if (!s.games) return;
+  const card = el("section", `card stats${compact ? " compact" : ""}`);
+  card.setAttribute("aria-label", "Your stats");
+  const head = el("div", "shead");
+  head.append(el("h2", "", "Your stats"), el("span", "fine", `${s.games} game${s.games === 1 ? "" : "s"}`));
+  const tiles = el("div", "stiles");
+  const tile = (v: string, k: string, accent = "") => { const t = el("div", `stile ${accent}`); t.append(el("b", "", v), el("span", "", k)); tiles.append(t); };
+  if (compact) {
+    tile(s.avgDay == null ? "–" : `${s.avgDay}`, "Avg day");
+    tile(s.bestDay ? `${s.bestDay.total}` : "–", "Best day");
+    tile(pctText(s.perfect), "Perfect picks", "top");
+  } else {
+    tile(`${s.games}`, "Played");
+    tile(s.avgDay == null ? "–" : `${s.avgDay}`, "Avg day");
+    tile(s.bestDay ? `${s.bestDay.total}` : "–", "Best day");
+    tile(pctText(s.perfect), "Scored 100", "top");
+    tile(pctText(s.proInstinct), "Pro instinct", "pro");
+    tile(pctText(s.aiAgree), "Same as AI", "ai");
+  }
+  card.append(head, tiles);
+  if (!compact && s.moments) {
+    card.append(
+      statBars("Avg points by zone", ZONES.map((z) => [ZONE_LABEL[z], s.byZone[z]])),
+      statBars("Avg points by pick", KINDS.map((k) => [KIND_LABEL[k], s.byKind[k]])),
+    );
+  }
+  if (s.insight) card.append(el("p", "insight", s.insight));
+  const anchor = compact ? host.querySelector("#play") : null;
+  if (anchor) anchor.after(card); else host.append(card);
+}
+
+let savedUrl = "";
 function finish(day: Day, pts: number[]) {
   show("done");
   const total = pts.reduce((a, b) => a + b, 0);
+  const streak = history.streak(realToday);
   $("total").textContent = `${total}`;
   $("squares").textContent = pts.map(square).join(" ");
-  $("streak").textContent = `🔥 Streak: ${history.streak(realToday)} day${history.streak(realToday) === 1 ? "" : "s"}`;
+  $("streak").textContent = `🔥 Streak: ${streak} day${streak === 1 ? "" : "s"}`;
   $("next-in").textContent = date === realToday ? `Next five in ${untilTomorrow()}` : "";
-  const text = shareText(day.day_number, pts);
+  const text = `${shareText(day.day_number, pts)}
+${location.origin}`;
   const btn = $<HTMLButtonElement>("share");
   btn.textContent = "Share my score";
+  // the PNG is rendered up front: share() must run within the tap's user activation
+  let file: File | null = null;
+  let save = document.getElementById("save-image") as HTMLAnchorElement | null;
+  if (!save) {
+    save = el("a", "saveimg", "Save image");
+    save.id = "save-image"; save.hidden = true;
+    btn.after(save);
+  }
+  const link = save;
+  void shareCardFile({ dayNumber: day.day_number, points: pts, streak, site: location.host }).then((f) => {
+    file = f;
+    if (!f) return;
+    if (savedUrl) URL.revokeObjectURL(savedUrl);
+    savedUrl = URL.createObjectURL(f);
+    link.href = savedUrl; link.download = shareFileName(day.day_number); link.hidden = false;
+  });
   btn.onclick = async () => {
     try {
-      if (navigator.share) await navigator.share({ text: `${text}\n${location.origin}` });
-      else { await navigator.clipboard.writeText(`${text}\n${location.origin}`); btn.textContent = "Copied ✓"; }
+      const how = await shareScore(navigator, text, file);
+      if (how === "copied") btn.textContent = "Copied ✓";
     } catch { /* cancelled */ }
   };
+  renderStats($("done"), false);
   void renderArchive();
 }
 
@@ -73,6 +153,7 @@ async function start() {
   $("day-label").textContent = `Day #${day.day_number}${date !== realToday ? ` · ${date}` : ""}`;
   const done = history.days()[date];
   if (done) return finish(day, done);
+  renderStats($("intro"), true);
   void renderArchive();
   $<HTMLButtonElement>("play").onclick = async () => {
     history.setFlag("pm.howto");
@@ -84,6 +165,7 @@ async function start() {
       },
       day,
       history.player(),
+      (mo, res) => { try { history.record(date, toRecord(mo, res)); } catch { /* stats are best effort */ } },
     );
     history.finish(date, pts, date === realToday);
     finish(day, pts);

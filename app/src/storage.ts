@@ -1,5 +1,13 @@
 export interface KV { getItem(k: string): string | null; setItem(k: string, v: string): void }
-const KEY_ID = "pm.player", KEY_DAYS = "pm.days", KEY_LIVE = "pm.live";
+const KEY_ID = "pm.player", KEY_DAYS = "pm.days", KEY_LIVE = "pm.live", KEY_MOMENTS = "pm.moments";
+
+export type Zone = "build" | "middle" | "final";
+export type PickKind = "pass" | "carry" | "shot";
+/** One answered moment, as remembered for the personal stats (no positions, no names). */
+export interface MomentRecord {
+  id: string; points: number; among_best: boolean; pro_instinct: boolean; same_as_ai: boolean;
+  kind: PickKind; zone: Zone; league: string; outcome: "goal" | "shot" | "kept" | "lost";
+}
 
 /** Everything the game remembers lives in this browser only (no account). Storage failures (private mode, blocked
  * site data) fall back to memory for the session. */
@@ -19,6 +27,17 @@ export class History {
   finish(date: string, points: number[], live = true) {
     const d = this.days(); d[date] = points; this.set(KEY_DAYS, JSON.stringify(d));
     if (live) { const l = this.json<string[]>(KEY_LIVE, []); if (!l.includes(date)) l.push(date); this.set(KEY_LIVE, JSON.stringify(l)); }
+  }
+  /** Per-moment records by date (days played before records existed simply have none). */
+  moments(): Record<string, MomentRecord[]> {
+    const m = this.json<unknown>(KEY_MOMENTS, {});
+    return m && typeof m === "object" && !Array.isArray(m) ? (m as Record<string, MomentRecord[]>) : {};
+  }
+  /** Adds or replaces (same moment id) the record of one answered moment. */
+  record(date: string, rec: MomentRecord) {
+    const m = this.moments();
+    const list = Array.isArray(m[date]) ? m[date]!.filter((r) => r && r.id !== rec.id) : [];
+    list.push(rec); m[date] = list; this.set(KEY_MOMENTS, JSON.stringify(m));
   }
   streak(today: string): number {
     const live = new Set(this.json<string[]>(KEY_LIVE, []));

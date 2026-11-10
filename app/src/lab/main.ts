@@ -1,7 +1,8 @@
-// Lab page: picture -> people detection -> team colours -> 4-point pitch calibration -> top-down map -> lanes.
+// Lab page: picture -> people detection -> team colours -> 4-point pitch calibration -> top-down map -> AI coach.
 import { applyH, computeHomography, hasCollinearTriple, orientH, wOf, type Mat3, type Pt } from "./homography.ts";
 import { DEFAULT_LANDMARKS, LANDMARKS, PITCH, landmark, pitchLines } from "./landmarks.ts";
-import { feet, passingLanes, toPitch, type Person } from "./players.ts";
+import { feet, toPitch, type Person } from "./players.ts";
+import type { Advice, LoadedCoach } from "../coach/picture.ts"; // types only: the engine is loaded lazily
 import { meanColour, splitTeams, torsoBox, type RGB, type TeamLabel } from "./teams.ts";
 import { detectPeople, loadDetector } from "./detector.ts";
 import { drawScene, SCENE_H, SCENE_W } from "./scene.ts";
@@ -9,7 +10,8 @@ import { drawScene, SCENE_H, SCENE_W } from "./scene.ts";
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const MAX_SIDE = 1600;
 const PT_COLOURS = ["#ffd166", "#4cc9f0", "#ff9f1c", "#c77dff"];
-const LANE_COLOURS = { open: "#06d6a0", tight: "#ffd166", blocked: "#ef476f" } as const;
+const RANK_COLOURS = ["#06d6a0", "#4cc9f0", "#ffd166"];
+const TOP_N = 3;
 
 const src = document.createElement("canvas"); // the picture at working resolution
 const img = $<HTMLCanvasElement>("img"), top = $<HTMLCanvasElement>("top");
@@ -169,7 +171,7 @@ function toTop(p: Pt): Pt {
   return { x: (p.x + PITCH.halfL + TOP_M) * s, y: (PITCH.halfW + TOP_M - p.y) * s };
 }
 
-function drawTop(cal: Calib | null, pos: (Pt | null)[]) {
+function drawTop(cal: Calib | null, pos: (Pt | null)[], advice: Advice | null) {
   const ctx = top.getContext("2d")!, s = topScale();
   ctx.fillStyle = "#14532d"; ctx.fillRect(0, 0, top.width, top.height);
   for (let i = 0; i < 20; i += 2) {
@@ -194,13 +196,10 @@ function drawTop(cal: Calib | null, pos: (Pt | null)[]) {
       ctx.fill(); ctx.stroke(); ctx.restore();
     }
   }
-  // passing lanes
-  const lanes = laneData(pos);
-  if (lanes) for (const l of lanes.list) {
-    const a = toTop(lanes.from), b = toTop(pos[l.idx]!);
-    ctx.strokeStyle = LANE_COLOURS[l.rating]; ctx.lineWidth = s * 0.55; ctx.globalAlpha = 0.9;
-    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); ctx.globalAlpha = 1;
-  }
+  // AI coach: the top options as arrows from the carrier (drawn under the players, labels on top)
+  const top3 = advice && st.carrier !== null && pos[st.carrier] ? advice.ranked.slice(0, TOP_N) : [];
+  const from = top3.length ? toTop(pos[st.carrier!]!) : null;
+  for (let k = top3.length - 1; k >= 0; k--) arrow(ctx, from!, toTop(top3[k]!.to), RANK_COLOURS[k]!, s);
   const r = Math.max(6, s * 1.5);
   pos.forEach((p, i) => {
     if (!p) return;
@@ -214,6 +213,11 @@ function drawTop(cal: Calib | null, pos: (Pt | null)[]) {
     ctx.fillText(String(i + 1), q.x, q.y + 0.5);
   });
   ctx.textAlign = "start"; ctx.textBaseline = "alphabetic";
+  if (coachText) {
+    const m = coachText;
+    const placed: Rect[] = [];
+    top3.forEach((r, k) => tagAt(ctx, toTop(r.to), from!, `${k + 1} · ${m.pct(r.option.p)} · ${m.signedXg(r.option.score)}`, RANK_COLOURS[k]!, s, placed));
+  }
   if (!cal || "error" in cal) {
     ctx.fillStyle = "rgba(7,23,14,0.7)"; ctx.fillRect(0, 0, top.width, top.height);
     ctx.fillStyle = "#f1faee"; ctx.font = `600 ${s * 2.4}px system-ui, sans-serif`; ctx.textAlign = "center";
@@ -231,18 +235,66 @@ function sampleBorder(corners: Pt[]): Pt[] {
   return out;
 }
 
-function laneData(pos: (Pt | null)[]) {
-  const c = st.carrier;
-  if (c === null || !pos[c]) return null;
-  const team = st.labels[c];
-  if (team === undefined || team === "other") return null;
-  const mates = pos.map((p, i) => ({ p, i })).filter(({ p, i }) => p && i !== c && st.labels[i] === team);
-  const opps = pos.filter((p, i): p is Pt => !!p && st.labels[i] !== team && st.labels[i] !== "other");
-  const lanes = passingLanes(pos[c]!, mates.map((m) => m.p!), opps, st.dir);
-  return { from: pos[c]!, list: lanes.map((l) => ({ ...l, idx: mates[l.to]!.i })) };
+function arrow(ctx: CanvasRenderingContext2D, a: Pt, b: Pt, colour: string, s: number) {
+  const len = Math.hypot(b.x - a.x, b.y - a.y);
+  if (len < 1) return;
+  const ux = (b.x - a.x) / len, uy = (b.y - a.y) / len, head = Math.max(9, s * 1.6);
+  ctx.save();
+  ctx.strokeStyle = colour; ctx.fillStyle = colour; ctx.lineWidth = Math.max(3, s * 0.5); ctx.lineCap = "round";
+  ctx.shadowColor = "rgba(0,0,0,0.55)"; ctx.shadowBlur = 3;
+  ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x - ux * head * 0.8, b.y - uy * head * 0.8); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(b.x, b.y);
+  ctx.lineTo(b.x - ux * head - uy * head * 0.55, b.y - uy * head + ux * head * 0.55);
+  ctx.lineTo(b.x - ux * head + uy * head * 0.55, b.y - uy * head - ux * head * 0.55);
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
 }
 
-function renderSide(pos: (Pt | null)[]) {
+type Rect = { x: number; y: number; w: number; h: number };
+const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
+/** Label next to an arrow's end, on the far side from the carrier, kept inside the canvas and off earlier labels. */
+function tagAt(ctx: CanvasRenderingContext2D, end: Pt, from: Pt, text: string, colour: string, s: number, placed: Rect[]) {
+  ctx.save();
+  ctx.font = `700 ${Math.max(11, s * 1.7)}px system-ui, sans-serif`;
+  const w = ctx.measureText(text).width + 10, h = Math.max(17, s * 2.5);
+  let x = end.x >= from.x ? end.x + 6 : end.x - 6 - w, y = end.y - h - 4;
+  x = Math.max(2, Math.min(top.width - w - 2, x)); y = Math.max(2, Math.min(top.height - h - 2, y));
+  for (let k = 0; k < 6 && placed.some((p) => overlaps(p, { x, y, w, h })); k++) y = Math.min(top.height - h - 2, y + h + 3);
+  placed.push({ x, y, w, h });
+  ctx.fillStyle = "rgba(7,23,14,0.85)"; ctx.strokeStyle = colour; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.roundRect(x, y, w, h, 5); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = colour; ctx.textBaseline = "middle";
+  ctx.fillText(text, x + 5, y + h / 2 + 0.5);
+  ctx.restore();
+}
+
+// ---------- AI coach (lazy: the engine and its 6 kB of weights load on the first carrier tap) ----------
+type CoachMod = typeof import("../coach/picture.ts");
+let coachText: CoachMod | null = null, coachW: LoadedCoach | null = null, coachErr = "", coachLoading = false;
+function ensureCoach() {
+  if (coachW || coachLoading || coachErr) return;
+  coachLoading = true;
+  import("../coach/picture.ts")
+    .then(async (m) => { coachW = await m.loadCoach(new URL("coach/models.json", document.baseURI).href); coachText = m; })
+    .catch((e) => { console.error(e); coachErr = "The AI coach could not load its models (network?)."; })
+    .finally(() => { coachLoading = false; render(); });
+}
+
+type CoachView = { advice: Advice } | { msg: string } | null;
+function coachData(pos: (Pt | null)[]): CoachView {
+  const c = st.carrier;
+  if (c === null) return null;
+  const team = st.labels[c];
+  if (!pos[c] || team === undefined || team === "other") return { msg: "The carrier must be in team A or B and on the map (tap his box on the picture to change the team)." };
+  if (!coachW || !coachText) { ensureCoach(); return { msg: coachErr || "Loading the AI coach…" }; }
+  const ps = coachText.stateFromPicture(pos, st.labels, c, st.dir);
+  if (!ps) return { msg: "The carrier must be in team A or B and on the map." };
+  const advice = coachText.advise(ps, coachW.coach, coachW.models);
+  return advice ? { advice } : { msg: "No opponent on the map: the coach needs at least one defender (the other team)." };
+}
+
+function renderSide(pos: (Pt | null)[], view: CoachView) {
   const counts = { 0: 0, 1: 0, other: 0 } as Record<string, number>;
   st.labels.forEach((l) => counts[String(l)]!++);
   $("st-count").textContent = st.ms === null ? "–" : String(st.persons.length);
@@ -268,20 +320,43 @@ function renderSide(pos: (Pt | null)[]) {
       legend.append(w);
     }
   }
-  const ul = $("lanes");
-  ul.innerHTML = "";
-  const lanes = laneData(pos);
-  if (st.carrier !== null && !lanes) ul.innerHTML = "<li class='tight'>The carrier must be in team A or B and on the map.</li>";
-  if (lanes) {
-    for (const l of [...lanes.list].sort((a, b) => b.gap - a.gap)) {
+  const ol = $("coach-list");
+  ol.innerHTML = "";
+  if (view && "msg" in view) {
+    const li = document.createElement("li");
+    li.className = "msg"; li.textContent = view.msg;
+    ol.append(li);
+  } else if (view && coachText) {
+    const m = coachText, a = view.advice;
+    a.ranked.slice(0, TOP_N).forEach((r, k) => {
       const li = document.createElement("li");
-      li.className = l.rating;
-      const fwd = l.forward >= 0 ? `${l.forward.toFixed(0)} m forward` : `${(-l.forward).toFixed(0)} m back`;
-      const gap = Number.isFinite(l.gap) ? `nearest opponent ${l.gap.toFixed(1)} m from the line` : "no opponent on the map";
-      li.textContent = `→ #${l.idx + 1}: ${l.rating} · ${l.length.toFixed(0)} m pass, ${fwd} · ${gap}`;
-      ul.append(li);
+      li.className = `rank-${k + 1}`;
+      const head = document.createElement("div");
+      head.className = "head";
+      const num = document.createElement("span"); num.className = "num"; num.textContent = `${k + 1}.`;
+      const title = document.createElement("b"); title.textContent = m.optionTitle(r.option);
+      const ok = document.createElement("span"); ok.textContent = m.successLabel(r.option);
+      const val = document.createElement("span"); val.textContent = `value ${m.signedXg(r.option.score)}`;
+      head.append(num, title, ok, val);
+      const why = document.createElement("ul");
+      r.why.phrases.forEach((p, i) => {
+        const w = document.createElement("li");
+        const sign = r.why.signs[i];
+        w.className = sign === 1 ? "helps" : sign === -1 ? "hurts" : "val";
+        w.textContent = p;
+        why.append(w);
+      });
+      li.append(head, why);
+      ol.append(li);
+    });
+    const rest = a.ranked.length - TOP_N;
+    if (rest > 0) {
+      const li = document.createElement("li");
+      li.className = "msg";
+      const mates = a.ps.state.att.length - 1, opps = a.ps.state.def.length;
+      li.textContent = `${rest} other option${rest > 1 ? "s" : ""} ranked lower (${mates} teammate${mates === 1 ? "" : "s"} and ${opps} opponent${opps === 1 ? "" : "s"} on the map).`;
+      ol.append(li);
     }
-    if (!lanes.list.length) ul.innerHTML = "<li class='tight'>No teammate of the carrier on the map.</li>";
   }
 }
 
@@ -297,9 +372,10 @@ function render() {
       : `Tap point ${(st.active ?? 0) + 1} on the picture.`;
     calibMsg.classList.toggle("bad", !!cal && "error" in cal);
     const pos = mapped(cal);
+    const view = coachData(pos);
     drawImage(cal);
-    drawTop(cal, pos);
-    renderSide(pos);
+    drawTop(cal, pos, view && "advice" in view ? view.advice : null);
+    renderSide(pos, view);
   });
 }
 
@@ -429,11 +505,14 @@ top.addEventListener("pointerdown", (e) => {
   if (best >= 0) { st.carrier = best === st.carrier ? null : best; ($<HTMLDetailsElement>("opts")).open = true; render(); }
 });
 
-$("dir").addEventListener("click", () => {
-  st.dir = st.dir === 1 ? -1 : 1;
-  $("dir").textContent = st.dir === 1 ? "Attacking → right goal" : "Attacking ← left goal";
+function setDir(d: 1 | -1) {
+  st.dir = d;
+  $("dir-left").setAttribute("aria-pressed", String(d === -1));
+  $("dir-right").setAttribute("aria-pressed", String(d === 1));
   render();
-});
+}
+$("dir-left").addEventListener("click", () => setDir(-1));
+$("dir-right").addEventListener("click", () => setDir(1));
 $("clear-carrier").addEventListener("click", () => { st.carrier = null; render(); });
 $("reset-pts").addEventListener("click", () => { st.pts = [null, null, null, null]; st.active = 0; buildCalib(); render(); });
 $("detect").addEventListener("click", () => void runDetect());

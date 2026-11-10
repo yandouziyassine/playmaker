@@ -78,3 +78,18 @@ button:focus-visible, a:focus-visible, summary:focus-visible, .drop:focus-visibl
   .calib li { grid-template-columns: 2rem 1fr; }
   .calib .state { grid-column: 2; }
 }
+/* AI coach panel */
+.coach-tag { margin: 6px 0; padding: 6px 9px; border-radius: 8px; background: rgba(255, 209, 102, 0.12); color: var(--pro); font-size: 0.86rem; font-weight: 600; }
+.row-actions button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.coach-list { padding: 0; margin: 6px 0; list-style: none; display: grid; gap: 6px; font-size: 0.88rem; counter-reset: opt; }
+.coach-list > li { padding: 7px 10px; border-radius: 8px; background: rgba(255, 255, 255, 0.04); border-left: 4px solid var(--low); }
+.coach-list > li.rank-1 { border-color: var(--top); } .coach-list > li.rank-2 { border-color: var(--accent); } .coach-list > li.rank-3 { border-color: var(--pro); }
+.coach-list .head { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+.coach-list .head b { font-size: 0.95rem; }
+.coach-list .num { color: var(--muted); }
+.coach-list ul { margin: 4px 0 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+.coach-list .helps::before { content: "+ helps: "; color: var(--top); font-weight: 600; }
+.coach-list .hurts::before { content: "− hurts: "; color: var(--attack); font-weight: 600; }
+.coach-list .val { color: var(--muted); }
+.coach-list .val::before { content: "= "; }
+.coach-list .msg { border-color: var(--mid); }

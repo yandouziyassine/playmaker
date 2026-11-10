@@ -1,0 +1,244 @@
+{
+  "trained_without": "J03WOH",
+  "trained_on": [
+    "J03WMX",
+    "J03WN1",
+    "J03WOY",
+    "J03WPY",
+    "J03WQQ",
+    "J03WR9"
+  ],
+  "shot_trained_on": {
+    "idsse": [
+      "J03WMX",
+      "J03WN1",
+      "J03WOY",
+      "J03WPY",
+      "J03WQQ",
+      "J03WR9"
+    ],
+    "skillcorner_matches": 20,
+    "shots": 663
+  },
+  "pass": {
+    "features": [
+      "distance",
+      "forward",
+      "abs_angle",
+      "lane_defenders",
+      "receiver_space",
+      "passer_pressure",
+      "target_control",
+      "target_x",
+      "target_goal_dist"
+    ],
+    "link": "logit",
+    "mean": [
+      17.32257291080761,
+      4.0548781989394564,
+      1.3645557094394842,
+      0.3247807729782397,
+      9.210449437136187,
+      5.575801677352991,
+      0.8674821704535635,
+      -2.4730431982771304,
+      58.95170869591209
+    ],
+    "scale": [
+      9.365711189982473,
+      13.239025486704383,
+      0.8288675405674744,
+      0.5668151243545609,
+      5.974456069274494,
+      4.656595742552109,
+      0.2181326313886808,
+      22.237859936844714,
+      20.532910577768334
+    ],
+    "coef": [
+      -0.5270287279800459,
+      0.4891637386116371,
+      0.7474654626350026,
+      -0.09878565589918344,
+      1.801978055692933,
+      0.34682358274141956,
+      -0.1451903900827787,
+      0.7075305910861813,
+      0.7457659095652365
+    ],
+    "intercept": 2.3466384232820774
+  },
+  "value": {
+    "features": [
+      "x",
+      "abs_y",
+      "goal_dist",
+      "goal_angle",
+      "in_box",
+      "near_goal",
+      "mid_goal",
+      "far_goal",
+      "x_sq",
+      "angle_near"
+    ],
+    "link": "identity",
+    "mean": [
+      -4.895648672918374,
+      16.651850685516838,
+      61.62244359366788,
+      0.12715494879558029,
+      0.04000623473788123,
+      0.01235721608997802,
+      0.08734162208466532,
+      0.3242427485727102,
+      0.24541175934111198,
+      0.006169653478951012
+    ],
+    "scale": [
+      25.5430770612174,
+      9.938621940936423,
+      22.922566506026218,
+      0.10871860400116126,
+      0.19597381437315967,
+      0.0494667134495436,
+      0.11353852052481554,
+      0.1550001282107771,
+      0.2547023634608305,
+      0.06591202517278245
+    ],
+    "coef": [
+      -5.558751520390425e-05,
+      -0.00026581083282128763,
+      -0.009148509042093517,
+      0.003206098392575322,
+      0.0009296927098180246,
+      -0.0055159547001266745,
+      0.008270847662521418,
+      -0.008281700682616302,
+      0.0026052643277882253,
+      -0.001525742123081685
+    ],
+    "intercept": 0.004544905699589553,
+    "horizon_s": 15.0,
+    "target": "net expected goals (provider xG for minus against) within horizon_s, team in possession",
+    "basis": {
+      "x": "x (m, attacking towards +x, goal centre at 52.5)",
+      "abs_y": "|y| (m)",
+      "goal_dist": "distance to the goal centre (m)",
+      "goal_angle": "angle between the posts seen from the point (rad)",
+      "in_box": "1 inside the penalty area (|y| < 20.16 and x > 36), else 0",
+      "near_goal": "exp(-goal_dist / 8)",
+      "mid_goal": "exp(-goal_dist / 20)",
+      "far_goal": "exp(-goal_dist / 50)",
+      "x_sq": "(x / 52.5)^2",
+      "angle_near": "goal_angle * near_goal"
+    }
+  },
+  "arrival": {
+    "features": [
+      "x",
+      "abs_y",
+      "goal_dist",
+      "goal_angle",
+      "in_box",
+      "near_goal",
+      "mid_goal",
+      "far_goal",
+      "x_sq",
+      "angle_near"
+    ],
+    "link": "identity",
+    "mean": [
+      -4.236664129479278,
+      17.086306147830612,
+      60.750764119301586,
+      0.12439028624088172,
+      0.012947448591012947,
+      0.006390911416092015,
+      0.077667745383726,
+      0.3216377431198259,
+      0.18479973150778797,
+      0.0019017114396696164
+    ],
+    "scale": [
+      22.167655199012934,
+      9.816290122979792,
+      20.201486629467432,
+      0.05750078232274265,
+      0.1130478313192942,
+      0.02237268213606529,
+      0.08303615763533434,
+      0.13068270505742963,
+      0.20833618669235524,
+      0.011436604765149046
+    ],
+    "coef": [
+      -0.00949642898676426,
+      -0.0008831466096827293,
+      -0.0026326349773903015,
+      -0.0018204861835995683,
+      -0.0029530024586825227,
+      -0.002947831729332124,
+      0.010783758744172773,
+      0.007625005485041925,
+      -0.0006250807233677199,
+      0.005580709182802749
+    ],
+    "intercept": 0.006087242955064751,
+    "horizon_s": 15.0,
+    "target": "net expected goals within horizon_s after a COMPLETED pass, at the target's position at the release; used for the V(target) of pass options only",
+    "basis": {
+      "x": "x (m, attacking towards +x, goal centre at 52.5)",
+      "abs_y": "|y| (m)",
+      "goal_dist": "distance to the goal centre (m)",
+      "goal_angle": "angle between the posts seen from the point (rad)",
+      "in_box": "1 inside the penalty area (|y| < 20.16 and x > 36), else 0",
+      "near_goal": "exp(-goal_dist / 8)",
+      "mid_goal": "exp(-goal_dist / 20)",
+      "far_goal": "exp(-goal_dist / 50)",
+      "x_sq": "(x / 52.5)^2",
+      "angle_near": "goal_angle * near_goal"
+    }
+  },
+  "shot": {
+    "features": [
+      "goal_dist",
+      "goal_angle",
+      "cone_defenders"
+    ],
+    "link": "logit",
+    "mean": [
+      17.080906694184566,
+      0.42509472442860563,
+      1.5761689291101055
+    ],
+    "scale": [
+      7.138719691281368,
+      0.240319655634727,
+      0.9384556720410574
+    ],
+    "coef": [
+      -0.4735368876697066,
+      0.3475391369695274,
+      -0.29705340289812904
+    ],
+    "intercept": -2.355815688838875
+  },
+  "pitch_control": {
+    "reaction": 0.7,
+    "vmax": 5.0,
+    "sigma": 0.45
+  },
+  "advice": {
+    "carry_dist": 6.0,
+    "carry_angles_deg": [
+      -60,
+      -30,
+      0,
+      30,
+      60
+    ],
+    "shot_range": 35.0,
+    "score": "p * V(target) + (1 - p) * (-V_opp(loss point)) - V(now); shot: xG - V(now); V(target) of a pass = the arrival model, of a carry = the value model"
+  }
+}

@@ -65,15 +65,25 @@
           <canvas id="top" class="topdown" aria-label="Top-down pitch with the detected players"></canvas>
           <div id="legend" class="legend"></div>
           <details class="opts" id="opts">
-            <summary>Passing options (experimental)</summary>
-            <p class="fine">Tap the ball carrier on the pitch above, then choose the attacking direction.</p>
-            <div class="row-actions">
-              <button id="dir" class="ghost" type="button">Attacking → right goal</button>
+            <summary>AI coach: the carrier's best options</summary>
+            <p class="coach-tag" id="coach-tag">AI coach (model opinion), from a single picture: positions are approximate.</p>
+            <p class="fine">Tap the ball carrier on the pitch above, then pick the goal their team attacks on the picture.</p>
+            <div class="row-actions" role="group" aria-label="Attacking direction">
+              <button id="dir-left" class="ghost" type="button" aria-pressed="false">← Attacks the left goal</button>
+              <button id="dir-right" class="ghost" type="button" aria-pressed="true">Attacks the right goal →</button>
               <button id="clear-carrier" class="ghost" type="button">Clear</button>
             </div>
-            <ul id="lanes" class="lanes"></ul>
-            <p class="fine">Lane colour = distance from the nearest opponent to the straight pass line (open ≥ 4 m, tight ≥ 2 m,
-              blocked &lt; 2 m). A cheap proxy: it ignores speeds, pass height, body shape and players off the picture.</p>
+            <p class="hint" id="coach-still">Standing still: no velocities from a single picture.</p>
+            <ol id="coach-list" class="coach-list" aria-live="polite"></ol>
+            <p class="fine">Arrows on the map: the top 3 options (1 = best). Success = the pass arrives, the team keeps the ball
+              after the carry, or the shot is a goal. Value = the coach's score, the expected change in net expected goals (xG).
+              The carrier's team attacks, the other team defends; "other" (referee, keepers?) is ignored. Players off the picture
+              are missing, so lanes can look more open than they are.</p>
+            <p class="fine" id="coach-credit">Models: logistic and ridge regressions (pass, possession value, shot) and a
+              closed-form pitch control, trained on Bundesliga tracking and event data, Bassek et al. (2025), DFL / Sportec
+              Solutions, <a href="https://doi.org/10.6084/m9.figshare.28196177" target="_blank" rel="noopener">IDSSE dataset</a>
+              (CC BY 4.0), and shots from <a href="https://github.com/SkillCorner/opendata" target="_blank" rel="noopener">SkillCorner
+              open data</a> (MIT). Weights: <a href="/coach/models.json">coach/models.json</a>.</p>
           </details>
         </section>
       </div>

@@ -8,12 +8,15 @@ export interface Answer {
 }
 export type Cm = [number, number] | null;
 export interface After { fps: number; frames: Cm[][]; ball: Cm[] }
-export interface PickRequest { player: string; moment: string; option: number }
+/** `guess`: the option the player thinks the pro chose (second question); null for clients that predate it. */
+export interface PickRequest { player: string; moment: string; option: number; guess: number | null }
 export interface PickResult {
   option: number; points: number; among_best: boolean; pro_instinct: boolean; ai_pick: number; pro_pick: number;
   outcome: Answer["outcome"]; reasons: Record<number, Reason[]>; crowd: Record<number, number> | null; repeat: boolean; all_points: Record<number, number>; after: After | null;
+  /** The recorded guess of the pro's choice and whether it matches the real pass (null when no guess was sent). */
+  guess: number | null; guess_right: boolean | null;
 }
-export interface StoredPick { option: number; points: number; at: string }
+export interface StoredPick { option: number; points: number; at: string; guess?: number | null }
 export interface Store {
   getPick(player: string, moment: string): Promise<StoredPick | null>;
   putPickIfAbsent(player: string, moment: string, pick: StoredPick): Promise<boolean>;

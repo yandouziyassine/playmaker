@@ -12,6 +12,8 @@ export interface PickResult {
   outcome: { kind: "goal" | "shot" | "kept" | "lost"; net_xg_15s: number };
   reasons: Record<number, Reason[]>; crowd: Record<number, number> | null; repeat: boolean; all_points: Record<number, number>;
   after: { fps: number; frames: ([number, number] | null)[][]; ball: ([number, number] | null)[] } | null;
+  /** Second question: the recorded guess of the pro's choice, and whether it was the real pass (null: no guess sent). */
+  guess: number | null; guess_right: boolean | null;
 }
 export interface DayIndex { days: { date: string; day_number: number }[] }
 export const getIndex = () => fetch("/content/days/index.json").then(json<DayIndex>);
@@ -20,5 +22,9 @@ export const localDate = (d = new Date()) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 export const getDay = (date: string) => fetch(`/content/days/${date}.json`).then(json<Day>);
 export const getMoment = (id: string) => fetch(`/content/moments/${id}.json`).then(json<Moment>);
-export const postPick = (player: string, moment: string, option: number) =>
-  fetch("/api/pick", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ player, moment, option }) }).then(json<PickResult>);
+/** `guess`: the answer to "What did the pro actually do?" (omitted from the body when null). */
+export const postPick = (player: string, moment: string, option: number, guess: number | null) =>
+  fetch("/api/pick", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify(guess === null ? { player, moment, option } : { player, moment, option, guess }),
+  }).then(json<PickResult>);

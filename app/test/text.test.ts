@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import type { Moment, PickResult } from "../src/api.ts";
-import { optionLabel, progress, tier, verdict } from "../src/text.ts";
+import { optionLabel, progress, proReadLine, readsText, tier, verdict } from "../src/text.ts";
 
 const mo = {
   players: [{ side: 0, shirt: 10, name: "A. Ten" }, { side: 0, shirt: 9, name: "B. Nine" }],
@@ -26,4 +26,13 @@ it("tiers, verdicts and progress", () => {
   expect(verdict(r, 1)).toBe("Close call: as good as the AI's pick");
   expect(verdict({ ...r, among_best: false, points: 20 }, 1)).toBe("The AI saw better options");
   expect(progress([100, 30], 5)).toEqual(["top", "low", "now", "todo", "todo"]);
+});
+
+it("second question: pro read line and done-screen count", () => {
+  const r = { pro_pick: 0, guess: 0, guess_right: true } as PickResult;
+  expect(proReadLine(mo, r)).toEqual({ cls: "ok", text: "👁 You read the pro ✓" });
+  expect(proReadLine(mo, { ...r, guess: 4, guess_right: false })).toEqual({ cls: "miss", text: "👁 The pro played Pass to #9 B. Nine · your read: Shoot" });
+  expect(proReadLine(mo, { ...r, guess: null, guess_right: null })).toBeNull();
+  expect(proReadLine(mo, { pro_pick: 0 } as PickResult)).toBeNull(); // older server: no guess fields
+  expect(readsText(3, 5)).toBe("👁 Pro reads 3/5");
 });

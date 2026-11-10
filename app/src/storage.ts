@@ -7,6 +7,8 @@ export type PickKind = "pass" | "carry" | "shot";
 export interface MomentRecord {
   id: string; points: number; among_best: boolean; pro_instinct: boolean; same_as_ai: boolean;
   kind: PickKind; zone: Zone; league: string; outcome: "goal" | "shot" | "kept" | "lost";
+  /** Second question: did the player guess the pro's real pass? Missing/null on records from before it existed. */
+  guess_right?: boolean | null;
 }
 
 /** Everything the game remembers lives in this browser only (no account). Storage failures (private mode, blocked

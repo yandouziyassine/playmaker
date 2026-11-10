@@ -1,6 +1,6 @@
 import { getMoment, postPick, type Day, type Moment, type PickResult } from "./api.ts";
 import { ballTrail, draw as draw2D, hitOption, optionTargets, type View } from "./pitch.ts";
-import { OUTCOME_TEXT, optionLabel, pct, progress, tier, verdict } from "./text.ts";
+import { OUTCOME_TEXT, optionLabel, pct, progress, proReadLine, tier, verdict } from "./text.ts";
 import { is3D, on3DChange, paint3D, setup3D } from "./view3d/toggle.ts";
 import type { Overlay3D as Overlay } from "./view3d/geom.ts";
 
@@ -45,8 +45,27 @@ async function playLeadUp(ctx: CanvasRenderingContext2D, v: View, mo: Moment) {
   }
 }
 
-/** Waits for a confirmed choice: tap a target (teammate, carry dot, goal) or a list button, then Confirm. */
-function choose(ui: RoundUI, ctx: CanvasRenderingContext2D, v: View, mo: Moment): Promise<number> {
+/** One question of a moment: a step tag ("1/2 · Your call") and the hints for the 2D pitch and the 3D view. */
+interface Question { tag: string; tap: string; list: string }
+export const Q_YOU: Question = {
+  tag: "1/2 · What would you do?",
+  tap: "Tap a teammate to pass, a yellow arrow to carry, or the goal to shoot.",
+  list: "Through the carrier's eyes: pick an option from the list below.",
+};
+export const Q_PRO: Question = {
+  tag: "2/2 · What did the pro actually do?",
+  tap: "Your pick is locked in. The pro passed here: tap the teammate who got the ball.",
+  list: "Your pick is locked in. The pro passed here: pick the receiver from the list below.",
+};
+
+function setHint(ui: RoundUI, q: Question, text: string) {
+  ui.hint.innerHTML = "";
+  ui.hint.append(el("b", "qtag", q.tag), document.createTextNode(" " + text));
+}
+
+/** Waits for a confirmed choice: tap a target (teammate, carry dot, goal) or a list button, then Confirm.
+ * `mo` may be a copy restricted to some options (the second question offers passes only). */
+function choose(ui: RoundUI, ctx: CanvasRenderingContext2D, v: View, mo: Moment, q: Question = Q_YOU): Promise<number> {
   const release = mo.lead_up[mo.lead_up.length - 1]!;
   const ball = mo.ball[mo.ball.length - 1] ?? null;
   const targets = optionTargets(v, mo);
@@ -61,8 +80,7 @@ function choose(ui: RoundUI, ctx: CanvasRenderingContext2D, v: View, mo: Moment)
   ui.list.append(details);
   const modeHint = () => { // in 3D the pitch is not tappable: the list is the way to choose
     if (is3D()) details.open = true;
-    ui.hint.textContent = is3D() ? "Through the carrier's eyes: pick an option from the list below."
-      : "Tap a teammate to pass, a yellow arrow to carry, or the goal to shoot.";
+    setHint(ui, q, is3D() ? q.list : q.tap);
   };
   modeHint();
   on3DChange(modeHint);
@@ -114,6 +132,8 @@ function renderReveal(ui: RoundUI, mo: Moment, res: PickResult, pick: number, re
   const head = el("div", `points ${tier(res.points)}`);
   head.append(el("strong", "", String(res.points)), el("span", "", " points"));
   r.append(head, el("p", "verdict", verdict(res, pick) + (res.pro_instinct ? " · 🧠 Pro instinct" : "")));
+  const read = proReadLine(mo, res);
+  if (read) r.append(el("p", `proread ${read.cls}`, read.text));
   const rows = el("div", "rows");
   const row = (cls: string, who: string, k: number, extra = "") => {
     const d = el("div", `row ${cls}`);
@@ -163,9 +183,12 @@ export async function playMoment(ui: RoundUI, mo: Moment, player: string, index:
   ui.reveal.hidden = true; ui.next.hidden = true; ui.actions.innerHTML = ""; ui.list.innerHTML = "";
   ui.hint.textContent = "Watch the build-up…";
   await playLeadUp(ctx, v, mo);
-  const pick = await choose(ui, ctx, v, mo);
+  const pick = await choose(ui, ctx, v, mo, Q_YOU);
+  // second question, nothing revealed yet: the pro always passed in these moments, so only passes are offered
+  const passes = mo.options.filter((o) => o.kind === "pass");
+  const guess = passes.length ? await choose(ui, ctx, v, { ...mo, options: passes }, Q_PRO) : null;
   ui.hint.textContent = "Checking…";
-  const res = await postPick(player, mo.id, pick);
+  const res = await postPick(player, mo.id, pick, guess);
   const mine = res.option; // the first answer counts: a replayed moment shows the original pick
   try { navigator.vibrate?.(res.points >= 100 ? [30, 40, 30] : 20); } catch { /* not supported */ }
   ui.hint.textContent = res.after ? "What really happened next:" : "";

@@ -21,7 +21,14 @@ export function toRecord(mo: Moment, res: PickResult): MomentRecord {
   return {
     id: mo.id, points: res.points, among_best: res.among_best, pro_instinct: res.pro_instinct,
     same_as_ai: res.option === res.ai_pick, kind, zone: zoneOf(pos?.[0]), league: mo.league, outcome: res.outcome.kind,
+    guess_right: typeof res.guess_right === "boolean" ? res.guess_right : null,
   };
+}
+
+/** Second-question score of a set of records ("Pro reads 3/5"); null when none of them has a guess. */
+export function proReads(recs: unknown): { right: number; of: number } | null {
+  const known = (Array.isArray(recs) ? recs : []).filter((r) => valid(r) && typeof r.guess_right === "boolean") as MomentRecord[];
+  return known.length ? { right: known.filter((r) => r.guess_right).length, of: known.length } : null;
 }
 
 export interface Bucket { n: number; avg: number | null }
@@ -30,6 +37,8 @@ export interface Stats {
   avgDay: number | null; bestDay: { date: string; total: number } | null;
   /** Shares in [0, 1] (null when there is nothing to count). */
   perfect: number | null; proInstinct: number | null; aiAgree: number | null;
+  /** Share of second-question guesses that matched the pro's real pass, over `proReadN` moments with a guess. */
+  proRead: number | null; proReadN: number;
   byZone: Record<Zone, Bucket>; byKind: Record<PickKind, Bucket>;
   shots: { chosen: number; aiAgreed: number };
   insight: string;
@@ -64,6 +73,7 @@ export function computeStats(days: Record<string, number[]>, moments: Record<str
   const byZone = Object.fromEntries(ZONES.map((z) => [z, bucket(recs.filter((r) => r.zone === z))])) as Record<Zone, Bucket>;
   const byKind = Object.fromEntries(KINDS.map((k) => [k, bucket(recs.filter((r) => r.kind === k))])) as Record<PickKind, Bucket>;
   const shotRecs = recs.filter((r) => r.kind === "shot");
+  const reads = proReads(recs);
   const s: Stats = {
     games: totals.length, moments: recs.length,
     avgDay: totals.length ? Math.round(sum(totals.map((t) => t.total)) / totals.length) : null,
@@ -71,6 +81,7 @@ export function computeStats(days: Record<string, number[]>, moments: Record<str
     perfect: ratio(allPoints.filter((p) => p >= 100).length, allPoints.length),
     proInstinct: ratio(recs.filter((r) => r.pro_instinct).length, recs.length),
     aiAgree: ratio(recs.filter((r) => r.same_as_ai).length, recs.length),
+    proRead: reads ? reads.right / reads.of : null, proReadN: reads?.of ?? 0,
     byZone, byKind,
     shots: { chosen: shotRecs.length, aiAgreed: shotRecs.filter((r) => r.same_as_ai).length },
     insight: "",
@@ -103,7 +114,13 @@ export function insightFor(s: Stats): string {
   const pass = s.byKind.pass, carry = s.byKind.carry;
   if (pass.n >= MIN_PER_BUCKET && carry.n >= MIN_PER_BUCKET && pass.avg! - carry.avg! >= 20)
     return `Your carries average ${carry.avg} against ${pass.avg} for passes: release the ball a touch earlier.`;
-  // 4. strong reads
+  // 4. reading the pros (second question, objective: the real pass)
+  if (s.proRead != null && s.proReadN >= MIN_FOR_INSIGHT) {
+    const p = Math.round(s.proRead * 100);
+    if (s.proRead >= 0.6) return `You read the pros: you guessed their real pass in ${p} % of moments.`;
+    if (s.proRead <= 0.2) return `The pros keep surprising you (${p} % of reads right): watch which teammate is free just before the release.`;
+  }
+  // 5. strong reads
   if (s.proInstinct != null && s.proInstinct >= 0.5)
     return `Pro instinct: you made the pro's choice in ${Math.round(s.proInstinct * 100)} % of moments.`;
   if (s.aiAgree != null && s.aiAgree >= 0.5)

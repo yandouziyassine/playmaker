@@ -27,9 +27,13 @@
         <summary>How to play</summary>
         <ol>
           <li>Watch 3 seconds of real play. The ball carrier has a yellow ring; your team (red) attacks up the screen.</li>
-          <li>Tap a teammate to pass, a yellow arrow to carry the ball, or the goal to shoot. Then <b>Confirm</b>.</li>
-          <li>100 points if your choice is among the best according to the AI coach. When the coach cannot tell two
-            options apart, both score 100.</li>
+          <li><b>Question 1: what would you do?</b> Tap a teammate to pass, a yellow arrow to carry the ball, or the goal
+            to shoot. Then <b>Confirm</b>.</li>
+          <li><b>Question 2: what did the pro actually do?</b> The pro passed in every moment: tap the teammate you think
+            got the ball, then <b>Confirm</b>.</li>
+          <li>Question 1 scores up to 100 points if your choice is among the best according to the AI coach (when the coach
+            cannot tell two options apart, both score 100). Question 2 is right or wrong, checked against the real pass:
+            your "Pro reads" out of 5.</li>
           <li>Then watch what really happened. One game a day, same moments for everyone.</li>
         </ol>
       </details>
@@ -54,6 +58,7 @@
       <p class="label">Your score</p>
       <p class="total"><span id="total"></span><small>/500</small></p>
       <p id="squares" class="squares"></p>
+      <p id="reads" class="reads" hidden></p>
       <p id="streak"></p>
       <button id="share" class="primary big">Share my score</button>
       <p id="next-in" class="fine"></p>

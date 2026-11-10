@@ -9,6 +9,12 @@
 <body>
   <main>
     <h1>About Playmaker</h1>
+    <h2>Two questions per moment</h2>
+    <p><b>1. What would you do?</b> Your choice is scored by the AI coach below, from 0 to 100 points (500 a day).</p>
+    <p><b>2. What did the pro actually do?</b> Then guess the pass the professional really played (in these moments the
+      pro always passed, so only passes are offered). This one needs no model: it is right or wrong, checked against the
+      real match. Your "Pro reads" (out of 5) are the honest, model-free half of your score.</p>
+    <p>Nothing is revealed between the two questions: both answers are sent together, and your first answers count.</p>
     <h2>The AI coach</h2>
     <p>Every moment comes from a real professional match. For each option (a pass to each teammate, a carry, a shot) the
       coach estimates the chance it works and what it is worth in expected goals over the next 15 seconds, minus what is
@@ -25,7 +31,7 @@
     <p>The AI's pick is a model opinion, not the truth. What really happened next is always shown.</p>
     <h2>Privacy</h2>
     <p>No account, no email, no cookie. Your browser keeps a random id, your streak and your history. The server stores
-      your anonymous pick for each moment (to stop answer changes and to show how other players chose). Your IP address
+      your anonymous pick and pro guess for each moment (to stop answer changes and to show how other players chose). Your IP address
       is never stored: a salted hash of it is kept for one day to limit abuse.</p>
     <h2>Data and code</h2>
     <p>Bundesliga tracking and event data: Bassek et al. (2025), DFL / Sportec Solutions, CC BY 4.0.

@@ -80,3 +80,8 @@ footer { max-width: 520px; margin: 0 auto; padding: 8px 16px 28px; }
 .reasons .plus .icon { background: rgba(6, 214, 160, 0.2); color: var(--top); }
 .reasons .minus .icon { background: rgba(239, 71, 111, 0.2); color: var(--attack); }
 .reasons .value .icon { background: rgba(76, 201, 240, 0.18); color: var(--accent); }
+.hint .qtag { display: block; color: var(--fg); font: 700 0.95rem/1.25 var(--display); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px; }
+.proread { margin: -4px 0 10px; padding: 6px 10px; border-radius: 10px; font-weight: 600; font-size: 0.92rem; border-left: 4px solid var(--pro); background: rgba(255, 209, 102, 0.08); }
+.proread.ok { color: var(--pro); }
+.proread.miss { color: var(--fg); border-left-color: var(--low); background: rgba(255, 255, 255, 0.04); }
+.reads { font: 700 1.25rem/1.2 var(--display); text-transform: uppercase; letter-spacing: 0.04em; color: var(--pro); margin: 0 0 10px; }

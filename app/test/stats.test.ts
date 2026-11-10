@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Moment, PickResult } from "../src/api.ts";
-import { computeStats, insightFor, toRecord, zoneOf } from "../src/stats.ts";
+import { computeStats, insightFor, proReads, toRecord, zoneOf } from "../src/stats.ts";
 import type { MomentRecord } from "../src/storage.ts";
 
 let seq = 0;
@@ -36,8 +36,13 @@ describe("toRecord", () => {
   it("keeps the recorded pick, the zone from the carrier's release x, and AI agreement", () => {
     expect(toRecord(mo, res)).toEqual({
       id: "m1", points: 60, among_best: false, pro_instinct: true, same_as_ai: false,
-      kind: "shot", zone: "final", league: "Bundesliga", outcome: "shot",
+      kind: "shot", zone: "final", league: "Bundesliga", outcome: "shot", guess_right: null,
     });
+  });
+
+  it("keeps whether the pro was read right (second question)", () => {
+    expect(toRecord(mo, { ...res, guess: 0, guess_right: false })).toMatchObject({ guess_right: false });
+    expect(toRecord(mo, { ...res, guess: 1, guess_right: true })).toMatchObject({ guess_right: true });
   });
 
   it("falls back to the ball when the carrier is missing", () => {
@@ -81,6 +86,20 @@ describe("computeStats", () => {
   });
 });
 
+describe("pro reads (second question)", () => {
+  it("counts only records with a guess; null when there are none", () => {
+    expect(proReads(undefined)).toBeNull();
+    expect(proReads([rec(), rec({ guess_right: null })])).toBeNull();
+    expect(proReads([rec({ guess_right: true }), rec({ guess_right: false }), rec({ guess_right: true }), rec(), null])).toEqual({ right: 2, of: 3 });
+  });
+  it("adds the pro-read rate to the stats, old records still work", () => {
+    const s = computeStats({ d: [100, 0] }, { d: [rec({ guess_right: true }), rec({ guess_right: false }), rec({ guess_right: true }), rec()] });
+    expect(s.proRead).toBeCloseTo(2 / 3);
+    expect(s.proReadN).toBe(3);
+    expect(computeStats({ d: [100] }, { d: [rec()] })).toMatchObject({ proRead: null, proReadN: 0 });
+  });
+});
+
 describe("insight rules", () => {
   const days = { d: [100, 100, 100, 100, 100] };
 
@@ -92,6 +111,15 @@ describe("insight rules", () => {
   it("flags weak carries when the zones are even", () => {
     const s = computeStats(days, { d: [rec(), rec(), rec({ kind: "carry", points: 0 }), rec({ kind: "carry", points: 50 }), rec()] });
     expect(s.insight).toMatch(/^Your carries average 25 against 100 for passes/);
+  });
+
+  it("praises strong pro reads and flags weak ones (before the pro instinct)", () => {
+    const good = computeStats(days, { d: Array.from({ length: 5 }, (_, i) => rec({ guess_right: i < 4, pro_instinct: true })) });
+    expect(good.insight).toBe("You read the pros: you guessed their real pass in 80 % of moments.");
+    const bad = computeStats(days, { d: Array.from({ length: 5 }, () => rec({ guess_right: false })) });
+    expect(bad.insight).toMatch(/^The pros keep surprising you \(0 % of reads right\)/);
+    const few = computeStats(days, { d: [...Array.from({ length: 4 }, () => rec({ guess_right: false })), rec()] });
+    expect(few.insight).toMatch(/like the AI coach/); // fewer than 5 guesses: no read insight yet
   });
 
   it("praises the pro instinct, then AI agreement", () => {

@@ -1,17 +1,28 @@
 import { expect, test } from "@playwright/test";
 
-test("plays a full day: select, confirm, reveal, recap", async ({ page }) => {
+test("plays a full day: both questions, reveal, recap", async ({ page }) => {
   await page.goto("/?date=2026-12-01&today=2026-12-01");
   await expect(page.locator("#howto")).toHaveAttribute("open", "");
   await page.getByRole("button", { name: "Play today's five" }).click();
   for (let i = 0; i < 5; i++) {
     const confirm = page.getByRole("button", { name: "Confirm" });
     await expect(confirm).toBeDisabled({ timeout: 15_000 });
+    await expect(page.locator("#hint")).toContainText("What would you do?");
     await page.getByText("Choose from a list").click();
     await page.locator(".opt").first().click();
     await expect(confirm).toBeEnabled();
     await confirm.click();
+    // question 2: nothing revealed yet, passes only
     const reveal = page.locator("#reveal");
+    await expect(page.locator("#hint")).toContainText("What did the pro actually do?");
+    await expect(reveal).toBeHidden();
+    await expect(confirm).toBeDisabled();
+    await page.getByText("Choose from a list").click();
+    for (const label of await page.locator(".opt").allTextContents()) expect(label).toMatch(/^Pass to /);
+    await page.locator(".opt").first().click();
+    await expect(confirm).toBeEnabled();
+    await confirm.click();
+    await expect(reveal.locator(".proread")).toHaveText(/You read the pro ✓|The pro played Pass to /);
     await expect(reveal).toContainText("points");
     await expect(reveal).toContainText("AI coach");
     await expect(reveal).toContainText("The pro");
@@ -21,9 +32,11 @@ test("plays a full day: select, confirm, reveal, recap", async ({ page }) => {
   }
   await expect(page.locator("#total")).toHaveText(/^\d+$/);
   await expect(page.locator("#squares")).toHaveText(/^([🟩🟨⬜] ?){5}$/u);
+  await expect(page.locator("#reads")).toHaveText(/^👁 Pro reads [0-5]\/5$/u);
   await expect(page.locator("#streak")).toContainText("Streak: 1 day");
   await page.reload();
   await expect(page.locator("#done")).toBeVisible();
+  await expect(page.locator("#reads")).toHaveText(/^👁 Pro reads [0-5]\/5$/u);
   await expect(page.locator("#howto")).not.toHaveAttribute("open", "");
 });
 

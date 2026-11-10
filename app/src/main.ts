@@ -2,7 +2,8 @@ import { getDay, getIndex, localDate, type Day } from "./api.ts";
 import { playDay } from "./round.ts";
 import { shareText, square } from "./share.ts";
 import { shareCardFile, shareFileName, shareScore } from "./shareImage.ts";
-import { computeStats, KIND_LABEL, KINDS, ZONE_LABEL, ZONES, toRecord, type Bucket } from "./stats.ts";
+import { computeStats, KIND_LABEL, KINDS, proReads, ZONE_LABEL, ZONES, toRecord, type Bucket } from "./stats.ts";
+import { readsText } from "./text.ts";
 import { History } from "./storage.ts";
 import "./stats.css";
 
@@ -81,11 +82,11 @@ function renderStats(host: HTMLElement, compact: boolean) {
     tile(s.bestDay ? `${s.bestDay.total}` : "–", "Best day");
     tile(pctText(s.perfect), "Perfect picks", "top");
   } else {
-    tile(`${s.games}`, "Played");
+    tile(s.proRead == null ? "–" : `${Math.round(s.proRead * 100)}%`, "Pro reads", "pro"); // games are in the header
     tile(s.avgDay == null ? "–" : `${s.avgDay}`, "Avg day");
     tile(s.bestDay ? `${s.bestDay.total}` : "–", "Best day");
     tile(pctText(s.perfect), "Scored 100", "top");
-    tile(pctText(s.proInstinct), "Pro instinct", "pro");
+    tile(pctText(s.proInstinct), "Pro instinct");
     tile(pctText(s.aiAgree), "Same as AI", "ai");
   }
   card.append(head, tiles);
@@ -107,9 +108,12 @@ function finish(day: Day, pts: number[]) {
   const streak = history.streak(realToday);
   $("total").textContent = `${total}`;
   $("squares").textContent = pts.map(square).join(" ");
+  const reads = proReads(history.moments()[date]); // from the per-moment records (null for days played before question 2)
+  $("reads").textContent = reads ? readsText(reads.right, reads.of) : "";
+  $("reads").hidden = !reads;
   $("streak").textContent = `🔥 Streak: ${streak} day${streak === 1 ? "" : "s"}`;
   $("next-in").textContent = date === realToday ? `Next five in ${untilTomorrow()}` : "";
-  const text = `${shareText(day.day_number, pts)}
+  const text = `${shareText(day.day_number, pts, reads)}
 ${location.origin}`;
   const btn = $<HTMLButtonElement>("share");
   btn.textContent = "Share my score";

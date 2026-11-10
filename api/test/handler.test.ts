@@ -19,12 +19,32 @@ const deps = (over: Partial<Deps> = {}): Deps => ({
   momentDate: async (m) => (m === "M1" ? "2026-12-01" : null), today: () => "2026-12-01", ipHash: (ip) => "h" + ip, ...over,
 });
 const body = (player: string, option: number, moment = "M1") => JSON.stringify({ player, moment, option });
+const body2 = (player: string, option: number, guess: number) => JSON.stringify({ player, moment: "M1", option, guess });
 
 describe("handlePick", () => {
   it("scores a pick and reveals the answer", async () => {
     const r = await handlePick(body(P(1), 2), "1.1.1.1", deps());
     expect(r.status).toBe(200);
     expect(r.body).toMatchObject({ points: 0, among_best: false, pro_instinct: true, ai_pick: 0, pro_pick: 2, crowd: null, repeat: false });
+    expect(r.body).toMatchObject({ guess: null, guess_right: null }); // old client: no second question
+  });
+  it("scores the pro guess against the real pass", async () => {
+    const right = await handlePick(body2(P(1), 0, 2), "1.1.1.1", deps());
+    expect(right.body).toMatchObject({ option: 0, points: 100, guess: 2, guess_right: true, pro_pick: 2 });
+    const wrong = await handlePick(body2(P(2), 0, 1), "1.1.1.1", deps());
+    expect(wrong.body).toMatchObject({ guess: 1, guess_right: false });
+  });
+  it("stores the guess with the first pick: first answer wins for both", async () => {
+    const d = deps();
+    await handlePick(body2(P(1), 1, 2), "1.1.1.1", d);
+    expect(await d.store.getPick(P(1), "M1")).toMatchObject({ option: 1, guess: 2 });
+    const again = await handlePick(body2(P(1), 0, 0), "1.1.1.1", d);
+    expect(again.body).toMatchObject({ option: 1, points: 100, guess: 2, guess_right: true, repeat: true });
+    const old = await handlePick(body(P(1), 2), "1.1.1.1", d); // an old client replaying still sees the stored guess
+    expect(old.body).toMatchObject({ option: 1, guess: 2, repeat: true });
+  });
+  it("rejects a guess that is not an option of the moment", async () => {
+    expect((await handlePick(body2(P(1), 0, 9), "1.1.1.1", deps())).status).toBe(400);
   });
   it("first pick wins", async () => {
     const d = deps();

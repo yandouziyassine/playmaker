@@ -45,3 +45,9 @@ it("flags and a throwing storage", () => {
   b.finish("2026-12-01", [1, 2, 3, 4, 5]); expect(b.streak("2026-12-01")).toBe(1);
   expect(b.flag("x")).toBe(false); b.setFlag("x"); expect(b.flag("x")).toBe(true);
 });
+
+it("records keep the optional pro-read flag", () => {
+  const r = { id: "a", points: 50, among_best: false, pro_instinct: false, same_as_ai: false, kind: "pass", zone: "build", league: "L", outcome: "kept", guess_right: true } as const;
+  h.record("2026-12-01", r);
+  expect(h.moments()["2026-12-01"]![0]!.guess_right).toBe(true);
+});

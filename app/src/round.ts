@@ -1,5 +1,5 @@
 import { getMoment, postPick, type Day, type Moment, type PickResult } from "./api.ts";
-import { ballTrail, draw as draw2D, hitOption, optionTargets, type View } from "./pitch.ts";
+import { ballTrail, draw as draw2D, hitOption, optionTargets, stepOption, type View } from "./pitch.ts";
 import { OUTCOME_TEXT, optionLabel, pct, progress, proReadLine, tier, verdict } from "./text.ts";
 import { is3D, on3DChange, paint3D, pick3D, setup3D } from "./view3d/toggle.ts";
 import type { Overlay3D as Overlay } from "./view3d/geom.ts";
@@ -35,6 +35,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text = ""):
 function renderDots(ui: RoundUI, points: number[], total: number) {
   ui.dots.innerHTML = "";
   for (const state of progress(points, total)) ui.dots.append(el("span", `dot ${state}`));
+  ui.dots.setAttribute("aria-label", `${points.length} of ${total} moments answered`);
 }
 
 async function playLeadUp(ctx: CanvasRenderingContext2D, v: View, mo: Moment) {
@@ -78,7 +79,8 @@ function choose(ui: RoundUI, ctx: CanvasRenderingContext2D, v: View, mo: Moment,
   const ul = el("div", "optgrid");
   details.append(ul);
   ui.list.append(details);
-  const modeHint = () => setHint(ui, q, is3D() ? q.list : q.tap); // 3D: tap players in the 3D view (pick3D)
+  const said = el("span", "sr-only"); // the selection, read out by the hint's aria-live (shown visually next to Confirm)
+  const modeHint = () => { setHint(ui, q, is3D() ? q.list : q.tap); ui.hint.append(said); }; // 3D: tap players in the 3D view (pick3D)
   modeHint();
   on3DChange(modeHint);
   return new Promise((resolve) => {
@@ -89,13 +91,37 @@ function choose(ui: RoundUI, ctx: CanvasRenderingContext2D, v: View, mo: Moment,
     ui.actions.append(label, confirm);
     const select = (k: number) => {
       selected = k; label.textContent = optionLabel(mo, k); confirm.disabled = false; repaint();
+      said.textContent = ` Selected: ${optionLabel(mo, k)}.`;
       for (const b of ul.querySelectorAll("button")) b.classList.toggle("on", Number(b.dataset.k) === k);
     };
     pick3D(mo, select); // taps on players / goal / carry chevrons in the 3D view select too
     const rank = { pass: 0, shot: 1, carry: 2 } as const;
-    for (const o of [...mo.options].sort((a, b) => rank[a.kind] - rank[b.kind] || a.k - b.k)) {
-      const b = el("button", "opt", optionLabel(mo, o.k)); b.dataset.k = String(o.k); b.onclick = () => select(o.k); ul.append(b);
+    const order = [...mo.options].sort((a, b) => rank[a.kind] - rank[b.kind] || a.k - b.k).map((o) => o.k);
+    for (const k of order) {
+      const b = el("button", "opt", optionLabel(mo, k)); b.dataset.k = String(k); b.onclick = () => select(k); ul.append(b);
     }
+    // keyboard: arrows (wrapping) or Tab / Shift+Tab (leaving the pitch past either end) move the selection on the
+    // pitch in the list's order, Home / End jump, Enter confirms
+    ui.canvas.tabIndex = 0;
+    ui.canvas.onkeydown = (e) => {
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
+      let k: number | null;
+      switch (e.key) {
+        case "ArrowRight": case "ArrowDown": k = stepOption(order, selected, 1); break;
+        case "ArrowLeft": case "ArrowUp": k = stepOption(order, selected, -1); break;
+        case "Home": k = order[0] ?? null; break;
+        case "End": k = order[order.length - 1] ?? null; break;
+        case "Tab": k = stepOption(order, selected, e.shiftKey ? -1 : 1, false); if (k === null) return; break;
+        case "Enter": if (selected !== undefined) { e.preventDefault(); confirm.click(); } return;
+        default: return;
+      }
+      e.preventDefault();
+      if (k !== null) select(k);
+    };
+    // focus was dropped (the Play / Confirm / Next button just disappeared): continue on the pitch, without scrolling
+    const active = document.activeElement as HTMLElement | null;
+    const dropped = !active || active === document.body || !active.isConnected || !active.getClientRects().length;
+    if (!is3D() && dropped) ui.canvas.focus({ preventScroll: true });
     ui.canvas.onclick = (e) => {
       const r = ui.canvas.getBoundingClientRect();
       const k = hitOption(targets, [e.clientX - r.left, e.clientY - r.top], 26);
@@ -103,7 +129,7 @@ function choose(ui: RoundUI, ctx: CanvasRenderingContext2D, v: View, mo: Moment,
     };
     confirm.onclick = () => {
       if (selected === undefined) return;
-      ui.canvas.onclick = null; ui.actions.innerHTML = ""; ui.list.innerHTML = ""; ui.hint.textContent = ""; on3DChange(null);
+      ui.canvas.onclick = null; ui.canvas.onkeydown = null; ui.canvas.tabIndex = -1; ui.actions.innerHTML = ""; ui.list.innerHTML = ""; ui.hint.textContent = ""; on3DChange(null);
       pick3D(null, null);
       resolve(selected);
     };

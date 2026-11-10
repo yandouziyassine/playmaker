@@ -40,7 +40,7 @@
         <div><b id="st-mapped">–</b><span>on the map</span></div>
       </div>
       <p id="status" class="hint"></p>
-      <div class="stage"><canvas id="img" aria-label="Your picture with detections and calibration points"></canvas></div>
+      <div class="stage"><canvas id="img" role="img" aria-label="Your picture with detections and calibration points"></canvas></div>
       <div class="row-actions">
         <button id="detect" class="primary" type="button">Detect players</button>
         <label class="check"><input id="show-lines" type="checkbox" checked /> Show pitch lines</label>
@@ -62,7 +62,7 @@
 
         <section class="card">
           <h2>3 · From above</h2>
-          <canvas id="top" class="topdown" aria-label="Top-down pitch with the detected players"></canvas>
+          <canvas id="top" class="topdown" width="840" height="565" role="img" aria-label="Top-down pitch with the detected players"></canvas>
           <div id="legend" class="legend"></div>
           <details class="opts" id="opts">
             <summary>AI coach: the carrier's best options</summary>

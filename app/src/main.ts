@@ -1,4 +1,4 @@
-import { getDay, getIndex, localDate, type Day } from "./api.ts";
+import { getDay, getIndex, getMoment, localDate, type Day } from "./api.ts";
 import { playDay } from "./round.ts";
 import { shareText, square } from "./share.ts";
 import { shareCardFile, shareFileName, shareScore } from "./shareImage.ts";
@@ -159,6 +159,7 @@ async function start() {
   if (done) return finish(day, done);
   renderStats($("intro"), true);
   void renderArchive();
+  if (day.moments[0]) getMoment(day.moments[0]).catch(() => {}); // warm the first moment: Play starts without a fetch
   $<HTMLButtonElement>("play").onclick = async () => {
     history.setFlag("pm.howto");
     show("game");

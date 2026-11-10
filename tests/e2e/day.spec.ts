@@ -85,3 +85,34 @@ test("in 3D, tapping a teammate selects a pass", async ({ page }) => {
   expect(picked).toBe(true);
   await expect(page.locator(".actions .choice")).not.toHaveText("Nothing selected");
 });
+
+test("keyboard play: arrows / Tab move the selection on the pitch, Enter confirms", async ({ page }) => {
+  await page.goto("/?date=2026-12-01&today=2026-12-01");
+  await page.getByRole("button", { name: "Play today's five" }).click();
+  const confirm = page.getByRole("button", { name: "Confirm" });
+  await expect(confirm).toBeDisabled({ timeout: 15_000 });
+  const pitch = page.locator("#pitch");
+  await expect(pitch).toBeFocused(); // focus continues on the pitch once the Play button is gone
+  const labels = await page.locator(".opt").allTextContents(); // the list's order is the keyboard order
+  const choice = page.locator(".actions .choice");
+  await page.keyboard.press("ArrowRight");
+  await expect(choice).toHaveText(labels[0]!);
+  await expect(page.locator("#hint")).toContainText(`Selected: ${labels[0]}.`); // read out by the aria-live hint
+  await page.keyboard.press("ArrowRight");
+  await expect(choice).toHaveText(labels[1]!);
+  await page.keyboard.press("ArrowLeft");
+  await page.keyboard.press("ArrowLeft");
+  await expect(choice).toHaveText(labels[labels.length - 1]!); // wraps
+  await page.keyboard.press("Home");
+  await page.keyboard.press("Tab");
+  await expect(choice).toHaveText(labels[1]!);
+  await expect(pitch).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#hint")).toContainText("What did the pro actually do?");
+  await expect(pitch).toBeFocused();
+  await page.keyboard.press("ArrowLeft");
+  await expect(choice).toHaveText(/^Pass to /);
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#reveal")).toContainText("points");
+  await expect(page.locator("#next")).toBeFocused();
+});

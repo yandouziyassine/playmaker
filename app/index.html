@@ -42,11 +42,13 @@
     </section>
 
     <section id="game" hidden>
+      <h1 class="sr-only">Today's five: pick the pass</h1>
       <div class="gamehead">
         <p id="title"></p>
-        <div id="dots" class="dots" aria-label="Progress"></div>
+        <div id="dots" class="dots" role="img" aria-label="Progress"></div>
       </div>
-      <canvas id="pitch" aria-label="Pitch with the players; your team attacks up the screen"></canvas>
+      <canvas id="pitch" role="application" aria-roledescription="pitch"
+        aria-label="Pitch with the players; your team attacks up the screen. Arrow keys or Tab: choose an option. Enter: confirm."></canvas>
       <p id="hint" class="hint" aria-live="polite"></p>
       <div id="actions" class="actions"></div>
       <div id="list"></div>
@@ -55,7 +57,7 @@
     </section>
 
     <section id="done" hidden>
-      <p class="label">Your score</p>
+      <h1 class="label">Your score</h1>
       <p class="total"><span id="total"></span><small>/500</small></p>
       <p id="squares" class="squares"></p>
       <p id="reads" class="reads" hidden></p>

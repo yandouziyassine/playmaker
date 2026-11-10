@@ -21,6 +21,17 @@ export function hitOption(opts: { k: number; at: Pt }[], tap: Pt, radius: number
   return best;
 }
 
+/** Keyboard play: the option after (dir 1) or before (dir -1) `cur` in `order`. Arrow keys wrap around; Tab does not
+ * (wrap false): null past either end, so focus can leave the pitch (no keyboard trap). */
+export function stepOption(order: number[], cur: number | undefined, dir: 1 | -1, wrap = true): number | null {
+  if (!order.length) return null;
+  const i = cur === undefined ? -1 : order.indexOf(cur);
+  if (i < 0) return !wrap && dir < 0 ? null : dir > 0 ? order[0]! : order[order.length - 1]!;
+  const j = i + dir;
+  if (j >= 0 && j < order.length) return order[j]!;
+  return wrap ? order[(j + order.length) % order.length]! : null;
+}
+
 const m = (cm: [number, number]): Pt => [cm[0] / 100, cm[1] / 100];
 
 /** Screen position of every option's tap target: the teammate (pass), the carry point, the goal mouth (shot). */

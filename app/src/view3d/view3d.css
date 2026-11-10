@@ -8,8 +8,8 @@
 .v3d-host canvas:active { cursor: grabbing; }
 .v3d-help { position: absolute; left: 10px; bottom: 8px; margin: 0; padding: 2px 8px; border-radius: 999px;
   font-size: 0.75rem; color: var(--fg); background: rgba(7, 23, 14, 0.6); pointer-events: none; }
-.v3d-toggle { position: absolute; top: 8px; right: 8px; min-height: 34px; padding: 0.3rem 0.8rem; font-size: 0.8rem; font-weight: 600;
-  color: var(--fg); background: rgba(7, 23, 14, 0.72); border: 1px solid var(--line); backdrop-filter: blur(4px); }
+.v3d-toggle { position: absolute; top: 8px; right: 8px; min-height: 44px; padding: 0.3rem 0.8rem; font-size: 0.8rem; font-weight: 600;
+  color: var(--fg); background: rgba(7, 23, 14, 0.72); border: 1px solid var(--line-strong, rgba(241, 250, 238, 0.4)); backdrop-filter: blur(4px); }
 .v3d-toggle[aria-pressed="true"] { border-color: var(--accent); }
 .v3d-toggle:disabled { opacity: 0.6; cursor: default; }
 .v3d-host canvas.v3d-picking { cursor: pointer; }

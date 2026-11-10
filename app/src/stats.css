@@ -23,10 +23,11 @@
 .stats.compact { margin: 12px 0 4px; }
 .stats.compact .stile b { font-size: 1.5rem; }
 .stats.compact .insight { margin-top: 10px; font-size: 0.85rem; }
-.saveimg { display: inline-block; margin: 4px 0 2px; padding: 8px 12px; font-size: 0.9rem; font-weight: 600; }
+.saveimg { display: inline-flex; align-items: center; min-height: 44px; margin: 4px 0 2px; padding: 8px 12px; font-size: 0.9rem; font-weight: 600; }
 @media (max-width: 380px) {
   .stile { padding: 7px 8px 6px; }
   .stile b { font-size: 1.5rem; }
+  .stile span { white-space: normal; overflow-wrap: anywhere; } /* "Pro instinct" was cut to "Pro instin…" at 360 px */
   .sbar { grid-template-columns: 5.4rem 1fr 3rem; gap: 8px; }
 }
 @media (prefers-reduced-motion: reduce) { .sbar .fill { transition: none; } }

@@ -3,6 +3,9 @@
   color-scheme: dark;
   --bg: #07170e; --panel: #0e2618; --line: rgba(241, 250, 238, 0.12); --fg: #f1faee; --muted: #a9c2b3;
   --accent: #4cc9f0; --attack: #ef476f; --pro: #ffd166; --top: #06d6a0; --mid: #ffd166; --low: #8d99ae;
+  /* a11y: white on --attack is 3.6:1, so buttons use a darker fill (4.9:1); --attack-ink is the pink for small text on
+     panels (5.3:1+); --line-strong outlines controls (3:1+, WCAG 1.4.11) */
+  --attack-btn: #d12f57; --attack-ink: #ff7a96; --line-strong: rgba(241, 250, 238, 0.4);
   --radius: 14px;
   --display: "Avenir Next Condensed", "Arial Narrow", "Roboto Condensed", system-ui, sans-serif;
 }
@@ -26,12 +29,12 @@ h2 { font: 700 1.1rem/1.2 var(--display); text-transform: uppercase; margin: 0 0
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; margin: 14px 0; min-width: 0; }
 .fine { font-size: 0.82rem; color: var(--muted); }
 .hint { min-height: 1.4em; color: var(--muted); font-size: 0.9rem; margin: 8px 2px; }
-.hint.bad { color: var(--attack); }
+.hint.bad { color: var(--attack-ink); }
 button { font: inherit; border: 0; border-radius: 999px; min-height: 44px; cursor: pointer; }
-button:focus-visible, a:focus-visible, summary:focus-visible, .drop:focus-visible, select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
-.primary { background: var(--attack); color: #fff; font-weight: 700; padding: 0.6rem 1.2rem; }
+button:focus-visible, a:focus-visible, summary:focus-visible, .drop:focus-visible, select:focus-visible, input:focus-visible, canvas:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.primary { background: var(--attack-btn); color: #fff; font-weight: 700; padding: 0.6rem 1.2rem; }
 .primary:disabled { background: #3b4a42; color: #8c9a92; cursor: default; }
-.ghost { background: transparent; color: var(--fg); border: 1px solid var(--line); padding: 0.45rem 1rem; }
+.ghost { background: transparent; color: var(--fg); border: 1px solid var(--line-strong); padding: 0.45rem 1rem; }
 .row-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 10px 0 4px; }
 .check { display: inline-flex; align-items: center; gap: 6px; font-size: 0.9rem; color: var(--muted); min-height: 44px; }
 .check input { width: 18px; height: 18px; accent-color: var(--attack); }
@@ -60,7 +63,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible, .drop:focus-visibl
 .calib select { width: 100%; min-width: 0; min-height: 40px; font: inherit; font-size: 0.88rem; color: var(--fg); background: #0a1d12;
   border: 1px solid var(--line); border-radius: 8px; padding: 4px 6px; }
 .calib .state { font-size: 0.78rem; color: var(--muted); white-space: nowrap; }
-.calib .state button { min-height: 32px; padding: 0 10px; font-size: 0.78rem; }
+.calib .state button { min-height: 40px; padding: 0 10px; font-size: 0.78rem; }
 
 .topdown { display: block; width: 100%; height: auto; border-radius: 10px; touch-action: manipulation; cursor: pointer; }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 8px 0 2px; font-size: 0.85rem; color: var(--muted); }
@@ -68,7 +71,9 @@ button:focus-visible, a:focus-visible, summary:focus-visible, .drop:focus-visibl
 .legend i.b { border-color: #111; }
 .legend i.o { border-style: dashed; border-color: var(--low); }
 .opts { margin-top: 10px; }
-.opts summary { cursor: pointer; font-weight: 600; min-height: 32px; }
+.opts summary { cursor: pointer; font-weight: 600; min-height: 44px; display: flex; align-items: center; gap: 6px; }
+.opts summary::before { content: "▸"; } .opts[open] summary::before { content: "▾"; } .opts summary::-webkit-details-marker { display: none; }
+.opts summary { list-style: none; }
 .lanes { list-style: none; padding: 0; margin: 6px 0; display: grid; gap: 4px; font-size: 0.86rem; }
 .lanes li { padding: 5px 9px; border-radius: 8px; background: rgba(255, 255, 255, 0.04); border-left: 4px solid; }
 .lanes .open { border-color: var(--top); } .lanes .tight { border-color: var(--mid); } .lanes .blocked { border-color: var(--attack); }
@@ -89,7 +94,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible, .drop:focus-visibl
 .coach-list .num { color: var(--muted); }
 .coach-list ul { margin: 4px 0 0; padding: 0; list-style: none; display: grid; gap: 2px; }
 .coach-list .helps::before { content: "+ helps: "; color: var(--top); font-weight: 600; }
-.coach-list .hurts::before { content: "− hurts: "; color: var(--attack); font-weight: 600; }
+.coach-list .hurts::before { content: "− hurts: "; color: var(--attack-ink); font-weight: 600; }
 .coach-list .val { color: var(--muted); }
 .coach-list .val::before { content: "= "; }
 .coach-list .msg { border-color: var(--mid); }

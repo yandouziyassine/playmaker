@@ -1,0 +1,10 @@
+{
+  "name": "Playmaker",
+  "short_name": "Playmaker",
+  "description": "Five real football moments a day: pick the pass, then see the AI coach's pick and what really happened.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#07170e",
+  "theme_color": "#0b2a1a",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

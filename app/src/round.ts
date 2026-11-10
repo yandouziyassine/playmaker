@@ -134,7 +134,8 @@ function renderReveal(ui: RoundUI, mo: Moment, res: PickResult, pick: number, re
 export async function playMoment(ui: RoundUI, mo: Moment, player: string, index: number, total: number, points: number[]): Promise<PickResult> {
   const { ctx, v } = setupCanvas(ui.canvas);
   const side = mo.attacking === "home" ? mo.home : mo.away;
-  ui.title.textContent = `${mo.home} – ${mo.away} · ${mo.minute}' · ${side} attack ↑`;
+  const score = mo.scoreline ? ` ${mo.scoreline[0]}–${mo.scoreline[1]} ` : " – ";
+  ui.title.textContent = `${mo.home}${score}${mo.away} · ${mo.minute}' · ${side} attack ↑`;
   renderDots(ui, points, total);
   ui.reveal.hidden = true; ui.next.hidden = true; ui.actions.innerHTML = ""; ui.list.innerHTML = "";
   ui.hint.textContent = "Watch the build-up…";
@@ -143,6 +144,7 @@ export async function playMoment(ui: RoundUI, mo: Moment, player: string, index:
   ui.hint.textContent = "Checking…";
   const res = await postPick(player, mo.id, pick);
   const mine = res.option; // the first answer counts: a replayed moment shows the original pick
+  try { navigator.vibrate?.(res.points >= 100 ? [30, 40, 30] : 20); } catch { /* not supported */ }
   ui.hint.textContent = res.after ? "What really happened next:" : "";
   const release = mo.lead_up[mo.lead_up.length - 1]!;
   const showAll = () => {

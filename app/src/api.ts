@@ -1,5 +1,5 @@
 export interface Moment {
-  id: string; league: string; home: string; away: string; attacking: "home" | "away"; minute: number; fps: number;
+  id: string; league: string; home: string; away: string; attacking: "home" | "away"; minute: number; scoreline?: [number, number]; fps: number;
   carrier: number; players: { side: 0 | 1; shirt: number; name: string }[];
   lead_up: ([number, number] | null)[][]; ball: ([number, number] | null)[];
   options: { k: number; kind: "pass" | "carry" | "shot"; player?: number; angle?: number; to: [number, number] }[];

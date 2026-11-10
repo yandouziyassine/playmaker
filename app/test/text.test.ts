@@ -30,9 +30,9 @@ it("tiers, verdicts and progress", () => {
 
 it("second question: pro read line and done-screen count", () => {
   const r = { pro_pick: 0, guess: 0, guess_right: true } as PickResult;
-  expect(proReadLine(mo, r)).toEqual({ cls: "ok", text: "👁 You read the pro ✓" });
-  expect(proReadLine(mo, { ...r, guess: 4, guess_right: false })).toEqual({ cls: "miss", text: "👁 The pro played Pass to #9 B. Nine · your read: Shoot" });
+  expect(proReadLine(mo, r)).toEqual({ cls: "ok", text: "You read the pro" });
+  expect(proReadLine(mo, { ...r, guess: 4, guess_right: false })).toEqual({ cls: "miss", text: "The pro played Pass to #9 B. Nine · your read: Shoot" });
   expect(proReadLine(mo, { ...r, guess: null, guess_right: null })).toBeNull();
   expect(proReadLine(mo, { pro_pick: 0 } as PickResult)).toBeNull(); // older server: no guess fields
-  expect(readsText(3, 5)).toBe("👁 Pro reads 3/5");
+  expect(readsText(3, 5)).toBe("Pro reads 3/5");
 });

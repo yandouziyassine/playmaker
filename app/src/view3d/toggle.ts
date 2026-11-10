@@ -6,6 +6,7 @@
 import type { Moment } from "../api.ts";
 import type { Overlay3D } from "./geom.ts";
 import type { View3D } from "./view.ts";
+import { icon, spinner } from "../design/icons.ts";
 import "./view3d.css";
 
 type Cm = [number, number] | null;
@@ -27,8 +28,9 @@ export function on3DChange(cb: (() => void) | null) { hook = cb; }
 
 function label() {
   if (!button) return;
-  button.textContent = failed ? "3D unavailable" : on ? "2D" : "3D · player's eyes";
+  button.replaceChildren(...(failed ? [] : [icon(on ? "pitch" : "cube")]), failed ? "3D unavailable" : on ? "2D" : "3D");
   button.disabled = failed;
+  button.removeAttribute("aria-busy");
   button.setAttribute("aria-pressed", String(on && !failed));
   button.title = failed ? "This browser cannot draw the 3D view (WebGL)" : on ? "Back to the 2D pitch" : "See the moment through the ball carrier's eyes";
 }
@@ -58,7 +60,7 @@ async function setOn(next: boolean) {
   if (on) {
     host!.hidden = false; // the canvas needs a size when the renderer is created
     stage?.classList.add("is3d");
-    if (button) button.textContent = "Loading 3D…";
+    if (button) { button.replaceChildren(spinner(), "Loading 3D…"); button.setAttribute("aria-busy", "true"); }
     await load();
     if (failed) on = false;
   }

@@ -1,0 +1,62 @@
+/* Playmaker design tokens: the one palette, type scale, spacing scale, radii and motion used by every page.
+   Colour roles: --accent (cyan) is the single accent: every interactive control (primary buttons, links, focus,
+   toggles) and every AI-coach highlight. The pitch keeps its own football colours (red attacking side, white
+   defenders, yellow pro / ball). Contrast (WCAG AA, computed): --fg on --bg 17.3:1, on --surface-2 12.7:1;
+   --muted on --bg 10.5:1, on --surface 9.1:1, on --surface-2 7.7:1; --accent-ink on --accent 8.8:1;
+   --accent on --surface-2 7.1:1; --attack-ink on --surface-2 5.5:1; --pro on --surface-2 9.4:1;
+   --low on --surface 6.1:1; --top on --surface-2 7.2:1; --disabled-fg on --disabled-bg 4.9:1. */
+:root {
+  color-scheme: dark;
+  /* surfaces */
+  --bg: #07170e;
+  --surface: #0e2618;          /* cards */
+  --surface-2: #163423;        /* rows / tiles inside a card */
+  --surface-3: #1f4430;        /* selected chip */
+  --line: rgba(241, 250, 238, 0.12);
+  --line-strong: rgba(241, 250, 238, 0.42); /* control outlines, 3:1+ (WCAG 1.4.11) */
+  /* text */
+  --fg: #f1faee;
+  --muted: #b2c9bb;
+  /* the accent */
+  --accent: #4cc9f0;
+  --accent-ink: #04202c;       /* text on an accent fill */
+  --accent-soft: rgba(76, 201, 240, 0.14);
+  /* football / meaning colours */
+  --attack: #ef476f;           /* the attacking team on the pitch, the brand mark */
+  --attack-ink: #ff7a96;       /* small pink text on panels */
+  --attack-btn: #d12f57;       /* white text on it: 4.9:1 */
+  --pro: #ffd166;
+  --top: #06d6a0; --mid: #ffd166; --low: #93a0b4;
+  --disabled-bg: #233a2d; --disabled-fg: #93a89b;
+
+  /* type */
+  --font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Avenir Next Condensed", "Arial Narrow", "Roboto Condensed", system-ui, sans-serif;
+  --fs-xs: 0.75rem;   /* 12 */
+  --fs-sm: 0.875rem;  /* 14 */
+  --fs-md: 1rem;      /* 16 */
+  --fs-lg: 1.25rem;   /* 20 */
+  --fs-xl: 1.75rem;   /* 28 */
+  --fs-2xl: clamp(2rem, 8.5vw, 2.75rem);
+  --fs-hero: 4.5rem;
+  --lh-tight: 1.05; --lh-snug: 1.25; --lh-body: 1.5;
+
+  /* spacing: 4 px scale */
+  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px; --s-6: 24px; --s-8: 32px; --s-10: 40px;
+
+  /* radii: inner radius = outer radius - padding. A card is 20 px with 12 px padding, so whatever hugs its inside
+     (rows, tiles, the 3D toggle inset 8 px in the pitch) gets 20 - 12 = 8 px; a row with 8 px padding gets 0. */
+  --r-card: 20px;
+  --pad-card: 12px;
+  --r-inner: calc(var(--r-card) - var(--pad-card)); /* 8 px */
+  --r-stage: 16px;             /* the pitch */
+  --r-pill: 999px;
+
+  /* elevation: flat; one shadow, only for things floating over the pitch */
+  --shadow-float: 0 2px 8px rgba(0, 0, 0, 0.35);
+
+  /* motion */
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --t-fast: 120ms; --t-med: 240ms; --t-slow: 600ms;
+  --tap: 44px;                 /* minimum touch target */
+}

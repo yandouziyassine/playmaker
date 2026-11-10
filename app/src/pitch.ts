@@ -163,7 +163,7 @@ export function draw(ctx: CanvasRenderingContext2D, v: View, mo: Moment, frame: 
         if (opt.kind === "carry" && opt.k !== bestCarry) continue; // one badge for the best carry: 6 m carries overlap
         const pts = o.scores[opt.k]; if (pts === undefined) continue;
         const [x, y] = opt.kind === "shot" ? c([5250, 0]) : tip(opt.k);
-        const col = pts >= 100 ? "#06d6a0" : pts >= 50 ? "#ffd166" : "#8d99ae";
+        const col = pts >= 100 ? "#06d6a0" : pts >= 50 ? "#ffd166" : "#93a0b4"; // = --top / --mid / --low (design/tokens.css)
         ctx.font = "700 10px system-ui, sans-serif"; const w = ctx.measureText(String(pts)).width + 8;
         ctx.fillStyle = col; ctx.beginPath(); ctx.roundRect(x + 7, y - 19, w, 14, 7); ctx.fill();
         ctx.fillStyle = "#07170e"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(String(pts), x + 7 + w / 2, y - 12);

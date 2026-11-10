@@ -22,7 +22,7 @@ test("plays a full day: both questions, reveal, recap", async ({ page }) => {
     await page.locator(".opt").first().click();
     await expect(confirm).toBeEnabled();
     await confirm.click();
-    await expect(reveal.locator(".proread")).toHaveText(/You read the pro ✓|The pro played Pass to /);
+    await expect(reveal.locator(".proread")).toHaveText(/^(You read the pro|The pro played Pass to .+)$/);
     await expect(reveal).toContainText("points");
     await expect(reveal).toContainText("AI coach");
     await expect(reveal).toContainText("The pro");
@@ -32,11 +32,11 @@ test("plays a full day: both questions, reveal, recap", async ({ page }) => {
   }
   await expect(page.locator("#total")).toHaveText(/^\d+$/);
   await expect(page.locator("#squares")).toHaveText(/^([🟩🟨⬜] ?){5}$/u);
-  await expect(page.locator("#reads")).toHaveText(/^👁 Pro reads [0-5]\/5$/u);
+  await expect(page.locator("#reads")).toHaveText(/^Pro reads [0-5]\/5$/);
   await expect(page.locator("#streak")).toContainText("Streak: 1 day");
   await page.reload();
   await expect(page.locator("#done")).toBeVisible();
-  await expect(page.locator("#reads")).toHaveText(/^👁 Pro reads [0-5]\/5$/u);
+  await expect(page.locator("#reads")).toHaveText(/^Pro reads [0-5]\/5$/);
   await expect(page.locator("#howto")).not.toHaveAttribute("open", "");
 });
 
@@ -55,6 +55,12 @@ test("tapping a teammate on the pitch selects a pass", async ({ page }) => {
   }
   expect(picked).toBe(true);
   await expect(page.locator(".actions .choice")).not.toHaveText("Nothing selected");
+});
+
+test("launch day: the intro shows the product (sample moment preview)", async ({ page }) => {
+  await page.goto("/?date=2026-12-01&today=2026-12-01");
+  await expect(page.locator("#preview")).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator("#preview-cap")).toContainText("sample moment");
 });
 
 test("public content never exposes answers", async ({ request }) => {

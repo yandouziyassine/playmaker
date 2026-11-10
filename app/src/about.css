@@ -1,0 +1,10 @@
+/* About page. Tokens and shared components: design/tokens.css, design/components.css. */
+@import "./design/tokens.css";
+@import "./design/components.css";
+.topbar, main { max-width: 640px; margin: 0 auto; }
+main { padding: var(--s-2) var(--s-4) var(--s-10); }
+main p, main li { color: var(--muted); max-width: 64ch; }
+main b { color: var(--fg); }
+h2 { margin-top: var(--s-8); }
+ul { padding-left: 1.2rem; }
+li { margin: var(--s-2) 0; }

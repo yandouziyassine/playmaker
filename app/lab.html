@@ -12,12 +12,12 @@
 <body>
   <header class="topbar">
     <a class="brand" href="/">Play<b>maker</b></a>
-    <span class="tag">Lab</span>
+    <span class="page">Lab</span>
   </header>
   <main>
-    <h1>From a TV picture <span>to tactics</span></h1>
-    <p class="lead">Step 1 towards a live mode (point a phone at the TV, get advice). Load a broadcast-style picture: players
-      are detected in your browser, 4 taps calibrate the pitch, and the shape appears from above. Nothing is uploaded.</p>
+    <h1>From a TV picture <em>to tactics</em></h1>
+    <p class="lead">Load a broadcast-style picture: players are detected in your browser, 4 taps calibrate the pitch, and
+      the shape appears from above with the AI coach's options. Nothing is uploaded. Step 1 towards a live mode.</p>
 
     <section class="card" id="load-card">
       <h2>1 · Picture</h2>
@@ -34,10 +34,10 @@
 
     <section id="work" hidden>
       <div class="stats" aria-live="polite">
-        <div><b id="st-count">–</b><span>people</span></div>
-        <div><b id="st-ms">–</b><span>inference ms</span></div>
-        <div><b id="st-teams">–</b><span>teams A / B / other</span></div>
-        <div><b id="st-mapped">–</b><span>on the map</span></div>
+        <div class="stat"><b id="st-count">–</b><span>people</span></div>
+        <div class="stat"><b id="st-ms">–</b><span>inference ms</span></div>
+        <div class="stat"><b id="st-teams">–</b><span>teams A / B / other</span></div>
+        <div class="stat"><b id="st-mapped">–</b><span>on the map</span></div>
       </div>
       <p id="status" class="hint"></p>
       <div class="stage"><canvas id="img" role="img" aria-label="Your picture with detections and calibration points"></canvas></div>
@@ -66,11 +66,11 @@
           <div id="legend" class="legend"></div>
           <details class="opts" id="opts">
             <summary>AI coach: the carrier's best options</summary>
-            <p class="coach-tag" id="coach-tag">AI coach (model opinion), from a single picture: positions are approximate.</p>
+            <p class="fine" id="coach-tag">A model opinion from a single picture: positions are approximate.</p>
             <p class="fine">Tap the ball carrier on the pitch above, then pick the goal their team attacks on the picture.</p>
             <div class="row-actions" role="group" aria-label="Attacking direction">
-              <button id="dir-left" class="ghost" type="button" aria-pressed="false">← Attacks the left goal</button>
-              <button id="dir-right" class="ghost" type="button" aria-pressed="true">Attacks the right goal →</button>
+              <button id="dir-left" class="ghost" type="button" aria-pressed="false" data-icon="arrowLeft">Attacks the left goal</button>
+              <button id="dir-right" class="ghost" type="button" aria-pressed="true" data-icon-after="arrowRight">Attacks the right goal</button>
               <button id="clear-carrier" class="ghost" type="button">Clear</button>
             </div>
             <p class="hint" id="coach-still">Standing still: no velocities from a single picture.</p>
@@ -100,7 +100,7 @@
         <li>No ball detection yet, and the calibration is manual: one picture at a time, no video.</li>
       </ul>
       <p class="fine">Detector: MediaPipe Tasks Vision with EfficientDet-Lite0 (both Apache-2.0), running on your device.
-        <a href="/">Back to the game</a> · <a href="/about.html">About</a></p>
+        <a href="/">The daily game</a> · <a href="/about.html">About</a></p>
     </section>
   </main>
   <script type="module" src="/src/lab/main.ts"></script>

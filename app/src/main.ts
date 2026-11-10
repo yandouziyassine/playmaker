@@ -5,6 +5,8 @@ import { shareCardFile, shareFileName, shareScore } from "./shareImage.ts";
 import { computeStats, KIND_LABEL, KINDS, proReads, ZONE_LABEL, ZONES, toRecord, type Bucket } from "./stats.ts";
 import { readsText } from "./text.ts";
 import { History } from "./storage.ts";
+import { icon, setIconText } from "./design/icons.ts";
+import { startPreview } from "./preview.ts";
 import "./stats.css";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -13,8 +15,11 @@ const params = new URLSearchParams(location.search);
 const realToday = params.get("today") ?? localDate();
 const date = params.get("date") ?? realToday;
 
+let stopPreview = () => {};
 function show(id: "intro" | "game" | "done") {
   for (const s of ["intro", "game", "done"]) $(s).hidden = s !== id;
+  document.body.dataset.screen = id;
+  if (id !== "intro") stopPreview();
   if (id === "game") $("archive").hidden = true;
   window.scrollTo({ top: 0 });
 }
@@ -38,7 +43,8 @@ async function renderArchive() {
       const a = document.createElement("a");
       a.href = `?date=${d.date}`;
       const pts = played[d.date];
-      a.textContent = `#${d.day_number} · ${d.date}${pts ? ` · ${pts.reduce((x, y) => x + y, 0)} ${pts.map(square).join("")}` : ""}`;
+      a.append(el("b", "", `#${d.day_number}`), el("span", "", d.date));
+      a.append(el("span", "pts", pts ? `${pts.reduce((x, y) => x + y, 0)}/${pts.length * 100}` : "Play"));
       list.append(a);
     }
   } catch { box.hidden = true; }
@@ -76,7 +82,7 @@ function renderStats(host: HTMLElement, compact: boolean) {
   const head = el("div", "shead");
   head.append(el("h2", "", "Your stats"), el("span", "fine", `${s.games} game${s.games === 1 ? "" : "s"}`));
   const tiles = el("div", "stiles");
-  const tile = (v: string, k: string, accent = "") => { const t = el("div", `stile ${accent}`); t.append(el("b", "", v), el("span", "", k)); tiles.append(t); };
+  const tile = (v: string, k: string, accent = "") => { const t = el("div", `stat stile ${accent}`); t.append(el("b", "", v), el("span", "", k)); tiles.append(t); };
   if (compact) {
     tile(s.avgDay == null ? "–" : `${s.avgDay}`, "Avg day");
     tile(s.bestDay ? `${s.bestDay.total}` : "–", "Best day");
@@ -86,7 +92,7 @@ function renderStats(host: HTMLElement, compact: boolean) {
     tile(s.avgDay == null ? "–" : `${s.avgDay}`, "Avg day");
     tile(s.bestDay ? `${s.bestDay.total}` : "–", "Best day");
     tile(pctText(s.perfect), "Scored 100", "top");
-    tile(pctText(s.proInstinct), "Pro instinct");
+    tile(pctText(s.proInstinct), "Picked like the pro");
     tile(pctText(s.aiAgree), "Same as AI", "ai");
   }
   card.append(head, tiles);
@@ -107,21 +113,26 @@ function finish(day: Day, pts: number[]) {
   const total = pts.reduce((a, b) => a + b, 0);
   const streak = history.streak(realToday);
   $("total").textContent = `${total}`;
-  $("squares").textContent = pts.map(square).join(" ");
+  // the result squares: styled tiles for the eye, the emoji string (same as the share text) as the accessible text
+  const sq = $("squares");
+  const tiles = el("span", "tiles"); tiles.setAttribute("aria-hidden", "true");
+  pts.forEach((p, i) => { const t = el("span", `tile ${p >= 100 ? "top" : p >= 50 ? "mid" : "low"}`); t.style.animationDelay = `${i * 70}ms`; tiles.append(t); });
+  sq.replaceChildren(el("span", "sr-only", pts.map(square).join(" ")), tiles);
   const reads = proReads(history.moments()[date]); // from the per-moment records (null for days played before question 2)
-  $("reads").textContent = reads ? readsText(reads.right, reads.of) : "";
+  if (reads) setIconText($("reads"), "eye", readsText(reads.right, reads.of)); else $("reads").textContent = "";
   $("reads").hidden = !reads;
-  $("streak").textContent = `🔥 Streak: ${streak} day${streak === 1 ? "" : "s"}`;
+  setIconText($("streak"), "flame", `Streak: ${streak} day${streak === 1 ? "" : "s"}`);
   $("next-in").textContent = date === realToday ? `Next five in ${untilTomorrow()}` : "";
   const text = `${shareText(day.day_number, pts, reads)}
 ${location.origin}`;
   const btn = $<HTMLButtonElement>("share");
-  btn.textContent = "Share my score";
+  setIconText(btn, "share", "Share my score");
   // the PNG is rendered up front: share() must run within the tap's user activation
   let file: File | null = null;
   let save = document.getElementById("save-image") as HTMLAnchorElement | null;
   if (!save) {
-    save = el("a", "saveimg", "Save image");
+    save = el("a", "quiet saveimg");
+    setIconText(save, "download", "Save image");
     save.id = "save-image"; save.hidden = true;
     btn.after(save);
   }
@@ -136,7 +147,7 @@ ${location.origin}`;
   btn.onclick = async () => {
     try {
       const how = await shareScore(navigator, text, file);
-      if (how === "copied") btn.textContent = "Copied ✓";
+      if (how === "copied") setIconText(btn, "check", "Copied");
     } catch { /* cancelled */ }
   };
   renderStats($("done"), false);
@@ -147,20 +158,25 @@ async function start() {
   const seen = history.flag("pm.howto");
   $<HTMLDetailsElement>("howto").open = !seen;
   $("howto").addEventListener("toggle", () => history.setFlag("pm.howto"));
+  const play = $<HTMLButtonElement>("play");
   let day: Day;
   try { day = await getDay(date); } catch {
     $("intro-text").textContent = "No challenge for this day. Come back tomorrow.";
-    $<HTMLButtonElement>("play").hidden = true;
+    play.hidden = true;
     void renderArchive();
     return;
   }
   $("day-label").textContent = `Day #${day.day_number}${date !== realToday ? ` · ${date}` : ""}`;
   const done = history.days()[date];
   if (done) return finish(day, done);
+  play.disabled = false; play.removeAttribute("aria-busy");
+  play.replaceChildren(icon("play"), "Play today's five");
+  play.classList.add("with-icon");
+  stopPreview = startPreview($("preview"), $<HTMLCanvasElement>("preview-pitch"), $("preview-cap"), date);
   renderStats($("intro"), true);
   void renderArchive();
   if (day.moments[0]) getMoment(day.moments[0]).catch(() => {}); // warm the first moment: Play starts without a fetch
-  $<HTMLButtonElement>("play").onclick = async () => {
+  play.onclick = async () => {
     history.setFlag("pm.howto");
     show("game");
     const pts = await playDay(

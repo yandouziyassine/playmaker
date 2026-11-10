@@ -12,19 +12,19 @@
 <body>
   <header class="topbar">
     <a class="brand" href="/">Play<b>maker</b></a>
-    <span class="tag">Free play</span>
+    <span class="page">Free play</span>
   </header>
   <main>
     <h1 class="sr-only">Free play: a full match with the coach</h1>
     <div class="score" aria-live="off">
-      <span class="team home"><i id="home-dot"></i><span id="home">Home</span></span>
-      <b id="scoreline">0–0</b>
-      <span class="team guest"><span id="guest">Guest</span><i id="guest-dot"></i></span>
+      <span class="team home"><span class="kit" id="home-dot"></span><span id="home">Home</span></span>
+      <b id="scoreline" class="tnum">0–0</b>
+      <span class="team guest"><span id="guest">Guest</span><span class="kit" id="guest-dot"></span></span>
     </div>
     <p class="when"><span id="half">1st half</span> · <span id="minute">1'</span> · <span id="clock">00:00</span></p>
 
     <div class="stage">
-      <canvas id="pitch" role="img" aria-label="Pitch seen from above; the match is loading"></canvas>
+      <canvas id="pitch" class="skeleton" role="img" aria-busy="true" aria-label="Pitch seen from above; the match is loading"></canvas>
     </div>
 
     <div class="timeline">
@@ -43,7 +43,7 @@
       <button id="ask" class="ghost" type="button" disabled>Ask the coach</button>
     </div>
 
-    <p id="status" class="status" role="status" aria-live="polite">Loading the match (about 3.5 MB for the first half)…</p>
+    <p id="status" class="status" role="status" aria-live="polite"><span class="spinner" aria-hidden="true"></span>Loading the match (about 3.5 MB for the first half)…</p>
 
     <section id="coach" class="card coach" hidden aria-labelledby="coach-title">
       <h2 id="coach-title">The coach's top 3 <span id="coach-who"></span></h2>
@@ -52,7 +52,7 @@
         <button id="follow" class="primary" type="button">Follow the coach</button>
         <button id="playon" class="ghost" type="button">Play on</button>
       </div>
-      <p class="fine">Or tap another option to go your own way. Then watch what the pro really did.</p>
+      <p class="fine">Or tap another option to go your own way, then watch what the pro really did.</p>
     </section>
 
     <p id="reveal" class="card reveal" role="status" aria-live="polite" hidden></p>
@@ -61,7 +61,7 @@
     <p class="fine keys">Keys: Space play / pause · ← → 5 s · A ask the coach · F follow.</p>
     <p class="fine credit"><span id="credit">Bundesliga tracking and event data: Bassek et al. (2025), DFL / Sportec Solutions, CC BY 4.0</span>.
       The coach is a set of small linear models trained on open tracking data: an opinion, not the truth. Nothing you do here is sent anywhere.</p>
-    <p class="fine"><a href="/">Back to the daily game</a> · <a href="/about.html">About the AI and privacy</a></p>
+    <p class="fine"><a href="/">The daily game</a> · <a href="/about.html">About the AI and privacy</a></p>
   </main>
   <script type="module" src="/src/replay/main.ts"></script>
 </body>

@@ -10,6 +10,7 @@ export default defineConfig({
         main: fileURLToPath(new URL("app/index.html", import.meta.url)),
         lab: fileURLToPath(new URL("app/lab.html", import.meta.url)), // computer-vision lab (lazy MediaPipe detector)
         replay: fileURLToPath(new URL("app/replay.html", import.meta.url)), // free play: a full match with the coach
+        about: fileURLToPath(new URL("app/about.html", import.meta.url)), // shares the design tokens, so it is built too
       },
     },
   },

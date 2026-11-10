@@ -9,6 +9,7 @@ import {
   type HalfData, type MatchMeta,
 } from "./data.ts";
 import { ARROW_COLORS, TOP, drawPitch, drawScene, type View } from "./draw.ts";
+import { setIconText, spinner } from "../design/icons.ts";
 
 const BASE = "/replay/";
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -26,7 +27,12 @@ let advice: FrameAdvice | null = null;
 let pending: { half: number; pro: ProChoice; result: Outcome; mine: string; followed: boolean } | null = null;
 const tally = { decisions: 0, followed: 0, you: 0, coach: 0 };
 
-const say = (t: string) => { status.textContent = t; };
+/** Status line; `busy`: a spinner and aria-busy on the pitch while match data downloads. */
+const say = (t: string, busy = false) => {
+  status.replaceChildren(...(busy ? [spinner()] : []), t);
+  if (busy) canvas.setAttribute("aria-busy", "true"); else canvas.removeAttribute("aria-busy");
+};
+const setPlayLabel = (on: boolean) => setIconText(playBtn, on ? "pause" : "play", on ? "Pause" : "Play");
 const failed = (e: unknown) => { console.warn(e); say("Could not load the match data. Please reload the page."); };
 const where = () => fromGlobal(meta, Math.floor(g));
 
@@ -71,7 +77,8 @@ function showTime() {
 }
 
 // ---------- coach ----------
-function hideCoach() { coachBox.hidden = true; advice = null; }
+// one dominant action at a time: Play, or (coach shown) Follow the coach
+function hideCoach() { coachBox.hidden = true; advice = null; playBtn.className = "primary"; }
 
 /** Snap to the nearest moment someone has the ball (within 2 s) and show the coach's options there. */
 function askCoach() {
@@ -106,7 +113,7 @@ function askCoach() {
     li.append(b, why);
     return li;
   }));
-  coachBox.hidden = false;
+  coachBox.hidden = false; playBtn.className = "ghost";
   const moved = shift ? `Moved ${(Math.abs(shift) / meta.fps).toFixed(1)} s ${shift < 0 ? "back" : "on"}: ` : "";
   say(`${moved}#${p.shirt} ${p.name} (${team}) has the ball. ${advice.ranked.length} options ranked, top 3 shown.`);
   draw();
@@ -143,7 +150,7 @@ function tick(now: number) {
   last = now;
   const at = fromGlobal(meta, next);
   if (!halves[at.half]) { // crossing into a half that is not loaded yet
-    pause(false); say("Loading the second half…");
+    pause(false); say("Loading the second half…", true);
     getHalf(at.half).then(() => { g = next; play(); }).catch(failed);
     return;
   }
@@ -157,14 +164,14 @@ function tick(now: number) {
 
 function play() {
   if (playing || !ready || g >= totalFrames(meta) - 1) return;
-  playing = true; playBtn.textContent = "Pause"; hideCoach();
+  playing = true; setPlayLabel(true); hideCoach();
   if (!pending) say("");
   last = performance.now(); requestAnimationFrame(tick);
 }
 
 function pause(ask = true) {
   if (!playing) return;
-  playing = false; playBtn.textContent = "Play";
+  playing = false; setPlayLabel(false);
   g = Math.floor(g);
   if (ask) askCoach(); else draw();
 }
@@ -175,7 +182,7 @@ async function seek(global: number, ask: boolean) {
   g = Math.max(0, Math.min(totalFrames(meta) - 1, Math.round(global)));
   hideCoach();
   const { half } = where();
-  if (!halves[half]) { say(`Loading the ${half ? "second" : "first"} half…`); await getHalf(half); }
+  if (!halves[half]) { say(`Loading the ${half ? "second" : "first"} half…`, true); await getHalf(half); say(""); }
   showTime();
   if (ask) askCoach(); else draw();
 }
@@ -227,6 +234,8 @@ async function boot() {
   }));
   canvas.setAttribute("aria-label", `Pitch seen from above: ${meta.meta.home} (attacking up in the first half) against ${meta.meta.guest}`);
   ready = true;
+  canvas.classList.remove("skeleton");
+  setPlayLabel(false); setIconText(askBtn, "coach", "Ask the coach");
   showTime(); draw();
   say(`${meta.meta.home} against ${meta.meta.guest}. Press Play; pause any time and the coach shows the ball carrier's best options.`);
 }

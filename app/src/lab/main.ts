@@ -6,6 +6,7 @@ import type { Advice, LoadedCoach } from "../coach/picture.ts"; // types only: t
 import { meanColour, splitTeams, torsoBox, type RGB, type TeamLabel } from "./teams.ts";
 import { detectPeople, loadDetector } from "./detector.ts";
 import { drawScene, SCENE_H, SCENE_W } from "./scene.ts";
+import { setIconText, spinner, type IconName } from "../design/icons.ts";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const MAX_SIDE = 1600;
@@ -422,13 +423,14 @@ async function runDetect() {
   if (st.busy || !st.loaded) return;
   st.busy = true;
   const btn = $<HTMLButtonElement>("detect");
-  btn.disabled = true;
+  btn.disabled = true; btn.setAttribute("aria-busy", "true"); btn.replaceChildren(spinner(), "Detecting…");
+  const busy = (t: string) => status.replaceChildren(spinner(), t);
   try {
-    status.textContent = "Loading the detector (first time only: 7 MB model + ~15 MB engine)…";
+    busy("Loading the detector (first time only: 7 MB model + ~15 MB engine)…");
     const t0 = performance.now();
     await loadDetector();
     const loadMs = performance.now() - t0;
-    status.textContent = "Detecting people…";
+    busy("Detecting people…");
     await new Promise((r) => setTimeout(r, 30));
     const run = await detectPeople(src, $<HTMLInputElement>("tiled").checked);
     // number players from left to right
@@ -451,7 +453,7 @@ async function runDetect() {
     console.error(e);
     status.textContent = "The detector could not start in this browser (WebAssembly / network). The calibration still works.";
   } finally {
-    st.busy = false; btn.disabled = false;
+    st.busy = false; btn.disabled = false; btn.removeAttribute("aria-busy"); btn.replaceChildren("Detect players");
     render();
   }
 }
@@ -510,6 +512,10 @@ function setDir(d: 1 | -1) {
   $("dir-left").setAttribute("aria-pressed", String(d === -1));
   $("dir-right").setAttribute("aria-pressed", String(d === 1));
   render();
+}
+for (const b of document.querySelectorAll<HTMLElement>("[data-icon], [data-icon-after]")) {
+  const after = b.dataset.iconAfter;
+  setIconText(b, (after ?? b.dataset.icon) as IconName, b.textContent ?? "", !!after);
 }
 $("dir-left").addEventListener("click", () => setDir(-1));
 $("dir-right").addEventListener("click", () => setDir(1));

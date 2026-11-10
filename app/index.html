@@ -12,58 +12,65 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="stylesheet" href="/src/styles.css" />
 </head>
-<body>
+<body data-screen="intro">
   <header class="topbar">
     <a class="brand" href="/">Play<b>maker</b></a>
-    <span id="day-label" class="daylabel"></span>
+    <span id="day-label" class="page tnum"></span>
   </header>
   <main>
     <section id="intro">
-      <h1>You have the ball.<br /><span>Pick the pass.</span></h1>
-      <p id="intro-text" class="lead">Five real moments from professional matches. Choose what the player should do, then see what
-        the AI coach picked, what the pro did, and what really happened next.</p>
-      <button id="play" class="primary big">Play today's five</button>
-      <details id="howto" class="card">
+      <h1>Five real pro moments a day. <em>Pick the pass.</em></h1>
+      <p id="intro-text" class="lead">You have the ball for 3 seconds of a real match. Beat the AI coach's pick, then guess the pass the pro really played.</p>
+      <figure class="preview" id="preview" hidden>
+        <canvas id="preview-pitch" class="skeleton" role="img" aria-label="Preview: a moment from a past day, the ball carrier and the options"></canvas>
+        <figcaption id="preview-cap" class="fine"></figcaption>
+      </figure>
+      <button id="play" class="primary big" disabled aria-busy="true"><span class="spinner" aria-hidden="true"></span>Loading today's five</button>
+      <details id="howto" class="card howto">
         <summary>How to play</summary>
         <ol>
           <li>Watch 3 seconds of real play. The ball carrier has a yellow ring; your team (red) attacks up the screen.</li>
-          <li><b>Question 1: what would you do?</b> Tap a teammate to pass, a yellow arrow to carry the ball, or the goal
-            to shoot. Then <b>Confirm</b>.</li>
-          <li><b>Question 2: what did the pro actually do?</b> The pro passed in every moment: tap the teammate you think
-            got the ball, then <b>Confirm</b>.</li>
-          <li>Question 1 scores up to 100 points if your choice is among the best according to the AI coach (when the coach
-            cannot tell two options apart, both score 100). Question 2 is right or wrong, checked against the real pass:
-            your "Pro reads" out of 5.</li>
+          <li><b>What would you do?</b> Tap a teammate to pass, a yellow chevron to carry, or the goal to shoot, then Confirm.
+            Up to 100 points if the AI coach rates your choice among the best (a close call scores 100 too).</li>
+          <li><b>What did the pro actually do?</b> The pro passed in every moment: tap the teammate who got the ball. Right or
+            wrong, checked against the real match: your Pro reads out of 5.</li>
           <li>Then watch what really happened. One game a day, same moments for everyone.</li>
         </ol>
       </details>
-      <p class="fine"><a href="/replay.html">Free play: a full match with the coach</a> ·
-        <a href="/about.html">About the AI and privacy</a> · <a href="/lab.html">Lab: from a TV picture to tactics</a></p>
+      <nav class="more" aria-label="More">
+        <a href="/replay.html">Free play: a full match with the coach</a>
+        <a href="/lab.html">Lab: from a TV picture to tactics</a>
+        <a href="/about.html">About the AI and privacy</a>
+      </nav>
     </section>
 
     <section id="game" hidden>
       <h1 class="sr-only">Today's five: pick the pass</h1>
       <div class="gamehead">
-        <p id="title"></p>
+        <p id="title" class="tnum"></p>
         <div id="dots" class="dots" role="img" aria-label="Progress"></div>
       </div>
       <canvas id="pitch" role="application" aria-roledescription="pitch"
         aria-label="Pitch with the players; your team attacks up the screen. Arrow keys or Tab: choose an option. Enter: confirm."></canvas>
-      <p id="hint" class="hint" aria-live="polite"></p>
-      <div id="actions" class="actions"></div>
+      <div class="dock">
+        <p id="hint" class="hint" aria-live="polite"></p>
+        <div id="actions" class="actions"></div>
+      </div>
       <div id="list"></div>
       <div id="reveal" class="reveal" hidden aria-live="polite"></div>
-      <button id="next" class="primary big" hidden>Next moment →</button>
+      <div class="nextbar"><button id="next" class="primary big" hidden>Next moment</button></div>
     </section>
 
     <section id="done" hidden>
-      <h1 class="label">Your score</h1>
-      <p class="total"><span id="total"></span><small>/500</small></p>
+      <h1 class="sr-only">Your score</h1>
+      <p class="total tnum"><span id="total"></span><small>/500</small></p>
       <p id="squares" class="squares"></p>
-      <p id="reads" class="reads" hidden></p>
-      <p id="streak"></p>
+      <div class="donemeta">
+        <p id="reads" class="reads tnum" hidden></p>
+        <p id="streak" class="streak tnum"></p>
+      </div>
       <button id="share" class="primary big">Share my score</button>
-      <p id="next-in" class="fine"></p>
+      <p id="next-in" class="fine tnum"></p>
     </section>
 
     <section id="archive" class="card" hidden>

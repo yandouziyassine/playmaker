@@ -1,0 +1,2 @@
+# rendered benchmark frames: regenerate with `npm run cv:render` (gt.json is kept)
+*.png

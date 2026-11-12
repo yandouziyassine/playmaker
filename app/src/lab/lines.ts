@@ -214,6 +214,7 @@ export function scanLines(img: ImageLike, scale: number, exclude: Box[] = []): L
 export type FitRating = "good" | "check" | "poor";
 /** Thresholds on the mean distance, in working pixels (640 px wide): good < 1.5 (~0.25 % of the width), check < 4. */
 export const FIT = { good: 1.5, check: 4, cap: 12, step: 3, minSamples: 40 } as const;
+export type FitOpts = { good: number; check: number; cap: number; step: number; minSamples: number };
 
 /**
  * Fit quality: samples the reprojected pitch lines every `step` working px, keeps the samples inside the picture and on the
@@ -221,7 +222,7 @@ export const FIT = { good: 1.5, check: 4, cap: 12, step: 3, minSamples: 40 } as 
  * (capped at `cap`, so an occluded stretch counts as "far" but cannot dominate). Returns null with too few samples.
  * `p2i` maps pitch metres to SOURCE pixels; distances are returned in source pixels.
  */
-export function fitQuality(scan: LineScan, p2i: Mat3, polylines: Pt[][], o: typeof FIT = FIT): { mean: number; rating: FitRating; samples: number } | null {
+export function fitQuality(scan: LineScan, p2i: Mat3, polylines: Pt[][], o: FitOpts = FIT): { mean: number; rating: FitRating; samples: number } | null {
   const ds: number[] = [];
   const toWork = (m: Pt): Pt | null => {
     if (wOf(p2i, m) <= 0) return null;

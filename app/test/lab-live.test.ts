@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  assignTeam, associate, cameraMoved, capSpeed, delayUntilNext, fixCentroids, moveStreak, nextFps, nextThrottle, patchDiffs, smooth,
-  START_THROTTLE, stepTracks, THROTTLE, thumbnail, THUMB_H, THUMB_W, trackVelocity, velocityFrom, vote, voted, type LiveDet, type Track,
+  assignTeam, associate, blendPoints, CAL_WATCH, capSpeed, delayUntilNext, fixCentroids, nextFps, nextThrottle, smooth,
+  START_THROTTLE, START_WATCH, stepTracks, THROTTLE, trackVelocity, velocityFrom, vote, voted, watchResidual, type CalWatch, type LiveDet, type Track,
 } from "../src/lab/live.ts";
 import { cameraProblem, CAMERA_MESSAGES } from "../src/lab/camera.ts";
 import type { RGB } from "../src/lab/teams.ts";
@@ -147,38 +147,35 @@ describe("tracking", () => {
   });
 });
 
-describe("camera moved check", () => {
-  // synthetic RGBA frames: a pitch-like pattern of stripes and lines, optionally shifted and with moving blobs
-  function frame(w: number, h: number, shift: number, blobs: { x: number; y: number }[] = [], gain = 1) {
-    const data = new Uint8ClampedArray(w * h * 4);
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      const X = x + shift;
-      let v = (Math.floor(X / 40) % 2 ? 90 : 120) + (Math.abs((X % 160) - 80) < 2 || Math.abs((y % 120) - 60) < 2 ? 120 : 0);
-      for (const b of blobs) if (Math.abs(x - b.x) < 6 && Math.abs(y - b.y) < 14) v = 230;
-      const k = (y * w + x) * 4;
-      data[k] = v * gain * 0.6; data[k + 1] = v * gain; data[k + 2] = v * gain * 0.5; data[k + 3] = 255;
-    }
-    return { data, width: w, height: h };
-  }
-  const W = 320, H = 180;
-  const ref = thumbnail(frame(W, H, 0, [{ x: 50, y: 90 }, { x: 200, y: 60 }]));
-
-  it("ignores moving players and a brightness change", () => {
-    expect(ref).toHaveLength(THUMB_W * THUMB_H);
-    const players = thumbnail(frame(W, H, 0, [{ x: 70, y: 100 }, { x: 180, y: 70 }, { x: 260, y: 120 }]));
-    expect(cameraMoved(patchDiffs(ref, players))).toBe(false);
-    const brighter = thumbnail(frame(W, H, 0, [{ x: 50, y: 90 }, { x: 200, y: 60 }], 1.15));
-    expect(cameraMoved(patchDiffs(ref, brighter))).toBe(false);
+describe("calibration upkeep", () => {
+  it("smooths the calibration points towards the refined ones (and keeps a point the refinement lost)", () => {
+    let pts: ({ x: number; y: number } | null)[] = [{ x: 100, y: 100 }, { x: 300, y: 100 }, { x: 300, y: 250 }, { x: 100, y: 250 }];
+    const target = [{ x: 110, y: 96 }, { x: 312, y: 104 }, null, { x: 92, y: 258 }];
+    for (let k = 0; k < 12; k++) pts = blendPoints(pts, target, CAL_WATCH.alpha);
+    expect(Math.hypot(pts[0]!.x - 110, pts[0]!.y - 96)).toBeLessThan(0.3);
+    expect(pts[2]).toEqual({ x: 300, y: 250 });
+    const one = blendPoints([{ x: 0, y: 0 }], [{ x: 10, y: 0 }], 0.3);
+    expect(one[0]!.x).toBeCloseTo(3, 9);
+    expect(blendPoints([null], [{ x: 1, y: 2 }], 0.3)[0]).toEqual({ x: 1, y: 2 });
   });
-  it("flags a pan of the view", () => {
-    const panned = thumbnail(frame(W, H, 37, [{ x: 50, y: 90 }, { x: 200, y: 60 }]));
-    expect(cameraMoved(patchDiffs(ref, panned))).toBe(true);
-  });
-  it("warns only after consecutive moved frames", () => {
-    let s = 0;
-    for (const m of [true, false, true, true, true]) s = moveStreak(s, m);
-    expect(s).toBe(3);
-    expect(cameraMoved([])).toBe(false);
+  it("flags a camera move when the reprojection residual jumps, not on calm noise", () => {
+    const r = rng(3);
+    let w: CalWatch = START_WATCH;
+    for (let k = 0; k < 20; k++) w = watchResidual(w, 1 + (r() - 0.5) * 0.6); // calm: 0.7 .. 1.3 px
+    expect(w.moved).toBe(false);
+    expect(w.ref).toBeGreaterThan(0.6); expect(w.ref).toBeLessThan(1.4);
+    w = watchResidual(w, 1.9); // players on a line: a mild bump
+    expect(w.moved).toBe(false);
+    w = watchResidual(w, 7); // a pan
+    expect(w.moved).toBe(false); // one odd check is ignored
+    expect(w.streak).toBe(1);
+    w = watchResidual(w, 6.5);
+    expect(w.moved).toBe(true);
+    expect(w.ref).toBeLessThan(1.4); // the reference did not follow the jump
+    w = watchResidual(w, null); // nothing to check: no change
+    expect(w.moved).toBe(true);
+    w = watchResidual(START_WATCH, 1.1); // after a recalibration the watch restarts
+    expect(w).toEqual({ ref: 1.1, streak: 0, moved: false, last: 1.1 });
   });
 });
 

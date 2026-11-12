@@ -12,7 +12,7 @@
 <body>
   <!-- Strings: English here as the no-JS fallback; lab/main.ts fills data-i18n* from app/src/i18n (en / fr). -->
   <header class="topbar">
-    <a class="brand" href="/">Play<b>maker</b></a>
+    <a class="brand" href="./">Play<b>maker</b></a>
     <span class="page" data-i18n="lab.page">Lab</span>
   </header>
   <main>
@@ -35,6 +35,7 @@
       <div class="row-actions">
         <button id="demo" class="ghost" type="button" data-i18n="lab.demo">Try a synthetic scene</button>
         <label class="check"><input id="tiled" type="checkbox" checked /> <span data-i18n="lab.tiled">Tiled scan for small players and the ball</span></label>
+        <label class="check"><span data-i18n="lab.model">Detector</span> <select id="det-model"></select></label>
       </div>
     </section>
 
@@ -78,11 +79,14 @@
       <div class="grid">
         <section class="card">
           <h2 data-i18n="lab.calib.h2">2 · Calibrate the pitch</h2>
-          <p class="fine" data-i18n="lab.calib.fine">Pick 4 landmarks you can see (no 3 on one line), then tap them on the picture in order. "Near" is the
+          <p class="fine" data-i18n="lab.calib.fine">Press Auto-calibrate: the painted lines found in the picture are matched to the pitch model (both halves
+            are tried), then drag a point if a blue line is off. Or pick 4 landmarks you can see (no 3 on one line) and tap them on the picture in order. "Near" is the
             touchline closest to the camera, "left" is the goal on the left of the TV picture. A tap snaps to the nearest corner
             of the painted lines found in the picture (orange diamonds) within about 20 px; drag the point to undo.</p>
           <ol id="calib" class="calib"></ol>
           <div class="row-actions">
+            <button id="autocal" class="primary" type="button" data-i18n="lab.autocal">Auto-calibrate</button>
+            <button id="autocal-alt" class="ghost" type="button" hidden data-i18n="lab.autocalAlt">Other solution</button>
             <button id="reset-pts" class="ghost" type="button" data-i18n="lab.resetPts">Reset points</button>
             <button id="snap-all" class="ghost" type="button" data-i18n="lab.snapAll">Snap points to lines</button>
           </div>
@@ -115,7 +119,7 @@
               closed-form pitch control, trained on Bundesliga tracking and event data, Bassek et al. (2025), DFL / Sportec
               Solutions, <a href="https://doi.org/10.6084/m9.figshare.28196177" target="_blank" rel="noopener">IDSSE dataset</a>
               (CC BY 4.0), and shots from <a href="https://github.com/SkillCorner/opendata" target="_blank" rel="noopener">SkillCorner
-              open data</a> (MIT). Weights: <a href="/coach/models.json">coach/models.json</a>.</p>
+              open data</a> (MIT). Weights: <a href="coach/models.json">coach/models.json</a>.</p>
           </details>
         </section>
       </div>
@@ -132,15 +136,16 @@
         <li data-i18n="lab.limits.5">The ball is tiny on a TV picture: often missed, sometimes confused with a head or a boot. On the map it is the
           point under the ball, so a ball in the air is drawn too far from the camera (approximate). The carrier is just the
           nearest player within 3 m, and the attacking direction is a guess from where each team's deepest player is: check both.</li>
-        <li data-i18n="lab.limits.6">The calibration is manual; tap snapping only finds straight painted lines on green (curves, worn or shaded lines and
-          heavy occlusion are missed), and the fit score only checks the lines it can see.</li>
+        <li data-i18n="lab.limits.6">Auto-calibration and tap snapping only use straight painted lines on green (curves, worn or shaded lines and heavy
+          occlusion are missed). With few lines in view the match is ambiguous (check the half and the box it chose, or try the other
+          solution), and the fit score only checks the lines it can see.</li>
         <li data-i18n="lab.limits.7">Live camera: positions are approximate (a few metres) and the speeds are rough estimates from the last frames. The
-          calibration only holds while both your phone and the TV camera stay still: broadcast cameras pan and zoom all the
-          time, so recalibrate after each change of view. A few detections per second on a phone, players can blink in
-          and out.</li>
+          calibration is refined from the painted lines every couple of seconds and redone automatically when the camera (yours
+          or the broadcast one) moves, which takes a few seconds and fails when too few lines are in view: then freeze and tap
+          the points. A few detections per second on a phone, players can blink in and out.</li>
       </ul>
       <p class="fine" data-i18n-html="lab.limits.fine.html">Detector: MediaPipe Tasks Vision with EfficientDet-Lite0 (both Apache-2.0), running on your device.
-        <a href="/">The daily game</a> · <a href="/about.html">About</a></p>
+        <a href="./">The daily game</a> · <a href="about.html">About</a></p>
     </section>
   </main>
   <script type="module" src="/src/lab/main.ts"></script>

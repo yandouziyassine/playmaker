@@ -12,7 +12,11 @@
     "content:link": "node scripts/link-content.mjs",
     "fixture": "node scripts/make-fixture.mjs",
     "lab:assets": "node scripts/lab-assets.mjs",
-    "dev:phone": "vite --host --mode phone"
+    "cv:render": "node scripts/cv-bench/render.mjs",
+    "cv:bench": "node scripts/cv-bench/run.mjs",
+    "dev:phone": "vite --host --mode phone",
+    "demo:content": "node scripts/demo-content.mjs",
+    "demo:build": "node scripts/demo-build.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.65.0",

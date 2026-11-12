@@ -168,52 +168,36 @@ export function trackVelocity(t: Track, o: typeof TRACK = TRACK): Pt | null {
   return t.hits >= o.minHits ? t.v : null;
 }
 
-// ---------- camera moved? compare a small grey thumbnail with the one taken at calibration ----------
+// ---------- calibration upkeep: smoothed reference points and a residual-based "camera moved" check ----------
 
-export const THUMB_W = 32, THUMB_H = 18;
-
-/** Grey thumbnail (box-sampled, 4 x 4 samples per cell), zero-mean so a brightness change (TV, auto exposure) is ignored. */
-export function thumbnail(img: ImageLike, w = THUMB_W, h = THUMB_H): Float32Array {
-  const out = new Float32Array(w * h);
-  const cw = img.width / w, ch = img.height / h;
-  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
-    let s = 0;
-    for (let b = 0; b < 4; b++) for (let a = 0; a < 4; a++) {
-      const x = Math.min(img.width - 1, Math.floor((i + (a + 0.5) / 4) * cw));
-      const y = Math.min(img.height - 1, Math.floor((j + (b + 0.5) / 4) * ch));
-      const k = (y * img.width + x) * 4;
-      s += 0.299 * img.data[k]! + 0.587 * img.data[k + 1]! + 0.114 * img.data[k + 2]!;
-    }
-    out[j * w + i] = s / 16;
-  }
-  const mean = out.reduce((a, v) => a + v, 0) / out.length;
-  for (let k = 0; k < out.length; k++) out[k]! -= mean;
-  return out;
-}
-
-/** Mean absolute difference per patch on a cols x rows grid of the thumbnails. */
-export function patchDiffs(ref: ArrayLike<number>, cur: ArrayLike<number>, w = THUMB_W, h = THUMB_H, cols = 4, rows = 3): number[] {
-  const out: number[] = [];
-  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
-    const x0 = Math.floor((c * w) / cols), x1 = Math.floor(((c + 1) * w) / cols);
-    const y0 = Math.floor((r * h) / rows), y1 = Math.floor(((r + 1) * h) / rows);
-    let s = 0, n = 0;
-    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) { s += Math.abs(cur[y * w + x]! - ref[y * w + x]!); n++; }
-    out.push(n ? s / n : 0);
-  }
-  return out;
+/**
+ * Exponential smoothing of the 4 calibration points (image px): the homography is rebuilt from them, so smoothing the
+ * points keeps it a valid, slowly moving homography (smoothing the matrix entries would not).
+ */
+export function blendPoints(prev: (Pt | null)[], next: (Pt | null)[], alpha: number): (Pt | null)[] {
+  return prev.map((p, i) => {
+    const q = next[i] ?? null;
+    if (!p) return q;
+    if (!q) return p;
+    return smooth(p, q, alpha);
+  });
 }
 
 /**
- * Moving players change a few patches; a camera move (phone or broadcast pan/zoom) changes most of them.
- * True when at least `frac` of the patches differ by more than `thr` grey levels.
+ * Residual watch: the reprojection residual (mean distance of the reprojected lines to the painted lines, working px)
+ * is checked every couple of seconds; its calm value is tracked by a slow moving average, and a jump above
+ * max(ratio x reference, reference + jumpPx) for `need` consecutive checks means the camera (phone or broadcast) moved.
  */
-export function cameraMoved(diffs: number[], thr = 16, frac = 0.5): boolean {
-  return diffs.length > 0 && diffs.filter((d) => d > thr).length >= frac * diffs.length;
-}
+export type CalWatch = { ref: number | null; streak: number; moved: boolean; last: number | null };
+export const CAL_WATCH = { periodMs: 2000, alpha: 0.3, ema: 0.2, ratio: 2.5, jumpPx: 2.5, need: 2, retryMs: 6000 } as const;
+export const START_WATCH: CalWatch = { ref: null, streak: 0, moved: false, last: null };
 
-/** Consecutive "moved" frames; the warning shows after `need` of them (one odd frame is ignored). */
-export function moveStreak(streak: number, moved: boolean): number {
-  return moved ? streak + 1 : 0;
+export function watchResidual(w: CalWatch, residual: number | null, o: typeof CAL_WATCH = CAL_WATCH): CalWatch {
+  if (residual === null) return { ...w, last: null }; // nothing to check on this frame (few lines visible): no change
+  if (w.ref === null) return { ref: residual, streak: 0, moved: false, last: residual };
+  const jumped = residual > Math.max(o.ratio * w.ref, w.ref + o.jumpPx);
+  const streak = jumped ? w.streak + 1 : 0;
+  // the reference only follows calm frames, so a slow drift is not learnt as the new normal while it is being checked
+  const ref = jumped ? w.ref : w.ref + o.ema * (residual - w.ref);
+  return { ref, streak, moved: streak >= o.need, last: residual };
 }
-export const MOVE_FRAMES = 3;

@@ -97,7 +97,7 @@ describe("arrows", () => {
   it("starts the eyes arrow ahead of the player, ends at the tip, and dashes the selection", () => {
     const solid = eyesArrow([0, 0], [20, 0]);
     expect(solid.length).toBe(18);
-    expect(Math.min(...solid.filter((_, i) => i % 2 === 0))).toBeCloseTo(2.5);
+    expect(Math.min(...solid.filter((_, i) => i % 2 === 0))).toBeCloseTo(2);
     expect([solid[12], solid[13]]).toEqual([20, 0]);
     const dashed = eyesArrow([0, 0], [20, 0], true);
     expect(dashed.length).toBeGreaterThan(18 * 3);

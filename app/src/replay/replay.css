@@ -19,6 +19,10 @@ h2 span { display: block; margin-top: 2px; color: var(--muted); text-transform: 
 
 .stage { display: flex; justify-content: center; }
 #pitch { display: block; width: min(100%, calc(68svh * 0.66)); aspect-ratio: 0.66; border-radius: var(--r-stage); touch-action: manipulation; background: #0b2a1a; }
+/* the 3D toggle (view3d/toggle.ts) wraps the canvas: the wrapper takes the pitch's width, the canvases fill it */
+.stage .v3d-stage { width: min(100%, calc(68svh * 0.66)); }
+.v3d-stage #pitch, .v3d-canvas { width: 100%; }
+.v3d-canvas { display: block; aspect-ratio: 0.66; border-radius: var(--r-stage); background: #0b2a1a; }
 #pitch.skeleton { background: linear-gradient(100deg, #0b2a1a 30%, #133b25 50%, #0b2a1a 70%) 0 0 / 300% 100%; animation: shimmer 1.4s linear infinite; }
 
 .timeline { position: relative; margin: var(--s-3) 0 var(--s-1); }

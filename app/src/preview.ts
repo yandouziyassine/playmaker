@@ -5,7 +5,7 @@ import { getDay, getIndex, getMoment, type Moment } from "./api.ts";
 import { draw, toScreen, type View } from "./pitch.ts";
 import { t } from "./i18n/index.ts";
 
-const getSample = (): Promise<Moment> => fetch("/content/sample.json").then((r) => { if (!r.ok) throw new Error(String(r.status)); return r.json() as Promise<Moment>; });
+const getSample = (): Promise<Moment> => fetch("content/sample.json").then((r) => { if (!r.ok) throw new Error(String(r.status)); return r.json() as Promise<Moment>; });
 
 const PX_PER_M = 5.6; // zoom: about 40 m of pitch in the 232 px tall preview
 

@@ -1,5 +1,8 @@
 # Playmaker
 
+**Play the demo: https://yandouziyassine.github.io/playmaker/** (static build: 30 days of content, picks scored in
+your browser, no crowd stats; the full service keeps answers on a server, see docs/ARCHITECTURE.md).
+
 A daily football decision game. Five real moments from professional matches: you have the ball, pick the pass. Then
 see the AI coach's pick and its reasons, what the pro did, what happened in the next 15 seconds, and how other players
 chose.

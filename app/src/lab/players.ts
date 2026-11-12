@@ -24,9 +24,17 @@ export function keepPersons(dets: RawDetection[], minScore = MIN_SCORE): Person[
   return out;
 }
 
-/** Ground contact point: bottom-centre of the box. */
-export function feet(b: Box): Pt {
-  return { x: b.x + b.w / 2, y: b.y + b.h };
+/**
+ * Detector boxes of a standing player reach a little below the ground contact (boots, shadow, box padding): on the
+ * synthetic benchmark (scripts/cv-bench, EfficientDet-Lite0, tiled) the median overshoot is ~1.2 % of the box height. One pixel is up to a metre on the far side of a
+ * wide shot, so it is worth correcting. A wide box (w/h > 1.3: a fallen or sliding player) lies on the ground: no shift.
+ */
+export const FEET = { shrink: 0.012, lyingAspect: 1.3 } as const;
+
+/** Ground contact point: bottom-centre of the box, raised by FEET.shrink of the height for an upright box. */
+export function feet(b: Box, o: typeof FEET = FEET): Pt {
+  const lying = b.h > 0 && b.w / b.h > o.lyingAspect;
+  return { x: b.x + b.w / 2, y: b.y + b.h - (lying ? 0 : o.shrink * b.h) };
 }
 
 /** Image point to pitch metres; null if it falls behind the horizon or far off the pitch. */

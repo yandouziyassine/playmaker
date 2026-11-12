@@ -1,42 +1,58 @@
-// The 3D "player's eyes" view: three.js scene + renderer, loaded with import() (see toggle.ts) so three.js is a
-// separate chunk and never weighs on the 2D game. Adapted from the portfolio site's football3d scene.ts / view3d.ts
-// (same author, MIT): instanced capsule players with team colours, billboard shirt numbers from a drawn 10 x 10 atlas,
-// pitch markings as ground ribbons, goals, ball, arrows as flat ribbons on the grass.
-// The camera stands at the ball carrier's head and looks at the attacking goal; drag (or wheel) to look around,
-// double-click / double-tap to re-centre. Renders only on demand (show, resize, a drag).
+// The 3D view: three.js scene + renderer, loaded with import() (see toggle.ts) so three.js is a separate chunk and
+// never weighs on the 2D game. Adapted from the portfolio site's football3d scene.ts / view3d.ts / camera.ts (same
+// author, MIT): instanced capsule players with team colours and a dark outline, billboard shirt numbers from a drawn
+// 10 x 10 atlas, soft contact shadows, a textured pitch with mowing stripes, a cheap stadium surround (one textured
+// cylinder), goals, ball, arrows as flat ribbons on the grass.
+// Three cameras: the ball carrier's eyes (drag to look around), the stadium (TV side view following the ball, drag to
+// orbit) and tactical (high and tilted, drag to orbit); double-tap re-centres. The mode is remembered (localStorage).
+// Tracking frames arrive at 10-12.5 fps: the loop interpolates positions between the last two frames at the screen's
+// rate, turns each figure towards its direction of motion and bobs it when it runs (not with reduced motion). Renders
+// only while something moves (a frame transition, a drag, the camera settling).
 import {
-  BufferAttribute, BufferGeometry, CanvasTexture, CapsuleGeometry, CircleGeometry, Color, CylinderGeometry,
-  DirectionalLight, DoubleSide, DynamicDrawUsage, Fog, HemisphereLight, InstancedBufferAttribute, InstancedMesh, Line,
-  Group, LineBasicMaterial, Matrix4, Mesh, MeshBasicMaterial, MeshLambertMaterial, PerspectiveCamera, PlaneGeometry,
-  Quaternion, RingGeometry, Scene, ShaderMaterial, SphereGeometry, Sprite, SpriteMaterial, Vector3, WebGLRenderer, type Material,
+  BackSide, BufferAttribute, BufferGeometry, CanvasTexture, CapsuleGeometry, Color, CylinderGeometry, DirectionalLight,
+  DoubleSide, DynamicDrawUsage, Fog, HemisphereLight, InstancedBufferAttribute, InstancedMesh, Line, Group,
+  LineBasicMaterial, Matrix4, Mesh, MeshBasicMaterial, MeshLambertMaterial, PerspectiveCamera, PlaneGeometry, Quaternion,
+  RepeatWrapping, RingGeometry, Scene, ShaderMaterial, SphereGeometry, Sprite, SpriteMaterial, SRGBColorSpace, Vector3,
+  WebGLRenderer, type Material,
 } from "three";
-import type { Moment } from "../api.ts";
+import { t } from "../i18n/index.ts";
 import {
-  COLORS, EYES_FOV, GOAL_H, GOAL_HALF_WIDTH, HALF_LENGTH, HALF_WIDTH, LOOK_HOME, NO_FRAMING, arrowSpecs, atlasCell, badgeItems,
-  carrierAt, cmToM, dragLook, eyesArrow, eyesPose, frameTips, isTap, pickTargets, pitchMarkings, rayPick, ribbon, toWorld, zoomFov,
-  type Framing, type Look, type Overlay3D, type PickTarget, type Vec,
+  CAMERA_MODES, COLORS, EYES_ARROW, EYES_FOV, FAR_ARROW, GOAL_H, GOAL_HALF_WIDTH, HALF_LENGTH, HALF_WIDTH, LOOK_HOME, NO_FRAMING,
+  ORBIT_HOME, arrowSpecs, atlasCell, badgeItems, cameraPose, carrierAt, cmToM, dragLook, dragOrbit, eyesArrow, followFocus,
+  frameTips, goalOf, isCameraMode, isTap, lerpFrame, lerpPoint, motion, pickTargets, pitchMarkings, rayPick, ribbon, runBob,
+  toWorld, turnTowards, zoomFov, zoomOrbit,
+  type CameraMode, type Framing, type Look, type Moment3D, type Orbit, type Overlay3D, type PickTarget, type Vec,
 } from "./geom.ts";
 
 type Cm = [number, number] | null;
 export interface View3D {
   readonly canvas: HTMLCanvasElement;
   /** Draw one frame; overlay.selected rings the target, overlay.ai/pro frame the reveal, overlay.scores shows badges. */
-  show(mo: Moment, frame: Cm[], ball: Cm, overlay?: Overlay3D): void;
+  show(mo: Moment3D, frame: Cm[], ball: Cm, overlay?: Overlay3D): void;
   /** Taps on a teammate (pass), a carry chevron or the goal mouth call fn(option k) until clearPickHandler(). */
-  setPickHandler(fn: (k: number) => void, mo: Moment): void;
+  setPickHandler(fn: (k: number) => void, mo: Moment3D): void;
   clearPickHandler(): void;
   /** Point badges over each pass target, the goal and the best carry (null clears them). */
   showScores(scores: Record<number, number> | null): void;
   /** The option under a client point while picking is on (tests / debugging), or null. */
   pickAt(clientX: number, clientY: number): number | null;
-  /** Back to looking at the goal. */
+  /** The camera mode, remembered across visits. */
+  getMode(): CameraMode;
+  setMode(mode: CameraMode): void;
+  onModeChange(cb: ((mode: CameraMode) => void) | null): void;
+  /** Back to the resting view (looking at the goal, or the mode's default camera). */
   reset(): void;
+  /** Draw calls of the last render and the mean time of the last frames (ms), for the review scripts. */
+  stats(): { calls: number; frameMs: number; frames: number };
   dispose(): void;
 }
 
+export const MODE_KEY = "playmaker.view3d.mode";
 const MAX_CARRIES = 16, Y_AXIS = new Vector3(0, 1, 0);
-const MAX_FIGURES = 30, MAX_ARROW_VERTS = 4 * 60 * 3, MAX_TRAIL = 200, MAX_DPR = 1.5;
+const MAX_FIGURES = 36, MAX_ARROW_VERTS = 8 * 60 * 3, MAX_TRAIL = 200, MAX_DPR = 1.5;
 const BODY_Y = 0.78, HEAD_Y = 1.7, NUMBER_Y = 2.3, BALL_R = 0.11, BALL_VIS_R = 0.16;
+const MAX_FRAME_MS = 200, JUMP_M = 12; // a transition never lasts longer; a player moving further between frames is a cut
+const STAND_R = 120, STAND_H = 38;
 
 const NUMBER_VS = /* glsl */ `
 attribute vec2 aCell;
@@ -73,6 +89,66 @@ function numberAtlas(): CanvasTexture {
   return new CanvasTexture(c);
 }
 
+/** A soft dark blob (radial gradient) for the contact shadows under players and the ball. */
+function blobTexture(): CanvasTexture {
+  const c = document.createElement("canvas"), n = 64;
+  c.width = c.height = n;
+  const g = c.getContext("2d")!, grad = g.createRadialGradient(n / 2, n / 2, 0, n / 2, n / 2, n / 2);
+  grad.addColorStop(0, "rgba(0,0,0,0.55)"); grad.addColorStop(0.55, "rgba(0,0,0,0.28)"); grad.addColorStop(1, "rgba(0,0,0,0)");
+  g.fillStyle = grad; g.fillRect(0, 0, n, n);
+  return new CanvasTexture(c);
+}
+
+/** The grass: mowing stripes along the pitch (as on the 2D pitch) with a little grain, one texture for one plane. */
+function grassTexture(): CanvasTexture {
+  const c = document.createElement("canvas"), w = 1024, h = 640;
+  c.width = w; c.height = h;
+  const g = c.getContext("2d")!;
+  for (let i = 0; i < 10; i++) { g.fillStyle = i % 2 ? "#1b6b3d" : "#1f7845"; g.fillRect((i * w) / 10, 0, w / 10 + 1, h); }
+  const img = g.getImageData(0, 0, w, h), d = img.data;
+  let seed = 7;
+  for (let i = 0; i < d.length; i += 4) { // cheap grain: a few per cent of brightness, deterministic
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    const k = ((seed >> 8) & 31) - 16;
+    d[i] = Math.max(0, d[i]! + k); d[i + 1] = Math.max(0, d[i + 1]! + k); d[i + 2] = Math.max(0, d[i + 2]! + (k >> 1));
+  }
+  g.putImageData(img, 0, 0);
+  const tex = new CanvasTexture(c);
+  tex.colorSpace = SRGBColorSpace;
+  return tex;
+}
+
+/** The stand: hoardings, a band of crowd (speckled seats), the roof line and the evening sky above; wraps round. */
+function standTexture(): CanvasTexture {
+  const c = document.createElement("canvas"), w = 1024, h = 256;
+  c.width = w; c.height = h;
+  const g = c.getContext("2d")!;
+  const sky = g.createLinearGradient(0, 0, 0, h * 0.55);
+  sky.addColorStop(0, "#0a1f14"); sky.addColorStop(1, "#15402a");
+  g.fillStyle = sky; g.fillRect(0, 0, w, h * 0.55);
+  g.fillStyle = "#101a14"; g.fillRect(0, h * 0.55, w, h * 0.03);         // the roof line
+  const crowd = g.createLinearGradient(0, h * 0.58, 0, h * 0.9);
+  crowd.addColorStop(0, "#2b3340"); crowd.addColorStop(1, "#171c24");
+  g.fillStyle = crowd; g.fillRect(0, h * 0.58, w, h * 0.32);
+  let seed = 0x9e3779b9;
+  const rnd = () => { // mulberry32: deterministic, no stripes
+    seed = (seed + 0x6d2b79f5) | 0;
+    let z = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    z = (z + Math.imul(z ^ (z >>> 7), 61 | z)) ^ z;
+    return ((z ^ (z >>> 14)) >>> 0) / 4294967296;
+  };
+  const tones = ["#6b7280", "#9aa3ad", "#c5a880", "#8b5e5e", "#3f5f8a", "#d9d9d9"];
+  for (let i = 0; i < 12000; i++) { // the crowd: dots in a few muted colours
+    g.fillStyle = tones[Math.floor(rnd() * tones.length)]!;
+    g.fillRect(Math.floor(rnd() * w), h * 0.58 + Math.floor(rnd() * h * 0.32), 2, 2);
+  }
+  g.fillStyle = "#0b2a1a"; g.fillRect(0, h * 0.9, w, h * 0.1);            // hoardings
+  g.fillStyle = "#2b7f93"; for (let x = 0; x < w; x += 128) g.fillRect(x + 8, h * 0.93, 60, h * 0.035); // a few muted panels
+  const tex = new CanvasTexture(c);
+  tex.colorSpace = SRGBColorSpace; tex.wrapS = RepeatWrapping; tex.repeat.set(4, 1);
+  return tex;
+}
+
 export function hasWebGL(): boolean {
   try {
     const gl = document.createElement("canvas").getContext("webgl2");
@@ -83,14 +159,23 @@ export function hasWebGL(): boolean {
 }
 
 const flat = <T extends BufferGeometry>(g: T): T => { g.rotateX(-Math.PI / 2); return g; };
+const readMode = (): CameraMode => { try { const v = localStorage.getItem(MODE_KEY); return isCameraMode(v) ? v : "eyes"; } catch { return "eyes"; } };
 
-/** Creates the view inside `host` (its canvas is prepended), or returns null when WebGL is not available. */
+// the mode selector's icons: local SVG (20 px grid like design/icons.ts, but only the 3D chunk needs them)
+const MODE_ICON: Record<CameraMode, string> = {
+  eyes: '<path d="M2 10s3-5.5 8-5.5S18 10 18 10s-3 5.5-8 5.5S2 10 2 10z"/><circle cx="10" cy="10" r="2.5"/>',
+  stadium: '<path d="M3 15.5h14M4.5 15.5V9l5.5-3.5L15.5 9v6.5"/><path d="M7.5 15.5V11h5v4.5"/>',
+  tactical: '<rect x="3" y="4" width="14" height="12" rx="1.5"/><path d="M10 4v12M3 10h14"/><circle cx="10" cy="10" r="2"/>',
+};
+const MODE_LABEL: Record<CameraMode, () => string> = { eyes: () => t("v3d.modeEyes"), stadium: () => t("v3d.modeStadium"), tactical: () => t("v3d.modeTactical") };
+
+/** Creates the view inside `host` (its canvas and mode selector are prepended), or null when WebGL is not available. */
 export function createView3D(host: HTMLElement): View3D | null {
   if (!hasWebGL()) return null;
   const canvas = document.createElement("canvas");
   canvas.className = "v3d-canvas";
   canvas.setAttribute("role", "img");
-  canvas.setAttribute("aria-label", "3D view through the ball carrier's eyes, looking at the goal; drag to look around");
+  canvas.setAttribute("aria-label", t("v3d.canvasAria"));
   host.prepend(canvas);
   let renderer: WebGLRenderer;
   try {
@@ -100,34 +185,34 @@ export function createView3D(host: HTMLElement): View3D | null {
     return null;
   }
   renderer.setPixelRatio(Math.min(MAX_DPR, window.devicePixelRatio || 1));
+  const reduced = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   // ---- scene ----
   const scene = new Scene();
   scene.background = new Color("#0a1f14");
-  scene.fog = new Fog("#0a1f14", 70, 160);
-  const sun = new DirectionalLight(0xffffff, 1.4);
+  scene.fog = new Fog("#0f2a1b", 90, 260);
+  const sun = new DirectionalLight(0xfff4e0, 1.3);
   sun.position.set(-30, 60, 40);
-  scene.add(new HemisphereLight(0xffffff, 0x1d2b1f, 1.8), sun);
+  scene.add(new HemisphereLight(0xcfe6ff, 0x1d3b24, 1.7), sun);
 
-  const ground = (w: number, d: number, colour: string, y: number) => {
-    const mesh = new Mesh(flat(new PlaneGeometry(w, d)), new MeshLambertMaterial({ color: colour }));
-    mesh.position.y = y;
-    return mesh;
-  };
-  scene.add(ground(2 * HALF_LENGTH + 40, 2 * HALF_WIDTH + 40, "#123323", -0.03));
-  // mowing stripes, as on the 2D pitch
-  for (let i = 0; i < 10; i++) {
-    const stripe = ground(2 * HALF_LENGTH / 10, 2 * HALF_WIDTH + 6, i % 2 ? "#1b6b3d" : "#1f7845", -0.01);
-    stripe.position.x = -HALF_LENGTH + (i + 0.5) * (2 * HALF_LENGTH / 10);
-    scene.add(stripe);
-  }
+  const grass = grassTexture();
+  grass.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  const pitch = new Mesh(flat(new PlaneGeometry(2 * HALF_LENGTH + 6, 2 * HALF_WIDTH + 6)), new MeshLambertMaterial({ map: grass }));
+  pitch.position.y = -0.01;
+  const apron = new Mesh(flat(new PlaneGeometry(2 * STAND_R + 10, 2 * STAND_R + 10)), new MeshLambertMaterial({ color: "#123323" }));
+  apron.position.y = -0.03;
+  const standTex = standTexture();
+  const stand = new Mesh(new CylinderGeometry(STAND_R, STAND_R, STAND_H, 32, 1, true), new MeshBasicMaterial({ map: standTex, side: BackSide, fog: false }));
+  stand.position.y = STAND_H / 2 - 0.05;
+  scene.add(apron, pitch, stand);
+
   const flatLines = ribbon(pitchMarkings()), linePos = new Float32Array((flatLines.length / 2) * 3);
   for (let i = 0, j = 0; i < flatLines.length; i += 2, j += 3) linePos.set([flatLines[i]!, 0.005, -flatLines[i + 1]!], j);
   const lineGeo = new BufferGeometry();
   lineGeo.setAttribute("position", new BufferAttribute(linePos, 3));
   scene.add(new Mesh(lineGeo, new MeshBasicMaterial({ color: "#e8efe9", side: DoubleSide })));
 
-  const m = new Matrix4(), q = new Quaternion(), s = new Vector3(), p = new Vector3(), colour = new Color();
+  const m = new Matrix4(), q = new Quaternion(), s = new Vector3(), p = new Vector3(), colour = new Color(), dark = new Color();
   const goals = new InstancedMesh(new CylinderGeometry(0.06, 0.06, 1, 8), new MeshLambertMaterial({ color: "#ffffff" }), 6);
   const bar = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), Math.PI / 2);
   let gi = 0;
@@ -148,22 +233,30 @@ export function createView3D(host: HTMLElement): View3D | null {
     mesh.count = 0; mesh.frustumCulled = false;
     return mesh;
   };
-  const shadowMat = new MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3, depthWrite: false });
-  const shadows = figureMesh(flat(new CircleGeometry(0.45, 12)), shadowMat);
-  const bodies = figureMesh(new CapsuleGeometry(0.28, 1.0, 4, 8), new MeshLambertMaterial({ color: 0xffffff }));
-  for (let i = 0; i < MAX_FIGURES; i++) bodies.setColorAt(i, colour.set(0xffffff));
+  const blob = blobTexture();
+  const shadowMat = new MeshBasicMaterial({ map: blob, transparent: true, depthWrite: false });
+  const shadows = figureMesh(flat(new PlaneGeometry(1.5, 1.5)), shadowMat);
+  const capsule = new CapsuleGeometry(0.28, 1.0, 4, 10);
+  const bodies = figureMesh(capsule, new MeshLambertMaterial({ color: 0xffffff }));
+  const outlines = figureMesh(capsule, new MeshBasicMaterial({ color: 0xffffff, side: BackSide })); // inverted hull: a dark edge
+  for (let i = 0; i < MAX_FIGURES; i++) { bodies.setColorAt(i, colour.set(0xffffff)); outlines.setColorAt(i, colour.set(0x000000)); }
   const heads = figureMesh(new SphereGeometry(0.14, 10, 8), new MeshLambertMaterial({ color: "#d8c3a5" }));
   const cells = new InstancedBufferAttribute(new Float32Array(MAX_FIGURES * 2), 2);
   const numberGeo = new PlaneGeometry(1, 1);
   numberGeo.setAttribute("aCell", cells);
   const atlas = numberAtlas();
+  const numberSize = { value: 0.75 };
   const numbers = figureMesh(numberGeo, new ShaderMaterial({
-    uniforms: { uAtlas: { value: atlas }, uSize: { value: 0.75 } }, vertexShader: NUMBER_VS, fragmentShader: NUMBER_FS,
+    uniforms: { uAtlas: { value: atlas }, uSize: numberSize }, vertexShader: NUMBER_VS, fragmentShader: NUMBER_FS,
   }));
   const ring = new Mesh(flat(new RingGeometry(0.55, 0.75, 24)), new MeshBasicMaterial({ color: "#ffffff" }));
   ring.visible = false;
+  const carrierRing = new Mesh(flat(new RingGeometry(0.5, 0.66, 24)), new MeshBasicMaterial({ color: COLORS.ball }));
+  carrierRing.visible = false;
   const ball = new Mesh(new SphereGeometry(BALL_VIS_R, 16, 12), new MeshLambertMaterial({ color: COLORS.ball }));
   ball.visible = false;
+  const ballShadow = new Mesh(flat(new PlaneGeometry(0.6, 0.6)), shadowMat);
+  ballShadow.visible = false;
 
   const arrowPos = new BufferAttribute(new Float32Array(MAX_ARROW_VERTS * 3), 3).setUsage(DynamicDrawUsage);
   const arrowCol = new BufferAttribute(new Float32Array(MAX_ARROW_VERTS * 3), 3).setUsage(DynamicDrawUsage);
@@ -191,24 +284,100 @@ export function createView3D(host: HTMLElement): View3D | null {
   for (let i = 0; i < MAX_CARRIES; i++) chevrons.setColorAt(i, colour.set(COLORS.ball));
   chevrons.count = 0; chevrons.frustumCulled = false;
   const badges = new Group();
-  scene.add(shadows, bodies, heads, numbers, ring, ball, arrows, trail, chevrons, badges);
+  scene.add(shadows, outlines, bodies, heads, numbers, ring, carrierRing, ball, ballShadow, arrows, trail, chevrons, badges);
 
-  // ---- camera and steering ----
-  const camera = new PerspectiveCamera(EYES_FOV, 1, 0.1, 400);
-  let look: Look = LOOK_HOME, fov = EYES_FOV, eye: Vec = [0, 0], raf = 0, disposed = false, framing: Framing = NO_FRAMING;
+  // ---- camera, steering and the motion state ----
+  const camera = new PerspectiveCamera(EYES_FOV, 1, 0.1, 500);
+  let mode: CameraMode = readMode(), modeCb: ((m: CameraMode) => void) | null = null;
+  let look: Look = LOOK_HOME, fov = EYES_FOV, orbit: Orbit = ORBIT_HOME, framing: Framing = NO_FRAMING;
+  let eye: Vec = [0, 0], focus: Vec = [0, 0], goal: Vec = goalOf(1), raf = 0, disposed = false;
   const aim = new Vector3(), ndc = new Vector3();
   let picker: { fn: (k: number) => void; targets: PickTarget[] } | null = null;
-  let lastMo: Moment | null = null, lastFrame: Cm[] = [], lastBall: Cm = null, lastOverlay: Overlay3D = {};
+  let lastMo: Moment3D | null = null, lastFrame: Cm[] = [], lastBall: Cm = null, lastOverlay: Overlay3D = {};
+  // the transition: from `prev` (what was on screen) to `cur` (the last frame shown) over `dur` ms from `t0`
+  let prev: Cm[] = [], cur: Cm[] = [], prevBall: Cm = null, curBall: Cm = null, t0 = 0, dur = 0, u = 1;
+  // per player: last drawn position, facing (radians, pitch frame), speed (m/s), distance run (for the bob phase)
+  const drawn: Cm[] = [], heading: number[] = [], speeds: number[] = [], run: number[] = [];
+  let lastTick = 0, moving = false, settled = true;
+  const times: number[] = []; // the last frame times, for stats()
 
-  function render() {
+  const aspect = () => Math.max(1, canvas.clientWidth) / Math.max(1, canvas.clientHeight);
+  const screen = () => ({ fov: camera.fov, heightPx: Math.max(1, canvas.clientHeight) });
+
+  /** Place every figure, the ball and the camera for the positions on screen now, then draw. */
+  function render(now = performance.now()) {
     raf = 0;
     if (disposed) return;
-    const pose = eyesPose(eye, look, fov, framing);
+    const t1 = performance.now();
+    const dt = lastTick ? Math.min(0.1, (now - lastTick) / 1000) : 0;
+    lastTick = now;
+    u = dur > 0 ? Math.min(1, (now - t0) / dur) : 1;
+    const frame = u >= 1 ? cur : lerpFrame(prev, cur, u), b = u >= 1 ? curBall : lerpPoint(prevBall, curBall, u);
+    const mo = lastMo, o = lastOverlay;
+    if (!mo) return;
+
+    // figures: colour by side, facing their motion, bobbing when they run; the carrier hidden from his own eyes
+    const showCarrier = mode !== "eyes" || framing.back > 0;
+    const ec = carrierAt(mo, frame);
+    if (ec) eye = ec;
+    else if (b) eye = cmToM(b);
+    let n = 0;
+    moving = false;
+    frame.forEach((cm, i) => {
+      if (!cm || n >= MAX_FIGURES) return;
+      const pl = mo.players[i];
+      if (!pl) return;
+      const [x, y] = cmToM(cm), z = -y;
+      const mv = motion(drawn[i] ?? null, [x, y], dt);
+      speeds[i] = mv.speed;
+      heading[i] = mv.heading === null ? heading[i] ?? Math.atan2(goal[1] - y, goal[0] - x) : turnTowards(heading[i] ?? mv.heading, mv.heading, dt);
+      run[i] = (run[i] ?? 0) + mv.speed * dt;
+      drawn[i] = [x, y];
+      if (mv.speed >= 1.5) moving = true;
+      const bob = runBob(mv.speed, run[i]!, reduced);
+      const k = i === mo.carrier && !showCarrier ? 0 : 1; // the camera is inside the carrier
+      q.setFromAxisAngle(Y_AXIS, heading[i]!);
+      bodies.setMatrixAt(n, m.compose(p.set(x, BODY_Y + bob, z), q, s.set(0.72 * k, k, k)));      // shoulders wider than the chest
+      outlines.setMatrixAt(n, m.compose(p.set(x, BODY_Y + bob + 0.02, z), q, s.set(0.82 * k, 1.0 * k, 1.12 * k))); // a hull round the sides, not under the feet
+      const side = pl.side === 0 ? mo.colors?.[0] ?? COLORS.attack : mo.colors?.[1] ?? COLORS.defend;
+      bodies.setColorAt(n, colour.set(side));
+      outlines.setColorAt(n, dark.set(side).multiplyScalar(0.3));
+      heads.setMatrixAt(n, m.compose(p.set(x, HEAD_Y + bob, z), q, s.set(k, k, k)));
+      const kn = i === mo.carrier && mode === "eyes" ? 0 : 1; // seen from just behind him, his own number would fill the screen
+      numbers.setMatrixAt(n, m.compose(p.set(x, NUMBER_Y + bob, z), q, s.set(kn, kn, kn)));
+      const [cx, cy] = atlasCell(pl.shirt);
+      cells.setXY(n, cx, cy);
+      shadows.setMatrixAt(n, m.compose(p.set(x, 0.012, z), q, s.set(0.85 * k, k, k)));
+      n++;
+    });
+    for (const mesh of [bodies, outlines, heads, numbers, shadows]) { mesh.count = n; mesh.instanceMatrix.needsUpdate = true; }
+    bodies.instanceColor!.needsUpdate = true;
+    outlines.instanceColor!.needsUpdate = true;
+    cells.needsUpdate = true;
+    q.identity();
+
+    const carrier = frame[mo.carrier];
+    carrierRing.visible = !!carrier && showCarrier;
+    if (carrier) { const [cx, cy] = cmToM(carrier); carrierRing.position.set(cx, 0.02, -cy); }
+
+    ball.visible = ballShadow.visible = !!b;
+    if (b) { const [bx, by] = cmToM(b); ball.position.set(bx, Math.max(BALL_R, BALL_VIS_R), -by); ballShadow.position.set(bx, 0.015, -by); }
+
+    // the camera: the eyes at the carrier; the others following the ball with a lag
+    const want: Vec = b ? cmToM(b) : eye;
+    const next = dt > 0 ? followFocus(focus, want, dt) : want;
+    settled = Math.hypot(next[0] - focus[0], next[1] - focus[1]) < 0.01 && Math.hypot(want[0] - next[0], want[1] - next[1]) < 0.05;
+    focus = next;
+    const pose = cameraPose(mode, eye, focus, look, fov, framing, orbit, goal);
     camera.position.set(...pose.position);
     camera.fov = pose.fov;
     camera.updateProjectionMatrix();
     camera.lookAt(aim.set(...pose.target));
+    numberSize.value = mode === "eyes" ? 0.75 : 1.15;
     renderer.render(scene, camera);
+    times.push(performance.now() - t1);
+    if (times.length > 120) times.shift();
+    if (u < 1 || (moving && !reduced) || !settled) request();
   }
   const request = () => { if (!raf && !disposed) raf = requestAnimationFrame(render); };
 
@@ -219,29 +388,33 @@ export function createView3D(host: HTMLElement): View3D | null {
     if (!r.width || !r.height) return null;
     render(); // make sure the camera matches what is on screen
     ndc.set(((clientX - r.left) / r.width) * 2 - 1, -(((clientY - r.top) / r.height) * 2 - 1), 0.5).unproject(camera).sub(camera.position).normalize();
-    return rayPick([camera.position.x, camera.position.y, camera.position.z], [ndc.x, ndc.y, ndc.z], picker.targets);
+    return rayPick([camera.position.x, camera.position.y, camera.position.z], [ndc.x, ndc.y, ndc.z], picker.targets, screen());
   }
 
   const pts = new Map<number, { x: number; y: number; x0: number; y0: number; t0: number }>();
   let multi = false, lastEmptyTap = -1e9;
+  function home() { look = LOOK_HOME; fov = EYES_FOV; orbit = ORBIT_HOME; }
   function down(e: PointerEvent) {
     canvas.setPointerCapture?.(e.pointerId);
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: e.timeStamp });
     if (pts.size > 1) multi = true;
   }
+  function zoom(wheel: number) { if (mode === "eyes") fov = zoomFov(fov, wheel); else orbit = zoomOrbit(orbit, wheel); }
   function move(e: PointerEvent) {
-    const prev = pts.get(e.pointerId);
-    if (!prev) return;
+    const prevPt = pts.get(e.pointerId);
+    if (!prevPt) return;
     if (pts.size >= 2) { // pinch: the distance between the first two pointers zooms
-      const [a, b] = [...pts.values()];
-      const d0 = Math.hypot(a!.x - b!.x, a!.y - b!.y);
-      prev.x = e.clientX; prev.y = e.clientY;
-      const [c, d] = [...pts.values()];
-      const d1 = Math.hypot(c!.x - d!.x, c!.y - d!.y);
-      if (d0 > 0 && d1 > 0) fov = zoomFov(fov, -Math.log(d1 / d0) / 0.001);
+      const [a, c] = [...pts.values()];
+      const d0 = Math.hypot(a!.x - c!.x, a!.y - c!.y);
+      prevPt.x = e.clientX; prevPt.y = e.clientY;
+      const [d, f] = [...pts.values()];
+      const d1 = Math.hypot(d!.x - f!.x, d!.y - f!.y);
+      if (d0 > 0 && d1 > 0) zoom(-Math.log(d1 / d0) / 0.001);
     } else {
-      look = dragLook(look, e.clientX - prev.x, e.clientY - prev.y, fov, canvas.clientHeight);
-      prev.x = e.clientX; prev.y = e.clientY;
+      const dx = e.clientX - prevPt.x, dy = e.clientY - prevPt.y;
+      if (mode === "eyes") look = dragLook(look, dx, dy, fov, canvas.clientHeight);
+      else orbit = dragOrbit(orbit, dx, dy, canvas.clientHeight);
+      prevPt.x = e.clientX; prevPt.y = e.clientY;
     }
     request();
   }
@@ -251,14 +424,14 @@ export function createView3D(host: HTMLElement): View3D | null {
     if (p0 && e.type === "pointerup" && !multi && isTap(e.clientX - p0.x0, e.clientY - p0.y0, e.timeStamp - p0.t0)) {
       const k = pickAt(e.clientX, e.clientY);
       if (k !== null && picker) picker.fn(k);
-      else if (e.timeStamp - lastEmptyTap < 350) { look = LOOK_HOME; fov = EYES_FOV; lastEmptyTap = -1e9; request(); } // double tap on nothing: re-centre
+      else if (e.timeStamp - lastEmptyTap < 350) { home(); lastEmptyTap = -1e9; request(); } // double tap on nothing: re-centre
       else lastEmptyTap = e.timeStamp;
     }
     if (pts.size === 0) multi = false;
   }
   function wheel(e: WheelEvent) {
     e.preventDefault();
-    fov = zoomFov(fov, Math.max(-300, Math.min(300, e.deltaY * (e.deltaMode === 1 ? 16 : 1))));
+    zoom(Math.max(-300, Math.min(300, e.deltaY * (e.deltaMode === 1 ? 16 : 1))));
     request();
   }
   canvas.addEventListener("pointerdown", down);
@@ -267,7 +440,6 @@ export function createView3D(host: HTMLElement): View3D | null {
   canvas.addEventListener("pointercancel", up);
   canvas.addEventListener("wheel", wheel, { passive: false });
 
-  const aspect = () => Math.max(1, canvas.clientWidth) / Math.max(1, canvas.clientHeight);
   const ro = new ResizeObserver(() => {
     const w = Math.max(1, canvas.clientWidth), h = Math.max(1, canvas.clientHeight);
     renderer.setSize(w, h, false);
@@ -278,6 +450,36 @@ export function createView3D(host: HTMLElement): View3D | null {
   ro.observe(canvas);
   const lost = (e: Event) => e.preventDefault();
   canvas.addEventListener("webglcontextlost", lost);
+
+  // ---- the mode selector: three icon buttons over the top-left corner ----
+  const modes = document.createElement("div");
+  modes.className = "v3d-modes";
+  modes.setAttribute("role", "group");
+  modes.setAttribute("aria-label", t("v3d.modes"));
+  const modeButtons = new Map<CameraMode, HTMLButtonElement>();
+  for (const md of CAMERA_MODES) {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "v3d-mode"; b.dataset.mode = md;
+    b.innerHTML = `<svg class="icon" viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${MODE_ICON[md]}</svg>`;
+    b.title = MODE_LABEL[md]();
+    b.setAttribute("aria-label", MODE_LABEL[md]());
+    b.addEventListener("click", () => setMode(md));
+    modes.append(b);
+    modeButtons.set(md, b);
+  }
+  host.prepend(modes);
+  function paintModes() { for (const [md, b] of modeButtons) b.setAttribute("aria-pressed", String(md === mode)); }
+  function setMode(next: CameraMode) {
+    if (!isCameraMode(next)) return;
+    const changed = next !== mode;
+    mode = next;
+    try { localStorage.setItem(MODE_KEY, mode); } catch { /* private mode */ }
+    paintModes();
+    home();
+    if (lastMo) show(lastMo, lastFrame, lastBall, lastOverlay); else request();
+    if (changed) modeCb?.(mode);
+  }
+  paintModes();
 
   // ---- score badges: sprites with a drawn label, constant size on screen ----
   function clearBadges() {
@@ -303,65 +505,55 @@ export function createView3D(host: HTMLElement): View3D | null {
 
   let lastMoment: string | null = null, scoresKey = "";
 
-  function show(mo: Moment, frame: Cm[], b: Cm, o: Overlay3D = {}) {
-    if (mo.id !== lastMoment) { lastMoment = mo.id; look = LOOK_HOME; fov = EYES_FOV; }
+  /** A new frame: the transition starts from what is on screen now; a jump (new moment, a seek) cuts. */
+  function setFrame(mo: Moment3D, frame: Cm[], b: Cm) {
+    const same = frame === cur && b === curBall;
+    if (same) return;
+    const jumped = mo.id !== lastMoment || cur.some((c, i) => { const f = frame[i]; return !!c && !!f && Math.hypot(f[0] - c[0], f[1] - c[1]) > JUMP_M * 100; });
+    if (jumped || mo.live || !cur.length) { prev = frame; prevBall = b; dur = 0; }
+    else { prev = u >= 1 ? cur : lerpFrame(prev, cur, u); prevBall = u >= 1 ? curBall : lerpPoint(prevBall, curBall, u); dur = Math.min(MAX_FRAME_MS, 1000 / (mo.fps || 10)); }
+    cur = frame; curBall = b; t0 = performance.now(); u = dur > 0 ? 0 : 1;
+    if (jumped) { drawn.length = 0; heading.length = 0; run.length = 0; lastTick = 0; const c = carrierAt(mo, frame); focus = b ? cmToM(b) : c ?? focus; }
+  }
+
+  function show(mo: Moment3D, frame: Cm[], b: Cm, o: Overlay3D = {}) {
+    if (mo.id !== lastMoment) home();
+    setFrame(mo, frame, b);
+    lastMoment = mo.id;
     lastMo = mo; lastFrame = frame; lastBall = b; lastOverlay = o;
-    eye = carrierAt(mo, frame) ?? eye;
+    goal = goalOf(mo.attack);
+    const release = mo.lead_up[mo.lead_up.length - 1] ?? frame;
     const specs = arrowSpecs(mo, o);
     // the reveal (AI / pro / your arrows): turn and, if needed, widen and step back so they are all in view
-    framing = o.ai !== undefined || o.pro !== undefined ? frameTips(eye, specs.map((a) => a.to), aspect()) : NO_FRAMING;
-    const showCarrier = framing.back > 0;
-    let n = 0;
-    q.identity();
-    frame.forEach((cm, i) => {
-      if (!cm || n >= MAX_FIGURES) return;
-      const pl = mo.players[i];
-      if (!pl) return;
-      const [x, y] = cmToM(cm), z = -y, k = i === mo.carrier && !showCarrier ? 0 : 1; // the camera is inside the carrier
-      s.set(k, k, k);
-      bodies.setMatrixAt(n, m.compose(p.set(x, BODY_Y, z), q, s));
-      bodies.setColorAt(n, colour.set(pl.side === 0 ? COLORS.attack : COLORS.defend));
-      heads.setMatrixAt(n, m.compose(p.set(x, HEAD_Y, z), q, s));
-      const kn = i === mo.carrier ? 0 : 1; // seen from just behind him, his own number would fill the screen
-      numbers.setMatrixAt(n, m.compose(p.set(x, NUMBER_Y, z), q, s.set(kn, kn, kn)));
-      s.set(k, k, k);
-      const [cx, cy] = atlasCell(pl.shirt);
-      cells.setXY(n, cx, cy);
-      shadows.setMatrixAt(n, m.compose(p.set(x, 0.01, z), q, s));
-      n++;
-    });
-    for (const mesh of [bodies, heads, numbers, shadows]) { mesh.count = n; mesh.instanceMatrix.needsUpdate = true; }
-    bodies.instanceColor!.needsUpdate = true;
-    cells.needsUpdate = true;
+    const at = carrierAt(mo, frame) ?? eye;
+    framing = mode === "eyes" && (o.ai !== undefined || o.pro !== undefined) ? frameTips(at, specs.map((a) => a.to), aspect(), EYES_FOV, goal) : NO_FRAMING;
 
     // the selected target: a ring under the teammate, on the carry point, or in the goal mouth
-    const sel = o.selected === undefined ? undefined : pickTargets(mo).find((t) => t.k === o.selected);
+    const sel = o.selected === undefined ? undefined : pickTargets(mo).find((tg) => tg.k === o.selected);
     ring.visible = !!sel;
     if (sel) {
-      const at: Vec = sel.kind === "shot" ? [HALF_LENGTH - 1.2, 0] : sel.at;
-      ring.position.set(at[0], 0.025, -at[1]);
+      const pos: Vec = sel.kind === "shot" ? [sel.at[0] - Math.sign(sel.at[0]) * 1.2, 0] : sel.at;
+      ring.position.set(pos[0], 0.025, -pos[1]);
       ring.scale.setScalar(sel.kind === "shot" ? 2.6 : sel.kind === "carry" ? 1.4 : 1.15);
     }
 
     // carry chevrons while picking, pointing away from the carrier; the selected one white
-    const carries = picker ? picker.targets.filter((t) => t.kind === "carry").slice(0, MAX_CARRIES) : [];
-    const from = carrierAt(mo, mo.lead_up[mo.lead_up.length - 1]!) ?? eye;
-    carries.forEach((t, i) => {
-      const a = Math.atan2(t.at[1] - from[1], t.at[0] - from[0]);
-      chevrons.setMatrixAt(i, m.compose(p.set(t.at[0], 0.02, -t.at[1]), q.setFromAxisAngle(Y_AXIS, a), s.set(1, 1, 1)));
-      chevrons.setColorAt(i, colour.set(t.k === o.selected ? "#ffffff" : COLORS.ball));
+    const carries = picker ? picker.targets.filter((tg) => tg.kind === "carry").slice(0, MAX_CARRIES) : [];
+    const from = carrierAt(mo, release) ?? at;
+    carries.forEach((tg, i) => {
+      const a = Math.atan2(tg.at[1] - from[1], tg.at[0] - from[0]);
+      chevrons.setMatrixAt(i, m.compose(p.set(tg.at[0], 0.02, -tg.at[1]), q.setFromAxisAngle(Y_AXIS, a), s.set(1, 1, 1)));
+      chevrons.setColorAt(i, colour.set(tg.k === o.selected ? "#ffffff" : COLORS.ball));
     });
     q.identity();
     chevrons.count = carries.length;
     chevrons.instanceMatrix.needsUpdate = true;
     if (chevrons.instanceColor) chevrons.instanceColor.needsUpdate = true;
 
-    ball.visible = !!b;
-    if (b) { const [bx, by] = cmToM(b); ball.position.set(bx, Math.max(BALL_R, BALL_VIS_R), -by); }
-
     let v = 0;
+    const style = mode === "eyes" ? EYES_ARROW : FAR_ARROW;
     specs.forEach((a, ai) => {
-      const tri = eyesArrow(a.from, a.to, a.dashed), y = 0.03 + ai * 0.004; // later arrows a hair higher: on top
+      const tri = eyesArrow(a.from, a.to, a.dashed, style), y = 0.03 + ai * 0.004; // later arrows a hair higher: on top
       colour.set(a.color);
       for (let i = 0; i + 1 < tri.length && v < MAX_ARROW_VERTS; i += 2, v++) {
         arrowPos.setXYZ(v, tri[i]!, y, -tri[i + 1]!);
@@ -372,7 +564,7 @@ export function createView3D(host: HTMLElement): View3D | null {
     arrowPos.needsUpdate = arrowCol.needsUpdate = true;
 
     const tr = (o.balls ?? []).filter((x): x is [number, number] => !!x).slice(-MAX_TRAIL).map(cmToM);
-    tr.forEach((t, i) => trailPos.setXYZ(i, t[0], 0.05, -t[1]));
+    tr.forEach((tp, i) => trailPos.setXYZ(i, tp[0], 0.05, -tp[1]));
     trailGeo.setDrawRange(0, tr.length);
     trailPos.needsUpdate = true;
 
@@ -397,12 +589,19 @@ export function createView3D(host: HTMLElement): View3D | null {
     },
     showScores(scores) { scoresKey = ""; showScores(scores); },
     pickAt,
-    reset() { look = LOOK_HOME; fov = EYES_FOV; request(); },
+    getMode: () => mode,
+    setMode,
+    onModeChange(cb) { modeCb = cb; },
+    reset() { home(); request(); },
+    stats() {
+      const frames = times.length, frameMs = frames ? times.reduce((a, b) => a + b, 0) / frames : 0;
+      return { calls: renderer.info.render.calls, frameMs, frames };
+    },
     dispose() {
       if (disposed) return;
       disposed = true;
       cancelAnimationFrame(raf);
-      for (const [t, h] of [["pointerdown", down], ["pointermove", move], ["pointerup", up], ["pointercancel", up]] as const) canvas.removeEventListener(t, h as EventListener);
+      for (const [ty, h] of [["pointerdown", down], ["pointermove", move], ["pointerup", up], ["pointercancel", up]] as const) canvas.removeEventListener(ty, h as EventListener);
       canvas.removeEventListener("wheel", wheel);
       canvas.removeEventListener("webglcontextlost", lost);
       ro.disconnect();
@@ -415,9 +614,10 @@ export function createView3D(host: HTMLElement): View3D | null {
         if ((obj as InstancedMesh).isInstancedMesh) (obj as InstancedMesh).dispose();
       });
       mats.forEach((x) => x.dispose());
-      atlas.dispose();
+      for (const tex of [atlas, blob, grass, standTex]) tex.dispose();
       renderer.dispose();
       renderer.forceContextLoss();
+      modes.remove();
       canvas.remove();
     },
   };

@@ -33,7 +33,7 @@ export const en = {
   "more.replay": "Free play: a full match with the coach",
   "more.lab": "Lab: from a TV picture to tactics",
   "more.about": "About the AI and privacy",
-  "footer.html": "Data: Bassek et al. (2025), DFL / Sportec Solutions, CC BY 4.0 · SkillCorner open data (MIT). Positions drawn by Playmaker. <a href=\"/about.html\">About</a> · <a href=\"https://github.com/yandouziyassine/playmaker\">Code</a>",
+  "footer.html": "Data: Bassek et al. (2025), DFL / Sportec Solutions, CC BY 4.0 · SkillCorner open data (MIT). Positions drawn by Playmaker. <a href=\"about.html\">About</a> · <a href=\"https://github.com/yandouziyassine/playmaker\">Code</a>",
 
   // game
   "game.h1": "Today's five: pick the pass",
@@ -171,6 +171,14 @@ export const en = {
   "v3d.loading": "Loading 3D…",
   "v3d.help": "Drag to look around · double-tap to re-centre",
   "v3d.helpPick": "Tap a teammate, a yellow chevron or the goal · drag to look",
+  "v3d.helpOrbit": "Drag to turn the camera · pinch or wheel to zoom · double-tap to re-centre",
+  "v3d.helpPickOrbit": "Tap a teammate, a yellow chevron or the goal · drag to turn the camera",
+  "v3d.modes": "Camera",
+  "v3d.modeEyes": "Player's eyes",
+  "v3d.modeStadium": "Stadium camera",
+  "v3d.modeTactical": "Tactical view",
+  "v3d.canvasAria": "3D view of the moment: the ball carrier's eyes, the stadium camera or the tactical view; drag to look around",
+  "v3d.title3dReplay": "Watch the match in 3D",
 
   // replay (free play) page
   "rp.title": "Playmaker Free play · a full match with the coach",

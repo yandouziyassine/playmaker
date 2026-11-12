@@ -16,25 +16,27 @@ export interface PickResult {
   guess: number | null; guess_right: boolean | null;
 }
 export interface DayIndex { days: { date: string; day_number: number }[] }
-export const getIndex = () => fetch("/content/days/index.json").then(json<DayIndex>);
+export const getIndex = () => fetch("content/days/index.json").then(json<DayIndex>);
 const json = async <T>(r: Response): Promise<T> => { if (!r.ok) throw new Error(`${r.status}`); return r.json() as Promise<T>; };
 export const localDate = (d = new Date()) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-export const getDay = (date: string) => fetch(`/content/days/${date}.json`).then(json<Day>);
+export const getDay = (date: string) => fetch(`content/days/${date}.json`).then(json<Day>);
 const moments = new Map<string, Promise<Moment>>();
 /** Memoised: main.ts warms the day's first moment while the intro is shown, playDay() then gets it without a wait. */
 export const getMoment = (id: string): Promise<Moment> => {
   let p = moments.get(id);
   if (!p) {
-    p = fetch(`/content/moments/${id}.json`).then(json<Moment>);
+    p = fetch(`content/moments/${id}.json`).then(json<Moment>);
     p.catch(() => moments.delete(id)); // a failed fetch can be retried
     moments.set(id, p);
   }
   return p;
 };
 /** `guess`: the answer to "What did the pro actually do?" (omitted from the body when null). */
-export const postPick = (player: string, moment: string, option: number, guess: number | null) =>
-  fetch("/api/pick", {
+export const postPick = (player: string, moment: string, option: number, guess: number | null): Promise<PickResult> =>
+  import.meta.env.VITE_DEMO === "1"
+    ? import("./demo.ts").then((d) => d.demoPick(moment, option, guess)) // static demo: scored in the browser
+    : fetch("api/pick", {
     method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify(guess === null ? { player, moment, option } : { player, moment, option, guess }),
   }).then(json<PickResult>);

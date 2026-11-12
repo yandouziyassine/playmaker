@@ -6,11 +6,13 @@ import { feet, toPitch, type Person } from "./players.ts";
 import type { Advice, LoadedCoach } from "../coach/picture.ts"; // types only: the engine is loaded lazily
 import { meanColour, splitTeams, torsoBox, type RGB, type TeamLabel } from "./teams.ts";
 import { detectPeople, detectVideoFrame, loadDetector, loadVideoDetector } from "./detector.ts";
+import { getSettings, MODELS, setSettings, type ModelId } from "./settings.ts";
 import { CAMERA_MESSAGES, cameraProblem, openCamera, stopStream } from "./camera.ts";
 import {
-  assignTeam, cameraMoved, delayUntilNext, fixCentroids, MOVE_FRAMES, moveStreak, nextFps, nextThrottle, patchDiffs, START_THROTTLE,
-  stepTracks, thumbnail, trackVelocity, type Centroids, type Throttle, type Track,
+  assignTeam, blendPoints, CAL_WATCH, delayUntilNext, fixCentroids, nextFps, nextThrottle, START_THROTTLE, START_WATCH, stepTracks,
+  trackVelocity, watchResidual, type CalWatch, type Centroids, type Throttle, type Track,
 } from "./live.ts";
+import { autoCalibrate, pickFour, refineCalibration, residualOf, type AutoCal, type AutoCalResult } from "./autocal.ts";
 import type { State } from "../coach/features.ts";
 import { drawScene, SCENE_H, SCENE_W } from "./scene.ts";
 import { attackDirection, ballGround, pickBall, pickCarrier, stepBall, trackBox, type Ball, type BallTrack } from "./ball.ts";
@@ -27,6 +29,14 @@ localizeLab();
 mountLangSwitch();
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+
+// detector choice: fast EfficientDet-Lite0 (default) or accurate Lite2 (scripts/cv-bench: recall 69.9 % vs 80.1 %, ~2.4x slower)
+{
+  const sel = $<HTMLSelectElement>("det-model");
+  for (const [id, m] of Object.entries(MODELS)) sel.add(new Option(m.label, id));
+  sel.value = getSettings().model;
+  sel.addEventListener("change", () => { setSettings({ model: sel.value as ModelId }); void loadDetector(); });
+}
 const MAX_SIDE = 1600;
 const PT_COLOURS = ["#ffd166", "#4cc9f0", "#ff9f1c", "#c77dff"];
 const RANK_COLOURS = ["#06d6a0", "#4cc9f0", "#ffd166"];
@@ -205,6 +215,49 @@ function fitReport(cal: Calib | null): Fit | null {
   const pitch4 = st.ids.map((id) => landmark(id)!);
   const extra = LINE_CORNER_IDS.filter((l) => !st.ids.includes(l.id));
   return { quality: fitQuality(s, cal.p2i, pitchLines()), check: calibrationCheck(pitch4, st.pts as Pt[], extra, corners()) };
+}
+
+// ---------- automatic calibration (autocal.ts): the detected lines matched to the pitch model, no taps ----------
+let lastAuto: { res: AutoCalResult; index: number } | null = null;
+
+/** Fills the 4 landmarks and points from a solution (the matched corners first). False when no 4 usable landmarks. */
+function applySolution(sol: AutoCal): boolean {
+  const four = pickFour(sol, img.width, img.height);
+  if (!four) return false;
+  st.ids = four.ids; st.pts = four.pts; st.snaps = [null, null, null, null]; st.active = null;
+  return true;
+}
+
+function showSolution(res: AutoCalResult, index: number, force = false) {
+  const sol = index === 0 ? res.best : res.alternatives[index - 1] ?? null;
+  const alt = $<HTMLButtonElement>("autocal-alt");
+  const ms = Math.round(res.ms);
+  if (!sol || (sol.rating === "poor" && !force) || !applySolution(sol)) {
+    status.textContent = sol ? tl("lab.st.autocal.poor", { d: num(sol.fitMean ?? 0, 1), ms }) : tl("lab.st.autocal.none");
+    alt.hidden = true;
+    if (st.active === null && st.pts.some((p) => !p)) st.active = st.pts.findIndex((p) => !p);
+    buildCalib(); render();
+    return;
+  }
+  lastAuto = { res, index };
+  const second = res.alternatives[0];
+  const ambiguous = !!second && !!res.best && second.score < res.best.score * 1.5 + 1;
+  alt.hidden = !ambiguous;
+  status.textContent = tl("lab.st.autocal.ok", { ms, side: tl(`lab.autocal.side.${sol.side}`), rating: tl(`lab.fit.${sol.rating}`), n: sol.inliers, d: num(sol.fitMean ?? 0, 1) })
+    + (ambiguous && index === 0 ? " " + tl("lab.st.autocal.alt") : "");
+  status.classList.remove("bad");
+  calibChanged(); buildCalib(); render();
+}
+
+/** The Auto-calibrate button (picture, or the last camera frame live). Synchronous: bounded to ~300 ms by autocal.ts. */
+function runAutoCal(): AutoCalResult | null {
+  if (!st.loaded) return null;
+  const s = getScan();
+  if (!s) { status.textContent = tl("lab.st.autocal.none"); return null; }
+  const res = autoCalibrate(s);
+  lastAuto = null;
+  showSolution(res, 0);
+  return res;
 }
 
 // ---------- drawing ----------
@@ -794,6 +847,12 @@ $("snap-all").addEventListener("click", () => {
   status.textContent = n ? tln("lab.st.snappedN", n) : tl("lab.st.noSnap");
   calibChanged(); buildCalib(); render();
 });
+$("autocal").addEventListener("click", () => { runAutoCal(); });
+$("autocal-alt").addEventListener("click", () => {
+  if (!lastAuto) return;
+  const n = 1 + lastAuto.res.alternatives.length;
+  showSolution(lastAuto.res, (lastAuto.index + 1) % n, true);
+});
 $("reset-pts").addEventListener("click", () => { st.pts = [null, null, null, null]; st.snaps = [null, null, null, null]; st.active = 0; calibChanged(); buildCalib(); render(); });
 $("detect").addEventListener("click", () => void runDetect());
 $("demo").addEventListener("click", loadDemo);
@@ -836,12 +895,18 @@ const live = {
   pos: [] as (Pt | null)[], // smoothed pitch position per st.persons index
   vel: [] as (Pt | null)[], // m/s, null until a track has a few hits
   cents: null as Centroids | null,
-  ref: null as Float32Array | null, // grey thumbnail at calibration time
   ball: null as BallTrack | null,   // smoothed ball, image pixels
   ballT: 0,
-  streak: 0,
   moved: false,
   err: "",
+  // calibration upkeep (every CAL_WATCH.periodMs, off the detection loop): residual watch, line refinement, auto recalibration
+  watch: START_WATCH as CalWatch,
+  calTimer: 0 as ReturnType<typeof setInterval> | 0,
+  calBusy: false,
+  inTick: false,
+  nextFull: 0,      // earliest time of the next full automatic search after a camera move
+  autoText: "",     // "recalibrated automatically" notice, shown until autoUntil
+  autoUntil: 0,
 };
 
 function camStatus(text: string, bad = false, busy = false) {
@@ -851,14 +916,14 @@ function camStatus(text: string, bad = false, busy = false) {
 
 function resetTracking() {
   lastBox.clear();
-  Object.assign(live, { tracks: [], pos: [], vel: [], lastT: 0, streak: 0, moved: false, ball: null, ballT: 0 });
+  Object.assign(live, { tracks: [], pos: [], vel: [], lastT: 0, moved: false, ball: null, ballT: 0 });
 }
 
 /** Called whenever the calibration points or landmarks change: tracks and the camera reference restart. */
 function calibChanged() {
   if (!live.on) return;
   resetTracking();
-  live.ref = null;
+  live.watch = START_WATCH;
 }
 
 function setMode(on: boolean) {
@@ -875,7 +940,7 @@ function setMode(on: boolean) {
   Object.assign(st, { loaded: false, persons: [], colours: [], labels: [], ms: null, carrier: null, pts: [null, null, null, null], active: 0,
     snaps: [null, null, null, null], balls: [], carrierManual: false, dirManual: false, autoNote: "" });
   scan = null;
-  live.cents = null; live.ref = null; resetTracking(); setFrozen(false);
+  live.cents = null; live.watch = START_WATCH; resetTracking(); setFrozen(false);
   $("work").hidden = true;
   status.textContent = "";
   camStatus(on ? tl("lab.cam.private") : "");
@@ -930,6 +995,8 @@ async function startCamera() {
     return;
   }
   schedule(0);
+  if (live.calTimer) clearInterval(live.calTimer);
+  live.calTimer = setInterval(calTick, CAL_WATCH.periodMs);
   buildCalib(); render();
 }
 
@@ -939,7 +1006,8 @@ function stopCamera() {
   video.srcObject = null;
   if (live.raf) cancelAnimationFrame(live.raf);
   if (live.timer) clearTimeout(live.timer);
-  live.raf = 0; live.timer = 0;
+  if (live.calTimer) clearInterval(live.calTimer);
+  live.raf = 0; live.timer = 0; live.calTimer = 0;
   $("cam-start").hidden = false;
   $("cam-stop").hidden = true;
 }
@@ -972,6 +1040,7 @@ async function tick() {
   try {
     if (work.width !== src.width || work.height !== src.height) { work.width = src.width; work.height = src.height; }
     wctx().drawImage(video, 0, 0, work.width, work.height);
+    live.inTick = true;
     const run = await detectVideoFrame(work, $<HTMLInputElement>("live-tiled").checked);
     if (!live.stream || live.frozen) return; // stopped or frozen while detecting
     processFrame(run.persons, run.balls, run.ms, t0);
@@ -979,6 +1048,8 @@ async function tick() {
     console.error(e);
     status.textContent = tl("lab.st.liveFail");
     return;
+  } finally {
+    live.inTick = false;
   }
   const spent = performance.now() - t0;
   live.throttle = nextThrottle(live.throttle, spent);
@@ -995,12 +1066,7 @@ function processFrame(found: Person[], balls: Ball[], ms: number, now: number) {
   const ok = !!cal && !("error" in cal);
   let persons = found;
   let colours = persons.map((p) => meanColour(data, torsoBox(p.box)));
-  // camera moved since the calibration? (phone or broadcast camera)
-  if (ok) {
-    const th = thumbnail(data);
-    if (!live.ref) { live.ref = th; live.streak = 0; } else live.streak = moveStreak(live.streak, cameraMoved(patchDiffs(live.ref, th)));
-    live.moved = live.streak >= MOVE_FRAMES;
-  } else live.moved = false;
+  if (!ok) live.moved = false; // else: calTick() keeps live.moved from the reprojection residual
   // teams: per-frame split until calibrated, then fixed centroids so the labels do not flip between frames
   if (ok && !live.cents) {
     live.cents = fixCentroids(colours.filter((c): c is RGB => !!c));
@@ -1050,12 +1116,58 @@ function processFrame(found: Person[], balls: Ball[], ms: number, now: number) {
   Object.assign(st, { persons, colours, labels, separation, ms, carrier: null, carrierManual: false, autoNote: "" });
   const fps = live.fps === null ? "–" : num(live.fps, 1);
   if (live.moved) {
-    status.textContent = tl("lab.st.moved");
+    status.textContent = tl(performance.now() < live.nextFull ? "lab.st.movedAuto" : "lab.st.moved");
+  } else if (live.autoText && now < live.autoUntil) {
+    status.textContent = live.autoText;
   } else {
     status.textContent = tl("lab.live.status", { fps, ms: Math.round(ms), people: tln("lab.people", persons.length) }) +
       (ok ? (live.cents ? tl("lab.live.fixed") : "") : tl("lab.live.uncal")) + (live.ball ? tl("lab.live.ball") : "");
   }
   status.classList.toggle("bad", live.moved);
+}
+
+/**
+ * Calibration upkeep, every CAL_WATCH.periodMs on its own timer (skipped while a detection, a drag or another upkeep is in
+ * progress): the reprojection residual of the current calibration on the last detected frame feeds the residual watch;
+ * calm: the calibration is refined from the lines (seeded by the current one) and the 4 points eased towards the result;
+ * moved: a full automatic search replaces the calibration (retried every CAL_WATCH.retryMs while it fails).
+ */
+function calTick() {
+  if (!live.on || !live.stream || live.frozen || document.hidden || live.calBusy || live.inTick || st.busy || st.drag !== null) return;
+  const cal = calibration();
+  if (!cal || "error" in cal) return;
+  live.calBusy = true;
+  try {
+    const s = getScan();
+    if (!s) return;
+    live.watch = watchResidual(live.watch, residualOf(s, cal.p2i));
+    if (live.watch.moved) {
+      const t = performance.now();
+      if (t >= live.nextFull) {
+        live.nextFull = t + CAL_WATCH.retryMs;
+        const res = autoCalibrate(s);
+        if (res.best && res.best.rating !== "poor" && applySolution(res.best)) {
+          resetTracking();
+          live.watch = watchResidual(START_WATCH, residualOf(s, res.best.H));
+          live.moved = false; live.nextFull = 0;
+          live.autoText = tl("lab.st.autoRecal", { d: num(res.best.fitMean ?? 0, 1) }); live.autoUntil = t + 4000;
+          status.textContent = live.autoText; status.classList.remove("bad");
+          buildCalib(); render();
+          return;
+        }
+      }
+      live.moved = true;
+      return;
+    }
+    live.moved = false;
+    const r = refineCalibration(s, cal.p2i);
+    if (!r || r.rating === "poor") return;
+    const next = st.ids.map((id) => { const m = landmark(id)!; return wOf(r.H, m) > 0 ? applyH(r.H, m) : null; });
+    st.pts = blendPoints(st.pts, next, CAL_WATCH.alpha);
+    st.snaps = [null, null, null, null];
+  } finally {
+    live.calBusy = false;
+  }
 }
 
 function setFrozen(f: boolean) {
@@ -1091,7 +1203,7 @@ $("ask-coach").addEventListener("click", () => {
 $("recal").addEventListener("click", () => {
   setFrozen(true);
   st.pts = [null, null, null, null]; st.snaps = [null, null, null, null]; st.active = 0;
-  live.cents = null; live.ref = null; resetTracking();
+  live.cents = null; live.watch = START_WATCH; live.moved = false; resetTracking();
   status.textContent = tl("lab.st.recal");
   status.classList.remove("bad");
   buildCalib(); render();
@@ -1104,6 +1216,6 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 addEventListener("pagehide", () => stopCamera());
-if (new URLSearchParams(location.search).has("debug")) Object.assign(window, { __labLive: live, __labState: st, __labScan: () => getScan(), __labFit: () => fitReport(calibration()), __labBall: () => currentBall(calibration()) }); // headless checks
+if (new URLSearchParams(location.search).has("debug")) Object.assign(window, { __labLive: live, __labState: st, __labScan: () => getScan(), __labFit: () => fitReport(calibration()), __labBall: () => currentBall(calibration()), __labAutoCal: () => runAutoCal(), __labCalTick: () => calTick() }); // headless checks
 
 buildCalib();

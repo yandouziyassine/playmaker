@@ -6,5 +6,11 @@ Licence: Apache License 2.0 (https://www.apache.org/licenses/LICENSE-2.0), as pu
 object detector models. EfficientDet-Lite0 trained on COCO 2017 (80 classes); the Lab keeps only "person".
 Unmodified copy. Re-fetch / verify with: npm run lab:assets
 
+efficientdet_lite2.tflite (float16, version 1) - the Lab's "accurate" model (settings.ts), 448 px input
+Source: https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite2/float16/1/efficientdet_lite2.tflite
+Downloaded: 2026-11-12, sha256 5d4ebec1029bc9907aeadb9e7b4ac9cb1da6a19d01ad375210a9ae18ba173302, 12,138,859 bytes
+Model card / docs: https://ai.google.dev/edge/mediapipe/solutions/vision/object_detector
+Licence: Apache License 2.0, same publisher and terms as above. EfficientDet-Lite2 trained on COCO 2017. Unmodified copy.
+
 Runtime: @mediapipe/tasks-vision (Apache-2.0), npm package; its wasm files are loaded from
 https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@<pinned version>/wasm (too large to self-host here: ~15 MB per build).

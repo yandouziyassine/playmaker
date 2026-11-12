@@ -19,8 +19,9 @@ registerSW(); // offline play (production builds; see app/src/offline/register.t
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const history = new History(localStorage);
 const params = new URLSearchParams(location.search);
-const realToday = params.get("today") ?? localDate();
-const date = params.get("date") ?? realToday;
+// let: the static demo maps today onto its fixed set of days before start() reads them (app/src/demo.ts)
+let realToday = params.get("today") ?? localDate();
+let date = params.get("date") ?? realToday;
 
 const TOUR_FLAG = "pm.tour";
 
@@ -177,6 +178,10 @@ ${location.origin}`;
 }
 
 async function start() {
+  if (import.meta.env.VITE_DEMO === "1" && !params.get("today")) {
+    const demo = await import("./demo.ts");
+    try { realToday = demo.demoDate(localDate(), await demo.getDemoInfo()); date = params.get("date") ?? realToday; } catch { /* keep the real date */ }
+  }
   const seen = history.flag("pm.howto");
   $<HTMLDetailsElement>("howto").open = !seen;
   $("howto").addEventListener("toggle", () => history.setFlag("pm.howto"));
@@ -191,7 +196,7 @@ async function start() {
   $("day-label").textContent = `${t("day.label", { n: day.day_number })}${date !== realToday ? ` · ${date}` : ""}`;
   current = day;
   // the service worker caches the day and its five moments: opened online, the day can be finished offline
-  warmOffline([`/content/days/${date}.json`, ...day.moments.map((id) => `/content/moments/${id}.json`)]);
+  warmOffline([`content/days/${date}.json`, ...day.moments.map((id) => `content/moments/${id}.json`)]);
   const done = history.days()[date];
   if (done) return finish(day, done);
   play.disabled = false; play.removeAttribute("aria-busy");

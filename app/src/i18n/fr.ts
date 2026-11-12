@@ -32,7 +32,7 @@ export const fr: Record<Key, string> = {
   "more.replay": "Jeu libre : un match complet avec l’entraîneur",
   "more.lab": "Labo : d’une image télé à la tactique",
   "more.about": "À propos de l’IA et de la confidentialité",
-  "footer.html": "Données : Bassek et al. (2025), DFL / Sportec Solutions, CC BY 4.0 · données ouvertes SkillCorner (MIT). Positions dessinées par Playmaker. <a href=\"/about.html\">À propos</a> · <a href=\"https://github.com/yandouziyassine/playmaker\">Code</a>",
+  "footer.html": "Données : Bassek et al. (2025), DFL / Sportec Solutions, CC BY 4.0 · données ouvertes SkillCorner (MIT). Positions dessinées par Playmaker. <a href=\"about.html\">À propos</a> · <a href=\"https://github.com/yandouziyassine/playmaker\">Code</a>",
 
   "game.h1": "Les cinq du jour : choisis la passe",
   "game.progress": "Progression",
@@ -164,6 +164,14 @@ export const fr: Record<Key, string> = {
   "v3d.loading": "Chargement de la 3D…",
   "v3d.help": "Glisse pour regarder autour · touche deux fois pour recentrer",
   "v3d.helpPick": "Touche un coéquipier, un chevron jaune ou le but · glisse pour regarder",
+  "v3d.helpOrbit": "Glisse pour tourner la caméra · pince ou molette pour zoomer · touche deux fois pour recentrer",
+  "v3d.helpPickOrbit": "Touche un coéquipier, un chevron jaune ou le but · glisse pour tourner la caméra",
+  "v3d.modes": "Caméra",
+  "v3d.modeEyes": "Yeux du joueur",
+  "v3d.modeStadium": "Caméra du stade",
+  "v3d.modeTactical": "Vue tactique",
+  "v3d.canvasAria": "Vue 3D de l’action : les yeux du porteur du ballon, la caméra du stade ou la vue tactique ; glisse pour regarder autour",
+  "v3d.title3dReplay": "Regarder le match en 3D",
 
   "rp.title": "Playmaker Jeu libre · un match complet avec l’entraîneur",
   "rp.desc": "Regarde un match complet de Bundesliga vu du dessus et mets pause quand tu veux : l’entraîneur IA montre les meilleures options du porteur du ballon.",

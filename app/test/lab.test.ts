@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { applyH, computeHomography, orientH, hasCollinearTriple, invert3, reprojectionError, solveLinear, type Mat3, type Pt } from "../src/lab/homography.ts";
 import { DEFAULT_LANDMARKS, LANDMARKS, PITCH, landmark, pitchLines } from "../src/lab/landmarks.ts";
-import { distToSegment, feet, keepPersons, passingLanes, toPitch } from "../src/lab/players.ts";
+import { distToSegment, feet, FEET, keepPersons, passingLanes, toPitch } from "../src/lab/players.ts";
 import { isGrass, kmeans, meanColour, rgbToLab, splitTeams, torsoBox, type RGB } from "../src/lab/teams.ts";
 import { MEDIAPIPE_VERSION, iou, nms, tiles } from "../src/lab/detector.ts";
 
@@ -120,7 +120,7 @@ describe("players", () => {
     ];
     const ps = keepPersons(dets);
     expect(ps).toHaveLength(1);
-    expect(feet(ps[0]!.box)).toEqual({ x: 25, y: 80 });
+    expect(feet(ps[0]!.box)).toEqual({ x: 25, y: 80 - 60 * FEET.shrink }); // bottom-centre, raised by the measured box overshoot
   });
 
   it("maps feet to pitch metres and drops points off the pitch", () => {

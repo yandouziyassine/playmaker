@@ -90,6 +90,10 @@ test("the Lab in French: strings, landmark names and the EN | FR switch", async 
   await expect(point1).toBeVisible();
   await expect(point1).toHaveAttribute("title", /^Surface de réparation droite\s:\sligne de but, côté éloigné$/);
   await expect(page.locator("#calib-msg")).toContainText("Calibré");
+  await page.getByRole("button", { name: "Calibrer automatiquement" }).click();
+  await expect(page.locator("#status")).toContainText(/^Calibrage automatique en \d+\sms \(moitié droite\)\s:\sajustement bon/);
+  await expect(page.locator("#calib-msg")).toContainText("Calibré");
+  await expect(page.locator("#fit")).toContainText(/Ajustement|ajustement/);
   await page.getByRole("button", { name: "English" }).click();
   await expect(page.locator(".topbar .page")).toHaveText("Lab");
 });

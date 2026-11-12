@@ -2,12 +2,17 @@
 // "Ask the coach") snaps to the nearest moment someone has the ball and shows the coach's top 3 options; follow the
 // coach, play on, or pick another option, then see what the pro did. The second half (4.5 MB) loads when first needed.
 // The coach (engine + weights) is loaded with import() next to the match data, so the page's first paint stays small.
+// The 3D toggle (view3d/toggle.ts) mirrors every paint into the lazy three.js view: the whole match in 3D, with the
+// coach's arrows and taps on a teammate / the goal / a carry chevron choosing that option.
 import type { LoadedCoach } from "../coach/picture.ts";
 import type { FrameAdvice, Outcome, ProChoice } from "./coach.ts";
 import {
-  clock, decodeHalf, frameDots, fromGlobal, goals, minuteLabel, playerAt, scoreAt, toGlobal, totalFrames, trail, viewFlip,
-  type HalfData, type MatchMeta,
+  carrierAt, clock, decodeHalf, frameDots, fromGlobal, goals, minuteLabel, playerAt, scoreAt, toGlobal, toView, totalFrames, trail,
+  viewFlip, type HalfData, type MatchMeta,
 } from "./data.ts";
+import type { Vec } from "../coach/geometry.ts";
+import type { Moment3D, Overlay3D } from "../view3d/geom.ts";
+import { paint3D, pick3D, setup3D } from "../view3d/toggle.ts";
 import { ARROW_COLORS, TOP, drawPitch, drawScene, type View } from "./draw.ts";
 import { setIconText, spinner } from "../design/icons.ts";
 import { getLang, initLang, localizeDom, num, t } from "../i18n/index.ts";
@@ -18,7 +23,7 @@ initLang();
 localizeDom();
 mountLangSwitch();
 
-const BASE = "/replay/";
+const BASE = "replay/"; // relative: works at / and under a base path (GitHub Pages demo)
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const canvas = $<HTMLCanvasElement>("pitch"), ctx = canvas.getContext("2d")!;
 const playBtn = $<HTMLButtonElement>("play"), askBtn = $<HTMLButtonElement>("ask"), time = $<HTMLInputElement>("time");
@@ -67,10 +72,38 @@ function draw() {
   if (!h) { drawPitch(ctx, view); return; }
   const { players, ball } = frameDots(h, fpos.frame);
   const shown = !playing && advice && advice.half === fpos.half && advice.frame === Math.floor(fpos.frame) ? advice : null;
+  const tr = reduced ? [] : trail(h, fpos.frame, meta.fps);
   drawScene(ctx, view, meta, flip, {
-    players, ball, trail: reduced ? [] : trail(h, fpos.frame, meta.fps), advice: shown,
+    players, ball, trail: tr, advice: shown,
     carrierAt: shown ? playerAt(h, shown.frame, shown.carrier.player) : null, top: TOP,
   });
+  paint3D(...scene3D(h, fpos.half, fpos.frame, players, ball, tr, shown));
+}
+
+// ---------- 3D ----------
+/** Raw tracking metres to the 3D view's centimetres: the fixed view's orientation (home attacks +x in the first half). */
+const cm3D = (p: Vec): [number, number] => { const v = toView(p, flip); return [Math.round(v[0] * 100), Math.round(v[1] * 100)]; };
+let players3D: Moment3D["players"] = [];
+let last3D: Moment3D | null = null;
+/** The frame dressed as a moment for the 3D view: team colours by side, the carrier (for the eyes camera and his
+ *  ring), the goal he attacks, and the coach's options as arrows and tap targets when the coach is shown. */
+function scene3D(h: HalfData, half: number, frame: number, players: { player: number; at: Vec }[], ball: Vec | null, tr: Vec[], shown: FrameAdvice | null):
+  [Moment3D, ([number, number] | null)[], [number, number] | null, Overlay3D] {
+  const fr: ([number, number] | null)[] = new Array(meta.players.length).fill(null);
+  for (const d of players) fr[d.player] = cm3D(d.at);
+  const carrier = shown ? shown.carrier : carrierAt(meta, half, h, Math.floor(frame));
+  const team = carrier?.team ?? 0;
+  const attack = ((meta.halves[half]?.attack[team] ?? 1) * flip) as 1 | -1;
+  const options = shown ? shown.ranked.slice(0, TOP).map((r, i) => ({ k: i, kind: r.option.kind, player: r.option.target, to: cm3D(r.to) })) : [];
+  const mo: Moment3D = {
+    id: "replay", league: "", home: meta.meta.home, away: meta.meta.guest, attacking: "home", minute: 0, fps: meta.fps,
+    carrier: carrier?.player ?? -1, players: players3D, lead_up: [fr], ball: [ball ? cm3D(ball) : null], options, credit: meta.credit,
+    attack, colors: meta.meta.colors, live: true,
+  };
+  last3D = mo;
+  const o: Overlay3D = { balls: tr.map(cm3D) };
+  if (shown) o.coach = options.map((q, i) => ({ k: q.k, color: ARROW_COLORS[i] ?? "#f1faee" }));
+  return [mo, fr, ball ? cm3D(ball) : null, o];
 }
 
 function showTime() {
@@ -85,7 +118,7 @@ function showTime() {
 
 // ---------- coach ----------
 // one dominant action at a time: Play, or (coach shown) Follow the coach
-function hideCoach() { coachBox.hidden = true; advice = null; playBtn.className = "primary"; }
+function hideCoach() { coachBox.hidden = true; advice = null; playBtn.className = "primary"; pick3D(null, null); }
 
 /** Snap to the nearest moment someone has the ball (within 2 s) and show the coach's options there. */
 function askCoach() {
@@ -124,6 +157,7 @@ function askCoach() {
   const moved = shift ? t(shift < 0 ? "rp.movedBack" : "rp.movedOn", { s: num(Math.abs(shift) / meta.fps, 1) }) : "";
   say(t("rp.hasBall", { moved, shirt: p.shirt, name: p.name, team, n: advice.ranked.length }));
   draw();
+  if (last3D) pick3D(last3D, choose); // in 3D: tap a teammate, the goal or a carry chevron to choose that option
 }
 
 function choose(i: number) {
@@ -218,6 +252,7 @@ document.addEventListener("keydown", (e) => {
 });
 new ResizeObserver(resize).observe(canvas);
 resize();
+setup3D(canvas, true); // once: wraps the canvas with the 3D view and its toggle
 
 async function boot() {
   const [m, c] = await Promise.all([
@@ -225,10 +260,11 @@ async function boot() {
     import("./coach.ts"),
   ]);
   meta = m; C = c; flip = viewFlip(meta);
-  brain = await C.loadCoach("/coach/models.json");
+  brain = await C.loadCoach("coach/models.json");
   await getHalf(0);
   $("home").textContent = meta.meta.home; $("guest").textContent = meta.meta.guest;
   $("home-dot").style.background = meta.meta.colors[0]; $("guest-dot").style.background = meta.meta.colors[1];
+  players3D = meta.players.map((p) => ({ side: p.team === 0 ? 0 : 1, shirt: p.shirt, name: p.name }));
   if (getLang() === "en") $("credit").textContent = meta.credit; // French: the translated credit from the page
   const total = totalFrames(meta);
   time.max = String(total - 1); time.disabled = false; playBtn.disabled = false; askBtn.disabled = false;

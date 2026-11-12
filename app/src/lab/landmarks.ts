@@ -4,8 +4,8 @@
 import type { Pt } from "./homography.ts";
 
 export const PITCH = { length: 105, width: 68, halfL: 52.5, halfW: 34 } as const;
-const BOX = { depth: 16.5, halfW: 20.16 };      // penalty area: 16.5 m deep, 40.32 m wide
-const SIX = { depth: 5.5, halfW: 9.16 };        // goal area: 5.5 m deep, 18.32 m wide
+export const BOX = { depth: 16.5, halfW: 20.16 } as const;      // penalty area: 16.5 m deep, 40.32 m wide
+export const SIX = { depth: 5.5, halfW: 9.16 } as const;        // goal area: 5.5 m deep, 18.32 m wide
 const SPOT = 11, CIRCLE_R = 9.15, GOAL_HALF = 3.66;
 
 export type Landmark = { id: string; label: string; x: number; y: number };
@@ -71,6 +71,23 @@ export function pitchLines(): Pt[][] {
     lines.push([{ x: g, y: -GOAL_HALF }, { x: g + s * 1.5, y: -GOAL_HALF }, { x: g + s * 1.5, y: GOAL_HALF }, { x: g, y: GOAL_HALF }]);
   }
   return lines;
+}
+
+/**
+ * The straight painted lines as two families of model lines: x = const (goal lines, box and goal-area fronts, halfway
+ * line: "goal-line-parallel") and y = const (touchlines, box and goal-area sides: "touchline-parallel"). Sorted ascending.
+ */
+export const MODEL_X: readonly number[] = [-PITCH.halfL, -(PITCH.halfL - SIX.depth), -(PITCH.halfL - BOX.depth), 0, PITCH.halfL - BOX.depth, PITCH.halfL - SIX.depth, PITCH.halfL];
+export const MODEL_Y: readonly number[] = [-PITCH.halfW, -BOX.halfW, -SIX.halfW, SIX.halfW, BOX.halfW, PITCH.halfW];
+
+/** Straight segments of the painted lines (no arcs), for cheap distance checks. */
+export function straightSegments(): [Pt, Pt][] {
+  const out: [Pt, Pt][] = [];
+  for (const line of pitchLines()) {
+    if (line.length > 5) continue; // arcs and the circle
+    for (let k = 0; k < line.length - 1; k++) out.push([line[k]!, line[k + 1]!]);
+  }
+  return out;
 }
 
 export function onPitch(p: Pt, margin = 3): boolean {

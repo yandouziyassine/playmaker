@@ -3,8 +3,7 @@
 // The 2D canvas is always drawn (it stays the source of truth and the tap target); in 3D mode it is hidden and every
 // paint is mirrored into the 3D view. When WebGL is missing or the chunk fails to load, the button says so and the game
 // stays in 2D. The choice lasts for the session (all of the day's moments); 2D is the default.
-import type { Moment } from "../api.ts";
-import type { Overlay3D } from "./geom.ts";
+import type { Moment3D as Moment, Overlay3D } from "./geom.ts";
 import type { View3D } from "./view.ts";
 import { icon, spinner } from "../design/icons.ts";
 import { t } from "../i18n/index.ts";
@@ -19,8 +18,10 @@ let view: View3D | null = null, loading: Promise<View3D | null> | null = null, f
 let canvas2d: HTMLCanvasElement | null = null, stage: HTMLElement | null = null, host: HTMLElement | null = null, button: HTMLButtonElement | null = null;
 let last: Paint | null = null;
 let hook: (() => void) | null = null;
-let pick: { fn: (k: number) => void; mo: Moment } | null = null, help: HTMLElement | null = null;
-const HELP = () => t("v3d.help"), HELP_PICK = () => t("v3d.helpPick");
+let pick: { fn: (k: number) => void; mo: Moment } | null = null, help: HTMLElement | null = null, replay = false;
+const orbit = () => !!view && view.getMode() !== "eyes";
+const HELP = () => t(orbit() ? "v3d.helpOrbit" : "v3d.help"), HELP_PICK = () => t(orbit() ? "v3d.helpPickOrbit" : "v3d.helpPick");
+const helpText = () => { if (help) help.textContent = pick ? HELP_PICK() : HELP(); };
 
 export const is3D = () => on && !!view;
 
@@ -33,7 +34,7 @@ function label() {
   button.disabled = failed;
   button.removeAttribute("aria-busy");
   button.setAttribute("aria-pressed", String(on && !failed));
-  button.title = failed ? t("v3d.titleFailed") : on ? t("v3d.title2d") : t("v3d.title3d");
+  button.title = failed ? t("v3d.titleFailed") : on ? t("v3d.title2d") : replay ? t("v3d.title3dReplay") : t("v3d.title3d");
 }
 
 function apply() {
@@ -51,7 +52,7 @@ async function load(): Promise<View3D | null> {
   loading ??= import("./view.ts").then((m) => m.mount3D(host!)).catch(() => null);
   const v = await loading;
   loading = null;
-  if (v) view = v; else failed = true;
+  if (v) { view = v; v.onModeChange(helpText); helpText(); } else failed = true;
   return v;
 }
 
@@ -68,10 +69,11 @@ async function setOn(next: boolean) {
   apply();
 }
 
-/** Wraps the 2D canvas once: adds the 3D host and the toggle button over its top-right corner. */
-export function setup3D(canvas: HTMLCanvasElement) {
+/** Wraps the 2D canvas once: adds the 3D host and the toggle button over its top-right corner.
+ *  `isReplay`: free play (the button's title says "the match" rather than "the moment"). */
+export function setup3D(canvas: HTMLCanvasElement, isReplay = false) {
   if (canvas2d === canvas) return;
-  canvas2d = canvas;
+  canvas2d = canvas; replay = isReplay;
   stage = document.createElement("div");
   stage.className = "v3d-stage";
   canvas.replaceWith(stage);
@@ -101,7 +103,7 @@ export function paint3D(mo: Moment, frame: Cm[], ball: Cm, overlay: Overlay3D = 
  *  Pass null once the choice is confirmed. Survives turning 3D on later in the same choice. */
 export function pick3D(mo: Moment | null, fn: ((k: number) => void) | null) {
   pick = mo && fn ? { fn, mo } : null;
-  if (help) help.textContent = pick ? HELP_PICK() : HELP();
+  helpText();
   if (!view) return;
   if (pick) view.setPickHandler(pick.fn, pick.mo); else view.clearPickHandler();
 }

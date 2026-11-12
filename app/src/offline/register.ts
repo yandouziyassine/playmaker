@@ -14,7 +14,7 @@ export function swEnabled(prod: boolean, hostname: string, search: string): bool
 
 export function registerSW(): void {
   if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
-  if (!swEnabled(import.meta.env.PROD, location.hostname, location.search)) return;
+  if (import.meta.env.VITE_DEMO === "1" || !swEnabled(import.meta.env.PROD, location.hostname, location.search)) return; // no SW in the static demo
   const hadController = !!navigator.serviceWorker.controller;
   let reloading = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
@@ -50,6 +50,6 @@ function toast(worker: ServiceWorker) {
 /** Asks the worker to cache these content URLs (today's day and its moments) so the day can be finished offline. */
 export function warmOffline(urls: string[]): void {
   if (typeof navigator === "undefined" || !("serviceWorker" in navigator) || !urls.length) return;
-  if (!swEnabled(import.meta.env.PROD, location.hostname, location.search)) return;
+  if (import.meta.env.VITE_DEMO === "1" || !swEnabled(import.meta.env.PROD, location.hostname, location.search)) return; // no SW in the static demo
   void navigator.serviceWorker.ready.then((reg) => reg.active?.postMessage({ type: "WARM", urls })).catch(() => {});
 }

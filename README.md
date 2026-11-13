@@ -49,6 +49,11 @@ synthetic scene, no broadcast picture). Regenerate them with `scripts/showcase/`
   camera, in the browser (MediaPipe EfficientDet-Lite0 by default, Lite2 as a more accurate option, both Apache-2.0),
   split teams by shirt colour, **calibrate the pitch automatically from its painted lines** (about 50-110 ms; or 4 taps
   snapped to line corners), see the shape from above, then ask the real AI coach for the carrier's best options.
+- **Lab: video clip mode**: load a short mp4 or webm (it stays on the device; the first 60 s are analysed at 5 frames a
+  second, at 720p at most). Players are detected and tracked (Kalman filter, Hungarian assignment, shirt colour,
+  re-identification after a cut), the pitch is calibrated on every frame and camera cuts are detected. Then a top-down
+  replay synced to the video, per-team width, depth, defensive line height, distance between the lines and a rough
+  possession share, heatmaps, and the coach on any paused frame.
 - **Free play**: a full Bundesliga match from above (2D or 3D); pause any time and ask the coach.
 - **Offline and bilingual**: a service worker keeps the app and today's five, answers given offline are scored when
   the network is back; English and French throughout.
@@ -70,6 +75,12 @@ synthetic scene, no broadcast picture). Regenerate them with `scripts/showcase/`
   camera, so the ground truth is exact. On 60 frames (1,133 players) the Lab's detector went from 43.5 % to 69.9 %
   person recall (80.1 % with the Lite2 option), precision 80.6 % to 85.9 % (94.0 %), small players (< 40 px) 28.8 % to
   61.9 % (73.4 %). Synthetic frames only: not measured on real TV pictures.
+  A second benchmark renders a **10 s clip** from the same tracking (a panning broadcast camera with a 1 s cut to a
+  close-up) and runs the clip mode on it end to end: median position error 1.10 m, recall 79 %, precision 98 % in the
+  first version; calibration from the centre circle and pan propagation then raised well-calibrated frames from 62 %
+  to 96 %, the new tracker raised the mean track length from 2.4 s to 6.2 s and cut ID switches across cuts and pauses
+  from 39 to 8, and team labels are right on 97.4 % of frames. Still synthetic, and about 1.6 s per frame on a laptop
+  CPU in headless Chromium.
 - **Static demo** (`npm run demo:build`, GitHub Pages): 30 days that cycle, the answer files shipped, picks scored in
   the browser with the API's own result code. Fine for a demo, not for the real game: anyone can read the answers.
 

@@ -237,6 +237,25 @@ for day files). The Lambda handler planned for AWS reuses `handlePick` with a Dy
 
 A synthetic broadcast-like scene drawn by code (`scene.ts`) lets the Lab be tried without a third-party image.
 
+### 7.1 Video clip mode
+
+`app/src/lab/clip.ts` (pure logic), `cliprun.ts` (browser loop), `ktrack.ts` (tracker), `teams.ts` (`labelClip`). The
+user picks a local mp4 or webm; it is read through an object URL and never uploaded. The loop seeks through the first
+**60 s at 5 frames a second**, processed at **720p at most**, and on each frame:
+
+| Step | Implementation |
+|---|---|
+| Frame check | A colour signature per frame: too little grass (close-up, crowd, graphics) means "not a pitch view" and the frame is skipped; a jump of the colour histogram since the last analysed frame means a **camera cut**. |
+| Detection | The VIDEO-mode detector with adaptive tiling: the full tiled scan every few frames, and in between only the tiles around predicted players it would otherwise miss. |
+| Calibration | Full line search (section 7) on the first frame and after a cut or a poor fit; for midfield views with few straight lines, a **centre-circle calibration** (RANSAC ellipse on the paint, the halfway line through it, a touchline); otherwise the previous homography **propagated by the estimated camera pan** (chamfer match of all model lines against the paint), with a seeded refinement in between. |
+| Tracking | Constant-velocity **Kalman filter** per player in pitch metres, **Hungarian assignment** with a gate and a colour cue (torso colour in CIELAB), tracks kept through short misses, **re-identification** of lost tracks after a pause or a cut when position and colour agree. The ball has its own one-target tracker. |
+| Teams | Grass-masked torso colour (Lab median plus an a*b* histogram); team centroids fitted once per clip on the best samples with an outlier class ("other": keepers, referees, bad crops), refitted after a cut only if the colours clearly moved; each track gets the weighted vote of its detections. |
+| Tactics | Per team and frame (visible outfield players): width, depth, defensive line height, distance between the lines, plus an approximate possession share (ball within 2 m of a player) and heatmaps. |
+| Views | A top-down replay synced to the video, the numbers per team, heatmaps, and the coach on any paused frame. |
+
+The browser loop takes about 1.6 s per frame on a laptop CPU in headless Chromium (section 8.1), so a 60 s clip is a
+wait of minutes; the work is being optimised.
+
 ## 8. Lab benchmark: renders of real tracking data
 
 There is no permissively licensed set of labelled broadcast frames to measure the Lab on, and TV screenshots cannot
@@ -266,6 +285,36 @@ timings. Team purity stays at about 98-99 %.
 **What this does not show:** these are synthetic renders, not TV pictures. Real broadcasts add motion blur, graphics,
 compression, crowds and lighting that the renderer does not model, so real-world recall is expected to be lower. The
 Lab has not been measured on labelled real broadcast frames.
+
+### 8.1 Clip benchmark
+
+`clip.mjs` renders a **10 s clip** at 10 fps from the same real tracking (positions interpolated from 12.5 Hz): a main
+camera above the near touchline that pans with the ball, with a **1 s cut to a close-up** in the middle, encoded as
+webm. `gt.json` holds the true homography, every player's pitch position, team and in-frame share, and the ball, for
+every video frame. `clip-run.mjs` loads the real Lab page in headless Chromium, feeds it the file through the clip
+mode's file input and scores the tracked positions against the truth (50 analysed frames at 5 fps). `cal-bench.mjs`
+checks calibration alone in Node, `track-replay.mjs` re-runs the tracker and the team labelling on dumped detections in
+seconds, and `team-score.mjs` scores team labels in image space (below).
+
+| Measure | First version | Current |
+|---|---:|---:|
+| Frames with a good calibration | 62 % | 96 % |
+| Mean track length | 2.4 s | 6.2 s |
+| ID switches across cuts and pauses | 39 | 8 |
+
+First version also: median position error **1.10 m** (p90 2.27 m), recall 79 %, precision 98 %, about 1.6 s per
+frame. Team labels, scored in image space: right on **96.2 %** of player frames before the clip-level team model and
+**97.4 %** after it, with no outfield player marked "other". The overall ID-switch count is not compared because
+the current version tracks more frames. The possession share is very rough: in the first run it was measured on only
+4 frames (25 / 75), against 13 frames and 8 / 92 from the true positions.
+
+**Team scoring in image space.** `clip-run.mjs` matches a tracked player to the truth in pitch space (5 m gate). When
+the calibration is a metre off, that pairs a box with a nearby opponent, and the team score came out at 74 %, which
+looked like a colour problem. `team-score.mjs` instead matches each box's feet to the true feet projected with the true
+homography, so it scores the colour labels themselves (DECISIONS.md, ADR-16).
+
+**What this does not show:** one synthetic clip from one match and one kit pair, with a renderer that has no real
+motion blur, replays, graphics or crowds. The clip mode has **not** been tested on real broadcast footage.
 
 ## 9. Game client: 3D, offline, languages, static demo
 
@@ -377,6 +426,8 @@ From the design spec, section 3 and 5. Nothing below exists yet.
   the colour split; the homography assumes a flat pitch; auto-calibration needs enough painted lines (a midfield view
   with few lines can be ambiguous). The detection benchmark (section 8) uses synthetic renders of real tracking: the
   Lab has **not** been measured on real TV pictures. The MediaPipe wasm runtime is loaded from a CDN.
+- **Lab video clip mode:** measured on one synthetic 10 s clip only (section 8.1), not on real broadcast footage; about
+  1.6 s per analysed frame on a laptop CPU in headless Chromium; the possession share is very rough.
 - **Parity covers one match** (30 frames). It guards the port, not the models' quality.
 - **Failed-pass targets are inferred** in the Bundesliga data (outcome-informed), so the pass model's headline AUC is
   an upper bound (leak check 0.77-0.81 vs 0.838).

@@ -223,3 +223,36 @@ benchmark reports both.
 
 **Consequences.** The default is the fast path most visitors take; anyone analysing a single picture can switch to
 the better model. Two models to keep in the benchmark and the tests.
+
+---
+
+## ADR-15. A synthetic clip benchmark rendered from real tracking
+
+**Context.** The video clip mode adds tracking, per-frame calibration and cut handling, which a set of still frames
+cannot measure. There is no licensed, labelled broadcast video to use, and match footage cannot be shown publicly.
+
+**Decision.** Render a 10 s clip from the real, CC BY 4.0 tracking (`scripts/cv-bench/clip.mjs`) with a camera that
+pans with the ball and a 1 s cut to a close-up, store the truth for every video frame (homography, positions, teams,
+ball), and run the real Lab page on it end to end (`clip-run.mjs`). Faster checks reuse it: calibration alone in Node
+(`cal-bench.mjs`) and the tracker replayed on dumped detections (`track-replay.mjs`).
+
+**Consequences.** Each change is measured on the same clip: well-calibrated frames 62 % to 96 % (centre circle, pan
+propagation), mean track length 2.4 s to 6.2 s and switches across cuts and pauses 39 to 8 (Kalman + Hungarian with
+colour and re-identification). It is one synthetic clip from one match with one kit pair, so the risk of tuning to it
+is real, and the clip mode has **not** been tested on real broadcast footage.
+
+---
+
+## ADR-16. Score team labels in image space, not pitch space
+
+**Context.** The clip benchmark first matched each tracked player to the truth in pitch space (5 m gate) and reported
+74 % team accuracy. Most of the errors were pairings, not colours: when the calibration was a metre off, a box was
+matched to a nearby opponent.
+
+**Decision.** Score team labels by matching each box's feet to the true feet projected into the picture with the true
+homography (`scripts/cv-bench/team-score.mjs`), so the score depends on the colour labels only. Keep the pitch-space
+matching for what it does measure: position error and recall.
+
+**Consequences.** The labels were right on 96.2 % of player frames, and 97.4 % after the clip-level team model, with
+no outfield player marked "other". Calibration errors now show up in the position error, where they belong, instead of
+being read as team errors. Two matchings to explain in the report.

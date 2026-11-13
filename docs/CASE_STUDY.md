@@ -98,6 +98,36 @@ matched to the pitch model one line family at a time, and solved as a homography
 On the synthetic scene the fit is sub-pixel; the tests require the penalty-box corners within 2 px, also with two lines
 missing. No more four careful taps.
 
+### From one picture to a video clip
+
+One picture has no movement, so the Lab gained a **video clip mode**: a short local video (never uploaded) is analysed
+at 5 frames a second, players are tracked across frames, the pitch is calibrated on every frame and camera cuts are
+detected; the result is a top-down replay synced to the video, team shape numbers (width, depth, defensive line
+height, distance between the lines, a rough possession share), heatmaps, and the coach on any paused frame.
+
+To measure it I extended the benchmark: a **10 s clip** rendered from the real tracking, with a panning broadcast
+camera and a 1 s cut to a close-up, and the true positions for every frame. The first version placed players with a
+median error of **1.10 m** (p90 2.27 m), found 79 % of them at 98 % precision, but was well calibrated on only **62 %**
+of frames, kept a track for **2.4 s** on average and switched identities **39 times** across the cut and the pauses.
+
+Two changes followed. Calibration now also works from the **centre circle and the halfway line** (midfield views lack
+the straight lines the line search needs) and otherwise moves the last homography by the **estimated camera pan**:
+good frames went from 62 % to **96 %**. A **Kalman filter with Hungarian assignment**, a shirt-colour cue and
+re-identification after a cut replaced the nearest-neighbour tracker: mean track length went from 2.4 s to **6.2 s**
+and switches across cuts and pauses from 39 to **8**. I do not compare the overall switch count, because the new
+version tracks more frames.
+
+The team labels taught me something about measurement. The clip benchmark matched tracked players to the truth on the
+pitch, within 5 m, and reported **74 %** team accuracy. Looking at the errors, most were not colour mistakes: when the
+calibration was a metre off, a box was paired with a nearby opponent. Scored in **image space** instead (each box's
+feet against the true feet projected into the picture), the labels were right on **96.2 %** of player frames, and
+**97.4 %** after a clip-level team model with an outlier class for keepers and referees, with no outfield player marked
+"other". The 74 % was a property of the scorer, not of the Lab (DECISIONS.md, ADR-16).
+
+Limits, stated with the numbers: one synthetic clip, not real broadcast footage; about **1.6 s per frame** on a laptop
+CPU in headless Chromium, so a minute of video takes minutes; and the possession share rests on the few frames where
+the ball is close to a player, so it is very rough.
+
 ### A static demo
 
 To let anyone play without the server, the demo on GitHub Pages ships 30 days of content **with their answer files**
@@ -134,7 +164,11 @@ released day, for a gain the data cannot confirm. It is the first change to make
   lines (or four taps snapped to line intersections), and a DLT homography maps everyone onto the pitch. The real
   coach then suggests the carrier's best options. Live mode tracks players and estimates velocities. Lite2 is an
   optional, more accurate detector.
-- **A CV benchmark** built from renders of real tracking data (above), run with `npm run cv:bench`.
+- **Lab video clip mode:** a local clip analysed in the browser with a Kalman + Hungarian tracker, per-frame
+  calibration (line search, centre circle, pan propagation) and cut detection, then a synced top-down replay, team
+  shape numbers, heatmaps and the coach on any paused frame.
+- **A CV benchmark** built from renders of real tracking data (above), run with `npm run cv:bench`, and a clip
+  benchmark with ground truth for every frame (`scripts/cv-bench/clip.mjs`, `clip-run.mjs`).
 - **Offline play:** a service worker keeps the app and today's five; answers given offline are scored when back
   online.
 - **French and English**, WCAG AA contrast, keyboard play, phone first.
@@ -150,8 +184,9 @@ released day, for a gain the data cannot confirm. It is the first change to make
 2. Add matches and re-run the model lab; ship the zone-by-context models only if the end-to-end gain becomes
    distinguishable from zero.
 3. Use the crowd's picks as data: where do players agree with the pros more than the coach does?
-4. Measure the Lab on permissively licensed, labelled **real** broadcast frames, to see how far the synthetic
-   benchmark is from TV pictures.
+4. Measure the Lab on permissively licensed, labelled **real** broadcast frames and clips, to see how far the
+   synthetic benchmarks are from TV pictures.
+5. Make the clip mode faster (about 1.6 s per frame now) so a full minute of video is practical on a phone.
 
 ## Skills shown
 
@@ -160,7 +195,8 @@ released day, for a gain the data cannot confirm. It is the first change to make
 - Rejecting a model change that improved its own metric but not the end goal.
 - Porting ML inference across languages with numerical parity tests (Python to TypeScript, 1e-6).
 - In-browser computer vision: tiled object detection, colour clustering, line detection, automatic homography
-  calibration from vanishing points, tracking.
+  calibration from vanishing points, multi-object tracking (Kalman filter, Hungarian assignment, re-identification).
 - Building an exact-ground-truth benchmark when no licensed labelled data exists, and reporting its limits.
+- Checking the metric before trusting it: a 74 % team score that was an artefact of the matching.
 - TypeScript, Vite, three.js, a small validated API, JSON Schema contracts, Playwright, GitHub Actions.
 - Cost-bounded cloud design (lifetime budget, kill switch) and privacy by default (no accounts, hashed IPs).

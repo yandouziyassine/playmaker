@@ -2,6 +2,9 @@
 
 *Yassine Yandouzi, November 2026*
 
+**Play the demo: https://yandouziyassine.github.io/playmaker/** (a static build: 30 days that cycle, picks scored in
+your browser; see "A static demo" below for what that trades away).
+
 ## The problem
 
 In my computer vision library I had built an AI coach for football: given one tracking frame (22 players and the
@@ -70,6 +73,39 @@ percentile of 4 %, where xT and VAEP put them in their top 1 %. A separate arriv
 99.1 % on the A-League (n = 54), and the coach score's correlation with what followed went from slightly negative to
 +0.086 (A-League) and +0.083 (Bundesliga) on held-out passes.
 
+### Measuring the Lab without labelled TV pictures
+
+The Lab detects players in a TV picture, but I had no permissively licensed, labelled broadcast frames to measure it
+on, and TV screenshots cannot be published. So I built the ground truth myself: a renderer draws broadcast-like
+frames from the **real tracking data** of the free-play match (CC BY 4.0) through a virtual camera, in wide, zoomed
+and behind-the-goal views. The camera is known, so every player's box, feet point and team are exact. The Lab's real
+detection code then runs on those frames in Chromium.
+
+The first run showed what I suspected: on 60 frames (1,133 players) the pipeline found **43.5 %** of the players, and
+only **28.8 %** of the small ones (under 40 px tall), because a wide shot shrunk to the model's 320 px input makes a
+player a few pixels tall. Square tiles of 384 px with 25 % overlap, a lower score threshold inside tiles, a better
+duplicate filter and a feet correction brought the default to **69.9 % recall** (small players **61.9 %**) with
+precision **up**, 80.6 % to **85.9 %**. EfficientDet-Lite2 as an optional "accurate" model reaches **80.1 %** recall,
+**94.0 %** precision and **73.4 %** on small players, at about twice the time. Lite0 stays the default (see
+DECISIONS.md, ADR-14).
+
+The limit is stated next to the numbers: these are synthetic renders, not TV pictures. Real broadcasts have blur,
+graphics, compression and crowds that my renderer does not model, so I expect lower numbers on real footage, and I
+have not measured that.
+
+The same scene also tests the new **automatic calibration**: the painted lines are grouped by vanishing point,
+matched to the pitch model one line family at a time, and solved as a homography in about 50-110 ms in the browser.
+On the synthetic scene the fit is sub-pixel; the tests require the penalty-box corners within 2 px, also with two lines
+missing. No more four careful taps.
+
+### A static demo
+
+To let anyone play without the server, the demo on GitHub Pages ships 30 days of content **with their answer files**
+and scores each pick in the browser with the API's own result code, so the points are identical. Days cycle so there
+is always a "today". The price is the property section 3 of the architecture was built for: anyone can read the
+answers in the network tab, and there are no crowd stats. For a portfolio demo that is acceptable and said in the
+README; the real service keeps answers on the server until you pick (DECISIONS.md, ADR-12).
+
 ### A better model on paper, not shipped
 
 A model lab over all 27 matches (18,308 passes, leave-one-match-out, intervals from resampling whole matches):
@@ -89,18 +125,24 @@ released day, for a gain the data cannot confirm. It is the first change to make
 
 - **The daily game:** five moments, two questions each, a reveal with reasons, outcome, crowd split (from 20 picks)
   and a replay of the real 6 seconds after the pass; streaks, stats by pitch zone and pick type, an archive, a share
-  card. A 3D "player's eyes" view in three.js (a lazy chunk) where you tap a teammate to pass.
-- **Free play:** a full Bundesliga match with "ask the coach" on the ball carrier.
+  card. A 3D view in three.js (a lazy chunk) with three cameras (player's eyes, a TV-style stadium camera, a tactical
+  view); the camera glides between modes with frame-rate independent smoothing, and you tap a teammate to pass.
+- **Free play:** a full Bundesliga match in 2D or 3D with "ask the coach" on the ball carrier.
 - **The Lab:** from a TV screenshot or a phone pointed at the TV, players and ball are detected in the browser with
   MediaPipe EfficientDet-Lite0 (tiled passes for small players, a finer pass for the ball), teams split by shirt colour
-  with k-means in CIELAB, pitch lines found with a from-scratch Hough pipeline, four taps snapped to line
-  intersections, and a DLT homography maps everyone onto the pitch. The real coach then suggests the carrier's best
-  options. Live mode tracks players and estimates velocities.
+  with k-means in CIELAB, pitch lines found with a from-scratch Hough pipeline, **automatic calibration** from those
+  lines (or four taps snapped to line intersections), and a DLT homography maps everyone onto the pitch. The real
+  coach then suggests the carrier's best options. Live mode tracks players and estimates velocities. Lite2 is an
+  optional, more accurate detector.
+- **A CV benchmark** built from renders of real tracking data (above), run with `npm run cv:bench`.
+- **Offline play:** a service worker keeps the app and today's five; answers given offline are scored when back
+  online.
 - **French and English**, WCAG AA contrast, keyboard play, phone first.
-- **Tests:** 230 unit, parity, API and contract tests and 9 Playwright end-to-end tests (a full day, 3D picking,
-  keyboard play, French, no answers in public content), all in CI.
-- **An AWS plan** with a $20 lifetime cap and a kill switch at $15. Not deployed yet: the account and credits must be
-  checked first.
+- **A live static demo** on GitHub Pages, deployed from `main` by a workflow.
+- **Tests:** about 300 unit, parity, API and contract tests and 11 Playwright end-to-end tests (a full day, 3D picking,
+  keyboard play, French, offline play, no answers in public content), all in CI.
+- **An AWS plan** for the full service with a $20 lifetime cap and a kill switch at $15. Not deployed yet: the account
+  and credits must be checked first.
 
 ## What I would do next
 
@@ -108,7 +150,8 @@ released day, for a gain the data cannot confirm. It is the first change to make
 2. Add matches and re-run the model lab; ship the zone-by-context models only if the end-to-end gain becomes
    distinguishable from zero.
 3. Use the crowd's picks as data: where do players agree with the pros more than the coach does?
-4. Measure the Lab's detection and calibration accuracy on permissively licensed, labelled broadcast frames.
+4. Measure the Lab on permissively licensed, labelled **real** broadcast frames, to see how far the synthetic
+   benchmark is from TV pictures.
 
 ## Skills shown
 
@@ -116,6 +159,8 @@ released day, for a gain the data cannot confirm. It is the first change to make
 - Turning model uncertainty into a product rule, and auditing a scoring system for exploits.
 - Rejecting a model change that improved its own metric but not the end goal.
 - Porting ML inference across languages with numerical parity tests (Python to TypeScript, 1e-6).
-- In-browser computer vision: tiled object detection, colour clustering, line detection, homography, tracking.
+- In-browser computer vision: tiled object detection, colour clustering, line detection, automatic homography
+  calibration from vanishing points, tracking.
+- Building an exact-ground-truth benchmark when no licensed labelled data exists, and reporting its limits.
 - TypeScript, Vite, three.js, a small validated API, JSON Schema contracts, Playwright, GitHub Actions.
 - Cost-bounded cloud design (lifetime budget, kill switch) and privacy by default (no accounts, hashed IPs).

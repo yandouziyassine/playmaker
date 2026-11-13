@@ -5,7 +5,9 @@ each moment the player answers two questions: what should the ball carrier do (s
 the professional actually do (scored against the real pass). This document describes how the system is built, how
 one round flows through it, and what is planned but not yet running.
 
-Status (2026-11-10): runs locally (game, API, content). The AWS deployment in section 9 is **planned, not deployed**.
+Status (2026-11-12): runs locally (game, API, content). A **static demo** is live at
+https://yandouziyassine.github.io/playmaker/ (section 9.4: it trades the server-side answers for static hosting). The
+AWS deployment in section 12 is **planned, not deployed**.
 
 Related sources:
 - Design spec: `COMPUTER-VISION-PROJECT-LIBRARY/docs/superpowers/specs/2026-11-09-playmaker-fan-game-design.md`
@@ -49,8 +51,9 @@ Related sources:
                 │ Lab only, all in the browser
                 v
  ┌──────────────────────────────────────────────────────────────┐
- │ MediaPipe EfficientDet-Lite0 (local .tflite, wasm from CDN)  │
- │ -> persons + ball -> teams (k-means) -> pitch lines + taps   │
+ │ MediaPipe EfficientDet-Lite0 / Lite2 (local .tflite, wasm)   │
+ │ -> persons + ball -> teams (k-means) -> pitch lines          │
+ │ -> automatic calibration (or 4 taps)                         │
  │ -> DLT homography -> top-down map -> same coach engine (TS)  │
  └──────────────────────────────────────────────────────────────┘
 ```
@@ -221,19 +224,88 @@ for day files). The Lambda handler planned for AWS reuses `handlePick` with a Dy
 
 | Step | Implementation |
 |---|---|
-| Detection | MediaPipe Tasks `ObjectDetector` with **EfficientDet-Lite0** (float16 `.tflite`, Apache-2.0, served from `app/public/lab/`; wasm runtime from jsDelivr pinned to `@mediapipe/tasks-vision@1.2.2`). Loaded lazily. Persons kept at score >= 0.3. |
-| Tiled scan | The model sees 320 x 320 px, so small players in a wide shot are lost. A full-image pass plus a 3 x 2 grid of overlapping tiles (~20 % overlap); boxes mapped back to source pixels; greedy NMS that also drops boxes mostly inside a better one (tile-cut duplicates). |
+| Detection | MediaPipe Tasks `ObjectDetector` with **EfficientDet-Lite0** by default (320 px input) or **Lite2** as an "accurate" option (448 px input, 12 MB), both float16 `.tflite`, Apache-2.0, served from `app/public/lab/`; wasm runtime from jsDelivr pinned to `@mediapipe/tasks-vision@1.2.2`, CPU (XNNPACK) by default. Loaded lazily. |
+| Tiled scan | The model sees 320 x 320 px, so small players in a wide shot are lost. A full-image pass plus **square tiles of 384 source px with 25 % overlap** (448 px for Lite2), so a 30 px player stays about 30 px; persons kept at score >= 0.25 in tiles (0.3 on the full frame); boxes mapped back to source pixels; greedy NMS that also drops boxes mostly inside a better one (tile-cut duplicates); a feet correction for the box bottom. Tuned on the benchmark (section 8); the old full frame + 3 x 2 grid stays as `LEGACY_SETTINGS` for comparison. |
 | Ball pass | Ball-only pass on finer 6 x 4 tiles (~256 px tiles on a 1280 px picture, magnified to 320 px), skipping tiles with less than 15 % grass (crowd, sky). "sports ball" kept at score >= 0.18, then filtered by aspect ratio, size, head-zone overlap with players and on-pitch position. |
 | Teams | Torso crop of each box, mean colour ignoring grass pixels, CIELAB, deterministic k-means (k = 2, farthest-point init). A colour far from both centres (> max(2.5 x median distance, 18 Lab units)) is "other" (referee, keeper). Separation below 15 Lab units is reported as unreliable. |
 | Pitch lines | White-line mask (thin bright stripes on grass, player boxes excluded) -> sequential Hough transform with least-squares refit on each line's inliers, then removal of those points and repeat -> line intersections on painted runs. Written from scratch, no OpenCV. (The commit history calls this "RANSAC lines"; the code is a vote-refit-remove loop with the same aim: robust lines from noisy pixels.) |
-| Calibration | The user taps 4 landmarks (default: the corners of the right penalty box); each tap snaps to the nearest detected intersection within a radius. A collinear-triple check rejects degenerate input. |
+| Auto-calibration | `autocal.ts`, no taps. The detected lines are split into two pencils by vanishing point (goal-line-parallel and touchline-parallel; the horizon joins the two points). Within a pencil the model lines map to the pencil parameter by a 1-D affine map, so two line correspondences give a family hypothesis, scored against the detected paint. The best family pairs give 4 line correspondences, solved by DLT and scored by the mean distance of all reprojected model lines (arcs and circle included) plus the paint left unexplained; the winner is refined by least squares on all inlier intersections. Both halves are searched; ranked alternatives are offered ("Other solution") when a view is ambiguous. About **50-110 ms** in the browser. On the synthetic scene the fit is sub-pixel (the Lab reports 0.0 px mean distance to the painted lines) and the unit tests require the box corners within 2 px, also with two lines missing. Dragging a point refines the fit live. |
+| Manual calibration | The user taps 4 landmarks (default: the corners of the right penalty box); each tap snaps to the nearest detected intersection within a radius. A collinear-triple check rejects degenerate input. |
 | Homography | Normalised DLT (Hartley), own Gaussian elimination; least squares for more than 4 points. Pitch lines are reprojected onto the picture and a fit-quality score samples the distance transform of the line mask along them. |
 | Map and coach | Feet (box bottom-centre) -> pitch metres; automatic carrier (nearest player within 3 m of the ball); attacking direction from the deepest players; top-down map; the same TypeScript coach gives the top 3 options with reasons. One picture has no velocities, so the coach sees a frozen frame. |
 | Live camera | Rear camera, VIDEO-mode detector, adaptive throttle (detector uses about half the time, 100-1000 ms interval), team centroids fixed after calibration with decaying votes so labels do not flip, greedy nearest-neighbour tracking with alpha-beta smoothing (gate 4 m, speeds capped at 9 m/s, reported after 3 hits), a one-target ball tracker; freeze, calibrate, and ask the coach with the estimated velocities. Needs HTTPS (`npm run dev:phone`). |
 
 A synthetic broadcast-like scene drawn by code (`scene.ts`) lets the Lab be tried without a third-party image.
 
-## 8. Testing strategy
+## 8. Lab benchmark: renders of real tracking data
+
+There is no permissively licensed set of labelled broadcast frames to measure the Lab on, and TV screenshots cannot
+be published. So the benchmark makes its own frames (`scripts/cv-bench/`):
+
+- `render.mjs` draws broadcast-like frames in headless Chromium from the **real player tracking** of the free-play
+  match (Bassek et al. 2025, DFL / Sportec, CC BY 4.0) through a virtual pinhole camera in three views (wide, zoom,
+  behind the goal), with figures, grass texture, blur and noise. The camera is known, so the ground truth is exact:
+  every player's projected box, feet point, occlusion, team, and the ball.
+- `run.mjs` runs the Lab's **real pipeline** (`app/src/lab/bench.ts` -> `detector.ts`, `teams.ts`, `players.ts`) on
+  those frames in Chromium and writes `scripts/cv-bench/results.json`. Matching is greedy at IoU 0.5; "small" means
+  under 40 px tall.
+
+60 frames, 1,133 players (737 small):
+
+| Pipeline | Person recall | Precision | Recall, small | Recall, wide view | Ball found | Median feet error |
+|---|---:|---:|---:|---:|---:|---:|
+| Before (full frame + 3 x 2 grid, Lite0) | 43.5 % | 80.6 % | 28.8 % | 33.6 % | 48 % | 0.15 m |
+| **Default** (Lite0, 384 px tiles, threshold 0.25) | **69.9 %** | **85.9 %** | **61.9 %** | 64.4 % | 53 % | 0.14 m |
+| Option: Lite2 (448 px tiles) | 80.1 % | 94.0 % | 73.4 % | 77.1 % | 63 % | 0.19 m |
+
+In `results.json` the default row is the config labelled `default-t25`; the row labelled `default` there is the same
+tiling at a 0.3 tile threshold (63.3 % recall, 88.3 % precision), measured before the threshold was lowered. The
+headless-CPU timings of the run (median 3.1 s per frame for the default, 7.3 s for Lite2, 2.4 s before) are not phone
+timings. Team purity stays at about 98-99 %.
+
+**What this does not show:** these are synthetic renders, not TV pictures. Real broadcasts add motion blur, graphics,
+compression, crowds and lighting that the renderer does not model, so real-world recall is expected to be lower. The
+Lab has not been measured on labelled real broadcast frames.
+
+## 9. Game client: 3D, offline, languages, static demo
+
+### 9.1 3D view and camera modes
+
+`app/src/view3d/` is a lazy three.js chunk (about 540 kB, 137 kB gzip) with a fallback to 2D without WebGL. Three
+cameras: **player's eyes** (from the carrier's head, drag to look), **stadium** (TV-style, 16 m behind the near
+touchline and 24 m up, panning with the ball) and **tactical** (high and tilted, most of the pitch in view); dragging
+orbits and the wheel zooms. Switching mode or moment does not cut: the aim point and heading close their gap with
+frame-rate independent exponential smoothing (`1 - exp(-dt / tau)`, tau 0.5-0.6 s), player positions between
+tracking frames are interpolated, and a large jump of the focus snaps instead of sweeping across the pitch. The choice
+is remembered; reduced motion is respected. Tap targets (teammates, carry chevrons, the goal) are ray-picked with
+large hit areas. Free play has the same 3D view.
+
+### 9.2 Offline play
+
+`app/src/offline/`: a service worker (production builds only) precaches the game shell and caches days and moments;
+today's five are prefetched. Answers given offline are queued in localStorage and sent when the network is back (on
+`online`, on the next load and on a backoff timer); the server's "first answer wins" makes a resend safe. `/api/*` is
+never cached; the 3D chunk and the Lab are network only. A "new version available" toast replaces silent swaps.
+
+### 9.3 French and English
+
+Typed dictionaries (`app/src/i18n/`; the Lab's strings in their own dictionaries, loaded with the Lab), plural forms,
+`Intl` number formats, the coach's phrases translated by pattern, an EN | FR switch saved in the browser. See ADR-11.
+
+### 9.4 Static demo (GitHub Pages)
+
+`npm run demo:content -- <content-vN>` packages the first 30 days of a release (public files **and** answer files)
+into `demo/content/`; `npm run demo:build` builds the app with `VITE_DEMO=1` under `/playmaker/` with relative URLs and
+copies the content next to it. `.github/workflows/pages.yml` deploys it from `main`.
+
+In demo mode (`app/src/demo.ts`) there is no server. Today's date is mapped onto the 30 days cyclically, so there is
+always a "today". A pick fetches the moment's answer file and is scored in the browser by the API's own `buildResult`
+(`api/src/result.ts`), so the points are the same as on the server; the first answer per moment wins in that browser;
+there are no crowd stats and no rate limit. **Trade-off:** in the demo the answers are public, so anyone who opens
+the network tab can read them. The full service (section 3) keeps answers server-side until the pick; the README
+says so. See ADR-12.
+
+## 10. Testing strategy
 
 | Layer | Tool | Count (2026-11-10) | What it covers |
 |---|---|---:|---|
@@ -244,19 +316,21 @@ A synthetic broadcast-like scene drawn by code (`scene.ts`) lets the Lab be trie
 | Contract | vitest + ajv | 1 | all fixture content files against the release JSON Schemas |
 | End to end | Playwright, Pixel 7 profile, reduced motion | 9 | a full day with both questions, reveal and recap; tap a teammate in 2D; tap a teammate in **3D**; keyboard play (arrows / Tab / Enter); launch-day intro; public content never exposes answers; one moment in **French** with the guided first moment; tour skip; EN / FR switch persisted |
 
-Total: **230 vitest tests in 20 files** (96 + 57 + 64 + 12 + 1), **9 Playwright tests**. The e2e suite starts the dev API on a 117-day content fixture (`tests/fixtures/content`)
+Total on 2026-11-10: **230 vitest tests in 20 files** (96 + 57 + 64 + 12 + 1), **9 Playwright tests**. The Lab
+auto-calibration and benchmark helpers, the 3D camera modes and offline play added tests since: 305 vitest tests in 29
+files and 11 Playwright tests (including offline play) on 2026-11-12. The e2e suite starts the dev API on a 117-day content fixture (`tests/fixtures/content`)
 with `PLAYMAKER_TODAY=2026-12-01`.
 
 The content builder and the audits are tested on the library side with pytest (for example
 `tests/test_20_game.py`, which also checks the fast scorer against `advice.options` to 1e-12).
 
-## 9. CI
+## 11. CI
 
 `.github/workflows/ci.yml`, on every push and pull request, Ubuntu, Node 24, read-only token:
 `npm ci` -> `tsc --noEmit` -> `vitest run` -> `npm run build` (4 pages: game, Lab, replay, about; three.js is a lazy
 chunk of about 540 kB, 137 kB gzip) -> Playwright Chromium install -> `npm run e2e`.
 
-## 10. Planned AWS deployment (not deployed)
+## 12. Planned AWS deployment (not deployed)
 
 From the design spec, section 3 and 5. Nothing below exists yet.
 
@@ -286,9 +360,10 @@ From the design spec, section 3 and 5. Nothing below exists yet.
 - Before any resource is created: check the account (the connected account is a training account whose policy blocks
   S3 and CloudFormation), read the remaining credits and their expiry, and get the owner's explicit go.
 
-## 11. Known limits
+## 13. Known limits
 
-- **Not deployed.** Locally, picks, crowd counts and rate counters live in memory and are lost on restart.
+- **Only the static demo is deployed.** It ships the answers (section 9.4) and has no crowd stats. Locally, picks,
+  crowd counts and rate counters live in memory and are lost on restart.
 - **The value model is weak.** It explains about 2 % of the variance of the next 15 s on held-out Bundesliga matches
   and is no better than distance to goal. Points relate to what followed only weakly (Spearman +0.08). The game says
   "the AI's opinion", not "the right answer".
@@ -299,8 +374,9 @@ From the design spec, section 3 and 5. Nothing below exists yet.
 - **Crowd counts can be inflated** by fake player ids; mitigated by the per-network cap, the 20-pick threshold and
   shares only. No accounts.
 - **Lab:** one picture has no velocities; the ball's ground point is wrong when it is in the air; similar kits break
-  the colour split; the homography assumes a flat pitch and four correct landmarks. There is no accuracy benchmark of
-  the Lab on labelled broadcast frames in this repository. The MediaPipe wasm runtime is loaded from a CDN.
+  the colour split; the homography assumes a flat pitch; auto-calibration needs enough painted lines (a midfield view
+  with few lines can be ambiguous). The detection benchmark (section 8) uses synthetic renders of real tracking: the
+  Lab has **not** been measured on real TV pictures. The MediaPipe wasm runtime is loaded from a CDN.
 - **Parity covers one match** (30 frames). It guards the port, not the models' quality.
 - **Failed-pass targets are inferred** in the Bundesliga data (outcome-informed), so the pass model's headline AUC is
   an upper bound (leak check 0.77-0.81 vs 0.838).

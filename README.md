@@ -13,6 +13,27 @@ The AI coach, its data and its honest benchmark live in
 
 **Docs:** [architecture](docs/ARCHITECTURE.md) · [case study](docs/CASE_STUDY.md) · [decisions](docs/DECISIONS.md)
 
+## Screenshots
+
+<p align="center"><img src="docs/img/clip.webp" width="300" alt="One moment played: the 3 s lead-up, a pass picked on the pitch, the pro guess, then the reveal with the real play after the pass"></p>
+
+<table>
+<tr>
+<td align="center"><img src="docs/img/intro.webp" width="240" alt="Intro screen with a live preview of a real moment"><br><sub>Intro: a real moment loops as the preview</sub></td>
+<td align="center"><img src="docs/img/choose-2d.webp" width="240" alt="Choosing a pass on the 2D pitch"><br><sub>Choose: tap a teammate, a carry or the goal</sub></td>
+<td align="center"><img src="docs/img/reveal.webp" width="240" alt="The reveal: points, your pick, the AI coach's pick, the pro's pass and the AI's reasons"><br><sub>Reveal: you, the AI coach, the pro, the reasons</sub></td>
+</tr>
+<tr>
+<td align="center"><img src="docs/img/3d-stadium.webp" width="240" alt="The same moment in 3D from the stadium camera"><br><sub>3D: stadium camera (also player's eyes, tactical)</sub></td>
+<td align="center"><img src="docs/img/lab-autocal.webp" width="240" alt="The Lab on its synthetic scene: players detected and the pitch auto-calibrated from its lines"><br><sub>Lab: detection and auto-calibration (synthetic scene)</sub></td>
+<td align="center"><img src="docs/img/free-play.webp" width="240" alt="Free play: a full Bundesliga match from above with the coach's top 3 options"><br><sub>Free play: a full match, ask the coach any time</sub></td>
+</tr>
+</table>
+
+All images are the app's own renders (Pixel 7 size, dev build, content of 2026-12-01; the Lab image is its code-drawn
+synthetic scene, no broadcast picture). Regenerate them with `scripts/showcase/` (`shots.mjs`, `optimise.mjs`,
+`clip.mjs`, and `og.mjs` for the 1200 x 630 social card `app/public/og.png`).
+
 ## What you play
 
 - **Five real moments a day** from open professional tracking data (Bundesliga, 2. Bundesliga, A-League). Watch 3 s of
@@ -20,11 +41,17 @@ The AI coach, its data and its honest benchmark live in
   **What did the pro actually do?** (objective: the real pass).
 - **The reveal**: your points, the AI's pick with what helped and hurt, the pro's pick, what happened next, the crowd
   split, every option's score on the pitch, and a replay of the real 6 seconds after the pass.
-- **2D or 3D**: a three.js "player's eyes" view from the ball carrier's head; tap teammates in either view.
+- **2D or 3D**: a lazy three.js view with three cameras (player's eyes from the carrier's head, a TV-style stadium
+  camera, a high tactical view); the camera glides between modes and follows the ball with frame-rate independent
+  smoothing. Tap teammates in either view.
 - **Your stats** (by pitch zone and pick type, pro reads, an insight line), streaks, past days, a share image.
-- **Lab: from a TV picture to tactics**: detect players in your own broadcast screenshot in the browser (MediaPipe
-  EfficientDet-Lite0, Apache-2.0), split teams by shirt colour, calibrate the pitch with 4 taps (homography, lines
-  reprojected onto the picture), see the shape from above, then ask the real AI coach for the carrier's best options.
+- **Lab: from a TV picture to tactics**: detect players and the ball in your own broadcast screenshot or a live phone
+  camera, in the browser (MediaPipe EfficientDet-Lite0 by default, Lite2 as a more accurate option, both Apache-2.0),
+  split teams by shirt colour, **calibrate the pitch automatically from its painted lines** (about 50-110 ms; or 4 taps
+  snapped to line corners), see the shape from above, then ask the real AI coach for the carrier's best options.
+- **Free play**: a full Bundesliga match from above (2D or 3D); pause any time and ask the coach.
+- **Offline and bilingual**: a service worker keeps the app and today's five, answers given offline are scored when
+  the network is back; English and French throughout.
 
 ## How it works
 
@@ -39,6 +66,12 @@ The AI coach, its data and its honest benchmark live in
 - **Game** (`app/`): Vite + TypeScript, canvas 2D, lazy three.js chunk for 3D, phone first; history in the browser.
 - **Coach engine** (`app/src/coach/`): TypeScript port of the library's models, equal to Python within 1e-6
   (`app/test/coach-parity.test.ts`).
+- **CV benchmark** (`scripts/cv-bench/`): broadcast-like frames rendered from **real tracking data** with a known
+  camera, so the ground truth is exact. On 60 frames (1,133 players) the Lab's detector went from 43.5 % to 69.9 %
+  person recall (80.1 % with the Lite2 option), precision 80.6 % to 85.9 % (94.0 %), small players (< 40 px) 28.8 % to
+  61.9 % (73.4 %). Synthetic frames only: not measured on real TV pictures.
+- **Static demo** (`npm run demo:build`, GitHub Pages): 30 days that cycle, the answer files shipped, picks scored in
+  the browser with the API's own result code. Fine for a demo, not for the real game: anyone can read the answers.
 
 ## Run locally
 

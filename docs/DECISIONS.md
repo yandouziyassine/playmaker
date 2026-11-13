@@ -175,3 +175,51 @@ forms, `Intl` number formatting, an EN | FR switch saved in the browser, and the
 
 **Consequences.** A missing French key is a type error. Covered by 14 unit tests and 3 French e2e tests (a full moment
 in French with the guided tour, tour skip, the saved language choice on the about page).
+
+---
+
+## ADR-12. A static demo that ships the answers
+
+**Context.** The full service needs the pick API to keep answers secret (ADR-02), but it is not deployed (ADR-09). A
+portfolio project needs a link anyone can open today, at no cost and with no server to run.
+
+**Decision.** A separate static build (`VITE_DEMO=1`, GitHub Pages, deployed from `main` by
+`.github/workflows/pages.yml`) with 30 days of a release, answer files included. `app/src/demo.ts` maps today's date
+onto the 30 days cyclically and scores a pick in the browser with the API's own `buildResult`, keeping the first answer
+per moment in that browser. The real build and API are unchanged.
+
+**Consequences.** Free, always up, same points as the server. But the answers are readable in the network tab, so the
+demo cannot be a fair competition; there are no crowd stats and no rate limit. The README says so (the About page does not yet).
+The full service still keeps answers server-side.
+
+---
+
+## ADR-13. A CV benchmark rendered from real tracking data
+
+**Context.** The Lab's detector needed numbers, not impressions. Labelled broadcast datasets are mostly
+non-commercial or research-only, and TV screenshots are copyrighted, so neither can be used or shown in a public repo.
+
+**Decision.** Render broadcast-like frames from the real, CC BY 4.0 tracking of the free-play match through a known
+virtual camera (`scripts/cv-bench/render.mjs`), so the ground truth (boxes, feet, teams, ball) is exact, and run the
+Lab's real pipeline on them in Chromium (`run.mjs` -> `results.json`). Tune tiling and thresholds only against it.
+
+**Consequences.** Reproducible, licence-safe numbers that moved the default from 43.5 % to 69.9 % person recall and
+28.8 % to 61.9 % on small players, with precision up from 80.6 % to 85.9 %. Every number is labelled synthetic: the
+renderer has no motion blur, graphics, compression or real crowds, so the Lab has **not** been measured on real TV
+pictures and real recall is expected to be lower. There is a risk of tuning to the renderer; the settings were kept
+simple (tile size, overlap, one threshold) to limit it.
+
+---
+
+## ADR-14. EfficientDet-Lite0 by default, Lite2 as an option
+
+**Context.** On the benchmark, Lite2 is clearly better (person recall 80.1 % vs 69.9 %, precision 94.0 % vs 85.9 %,
+small players 73.4 % vs 61.9 %), but it is a 12 MB model with a 448 px input: roughly twice the time per frame in the
+benchmark run (median 7.3 s vs 3.1 s on headless CPU) and more on a phone, where the Lab also runs live.
+
+**Decision.** Keep Lite0 as the default (faster first load, usable live on a phone) and offer Lite2 as an "accurate"
+choice in the Lab's detector menu, remembered in the browser. Both are Apache-2.0 and served from the app; the
+benchmark reports both.
+
+**Consequences.** The default is the fast path most visitors take; anyone analysing a single picture can switch to
+the better model. Two models to keep in the benchmark and the tests.

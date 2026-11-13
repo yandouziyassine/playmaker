@@ -5,6 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title data-i18n="about.title">About Playmaker: the AI coach, scoring and privacy</title>
   <meta name="theme-color" content="#07170e" />
+  <!-- Social previews (absolute URLs: crawlers do not resolve relative ones); the card is scripts/showcase/og.mjs -->
+  <meta name="description" content="How Playmaker's AI coach scores each option, where the real tracking data comes from, and what the game keeps (no account, no cookie)." />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Playmaker" />
+  <meta property="og:title" content="About Playmaker: the AI coach, scoring and privacy" />
+  <meta property="og:description" content="How Playmaker's AI coach scores each option, where the real tracking data comes from, and what the game keeps (no account, no cookie)." />
+  <meta property="og:url" content="https://yandouziyassine.github.io/playmaker/about.html" />
+  <meta property="og:image" content="https://yandouziyassine.github.io/playmaker/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Playmaker: a real pro moment drawn on the game's pitch, with the line: five real pro moments a day, pick the pass." />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="About Playmaker: the AI coach, scoring and privacy" />
+  <meta name="twitter:description" content="How Playmaker's AI coach scores each option, where the real tracking data comes from, and what the game keeps (no account, no cookie)." />
+  <meta name="twitter:image" content="https://yandouziyassine.github.io/playmaker/og.png" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="/src/about.css" />
 </head>
@@ -40,6 +55,9 @@
     <p>No account, no email, no cookie. Your browser keeps a random id, your streak, your history and your language
       choice. The server stores your anonymous pick and pro guess for each moment (to stop answer changes and to show how
       other players chose). Your IP address is never stored: a salted hash of it is kept for one day to limit abuse.</p>
+    <p><b>The public demo</b> (yandouziyassine.github.io/playmaker) runs as static files with no server: the answers ship with
+      the page, your picks are scored in your browser and stay there, and there are no crowd stats. The full service keeps
+      the answers on a server until you pick.</p>
     <h2>Data and code</h2>
     <p>Bundesliga tracking and event data: Bassek et al. (2025), DFL / Sportec Solutions, CC BY 4.0.
       Tracking and event data: SkillCorner open data (MIT). Positions are drawn by Playmaker; no broadcast images.</p>
@@ -76,6 +94,9 @@
       historique et ton choix de langue. Le serveur conserve ton choix anonyme et ta lecture du pro pour chaque action (pour
       empêcher de changer de réponse et pour montrer comment les autres joueurs ont choisi). Ton adresse IP n’est jamais
       conservée&nbsp;: une empreinte salée en est gardée pendant une journée pour limiter les abus.</p>
+    <p><b>La démo publique</b> (yandouziyassine.github.io/playmaker) fonctionne en fichiers statiques, sans serveur&nbsp;: les
+      réponses sont livrées avec la page, tes choix sont notés dans ton navigateur et y restent, et il n’y a pas de
+      statistiques des joueurs. Le service complet garde les réponses sur un serveur jusqu’à ton choix.</p>
     <h2>Données et code</h2>
     <p>Données de suivi et d’événements de la Bundesliga&nbsp;: Bassek et al. (2025), DFL / Sportec Solutions, CC BY 4.0.
       Données de suivi et d’événements&nbsp;: données ouvertes SkillCorner (MIT). Les positions sont dessinées par Playmaker&nbsp;;

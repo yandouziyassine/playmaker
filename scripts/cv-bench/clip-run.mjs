@@ -9,6 +9,7 @@ import { chromium } from "@playwright/test";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { teamScore } from "./team-score.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..", "..");
@@ -108,7 +109,7 @@ const report = {
   nonOkFrames: statusAt.filter((s) => s.status !== "ok").map((s) => `${s.t.toFixed(2)}s ${s.view} ${s.status}`),
   zoomFramesOk: statusAt.filter((s) => s.view === "zoom" && s.status === "ok").length,
   medianErrM: q(errs, 0.5), p90ErrM: q(errs, 0.9), recall: nMatched / nVis, precision: nMatched / nTracked,
-  teamPurity: teamOk / teamAll, idSwitches: switches, idSwitchesAcrossCut: switchesAcrossCut, gtPlayersTracked: byGt.size,
+  teamPurity: teamOk / teamAll, teams: { ...teamScore(run, gt), refits: run.teamRefits, otherDets: run.otherDets }, idSwitches: switches, idSwitchesAcrossCut: switchesAcrossCut, gtPlayersTracked: byGt.size,
   tracks: d.tracks, avgTrackSec: d.avgTrackSec, ballMedianErrM: q(ballErrs, 0.5), ballFrames: ballErrs.length,
   sides: { guessed: sides, fromTruth: sidesGt, truth: trueSides },
   numbers: ["width", "depth", "lineHeight", "gapDM", "gapMA"].map((m) => `${m}: A ${f1(ours[0][m].mean)} vs ${f1(theirs[0][m].mean)} | B ${f1(ours[1][m].mean)} vs ${f1(theirs[1][m].mean)}`),

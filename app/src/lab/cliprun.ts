@@ -8,8 +8,8 @@
 import { applyH, invert3, orientH, type Mat3, type Pt } from "./homography.ts";
 import { detectVideoFrame, detectVideoFrameFocus, loadDetector, loadVideoDetector, type DetectRun } from "./detector.ts";
 import { feet, toPitch } from "./players.ts";
-import { meanColour, rgbToLab, splitTeams, torsoBox, type RGB, type TeamLabel } from "./teams.ts";
-import { assignTeam, fixCentroids, stepTracks, trackVelocity, watchResidual, START_WATCH, type CalWatch, type Centroids, type Track } from "./live.ts";
+import { classifyFeat, fitTeamModel, grassModel, labelClip, labToRgb, torsoFeature, type ClipDet, type ColourFeat, type RGB, type TeamLabel, type TeamModel } from "./teams.ts";
+import { stepTracks, trackVelocity, watchResidual, START_WATCH, type CalWatch, type Track } from "./live.ts";
 import { focusTiles, fullScanDue, kStep, newTracker, suspend, trackPos, uncovered, velOf, type KTracker } from "./ktrack.ts";
 import { ballGround, pickBall, stepBall, trackBox, type BallTrack } from "./ball.ts";
 import { fitQuality, LINE_SIDE, scanLines } from "./lines.ts";
@@ -20,6 +20,8 @@ import { CLIP, classifyFrame, frameTimes, processingSize, type ClipFrame, type C
 export type ClipRun = {
   frames: ClipFrame[]; w: number; h: number; fps: number; duration: number; capped: boolean;
   teamRgb: RGB[]; separation: number; totalMs: number; cancelled: boolean;
+  /** team model: refits after cuts; detections labelled "other" (keepers, referees, bad crops) after the final vote. */
+  teamRefits: number; otherDets: number;
 };
 export type ClipProgress = { done: number; total: number; frame: ClipFrame | null };
 
@@ -66,7 +68,10 @@ export async function analyseClip(video: HTMLVideoElement, opts: { tiled: boolea
   let H: Mat3 | null = null, sol: AutoCal | null = null, cal4: ClipFrame["cal"] = null;
   let needFull = true, sinceRefine = 0, lastOkT = -Infinity;
   let watch: CalWatch = START_WATCH;
-  let tracks: Track[] = [], nextId = 1, cents: Centroids | null = null, ball: BallTrack | null = null;
+  let tracks: Track[] = [], nextId = 1, prov: TeamModel | null = null, ball: BallTrack | null = null;
+  // every tracked detection's torso feature, for the final clip-wide team labelling (labelClip)
+  const cdets: ClipDet[] = [], cplayers: ClipPlayer[] = [];
+  let seg = 0;
   let kt: KTracker = newTracker();
   let teamRgb: RGB[] = [[230, 230, 230], [40, 40, 40]], separation = 0;
   let sinceFull = Infinity, lastGood: Mat3 | null = null;
@@ -86,7 +91,7 @@ export async function analyseClip(video: HTMLVideoElement, opts: { tiled: boolea
     prevSig = sig;
     const frame: ClipFrame = { t, status: "ok", cut: kind === "cut", rating: null, fit: null, players: [], ball: null, ballBox: null, ballScore: 0, cal: null, ms: 0 };
     // the previous homography of the same shot, for the motion propagation
-    if (kind !== "same" || i === 0) { resetTracks(); needFull = true; watch = START_WATCH; lastGood = null; }
+    if (kind !== "same" || i === 0) { resetTracks(); needFull = true; watch = START_WATCH; lastGood = null; if (i > 0) seg++; }
     const Hprev: Mat3 | null = lastGood;
     if (kind === "noPitch") {
       frame.status = "noPitch"; frame.ms = performance.now() - f0; H = null;
@@ -146,29 +151,25 @@ export async function analyseClip(video: HTMLVideoElement, opts: { tiled: boolea
     const c4 = { x: cal4.pts.reduce((a, p) => a + p.x, 0) / 4, y: cal4.pts.reduce((a, p) => a + p.y, 0) / 4 };
     const i2p = orientH(i2pRaw, c4);
     frame.cal = cal4;
-    // teams: centroids fixed on the first calibrated frame with enough players, so labels do not flip
-    const colours = run.persons.map((p) => meanColour(data, torsoBox(p.box)));
-    if (!cents) {
-      cents = fixCentroids(colours.filter((c): c is RGB => !!c));
-      if (cents) { teamRgb = cents.rgb.slice(0, 2); separation = cents.separation; }
+    // teams: grass-masked torso features (grass range of this frame); provisional labels for the tracker from a model
+    // fitted on the first calibrated frame with enough players; the final labels come from labelClip after the loop
+    const grass = grassModel(data);
+    const feats: (ColourFeat | null)[] = run.persons.map((p) => torsoFeature(data, p.box, grass));
+    if (!prov) {
+      prov = fitTeamModel(feats.filter((c): c is ColourFeat => !!c));
+      if (prov) { teamRgb = prov.centres.map(labToRgb); separation = prov.separation; }
     }
-    let labels: TeamLabel[];
-    if (cents) labels = colours.map((c) => (c ? assignTeam(c, cents!) : "other"));
-    else {
-      const valid = colours.map((c, k) => ({ c, k })).filter((x): x is { c: RGB; k: number } => !!x.c);
-      const split = splitTeams(valid.map((v) => v.c));
-      labels = colours.map(() => "other");
-      valid.forEach((v, k) => { labels[v.k] = split.labels[k]!; });
-    }
+    const labels: TeamLabel[] = feats.map((c) => (c && prov ? classifyFeat(c, prov).team : "other"));
     const raw = run.persons.map((p) => toPitch(i2p, feet(p.box)));
     const idx = raw.map((p, k) => (p ? k : -1)).filter((k) => k >= 0);
     if (t - lastOkT > CLIP.maxGap) resetTracks(); // a long pause: velocities are stale (identities wait for re-identification)
     const dt = Number.isFinite(lastOkT) ? t - lastOkT : 1 / fps;
     lastOkT = t;
-    if (lo.dump) (frame as ClipFrame & { dets?: unknown }).dets = idx.map((k) => ({ p: raw[k], team: labels[k], lab: colours[k] ? rgbToLab(colours[k]!) : null }));
+    const dumped = lo.dump ? idx.map((k) => ({ p: raw[k], team: labels[k], lab: feats[k]?.lab ?? null, feat: feats[k], box: run.persons[k]!.box, id: 0 })) : null;
+    if (dumped) (frame as ClipFrame & { dets?: unknown }).dets = dumped;
     let players: ClipPlayer[];
     if (lo.tracker === "kalman") {
-      const res = kStep(kt, idx.map((k) => ({ p: raw[k]!, team: labels[k]!, lab: colours[k] ? rgbToLab(colours[k]!) : null })), t);
+      const res = kStep(kt, idx.map((k) => ({ p: raw[k]!, team: labels[k]!, lab: feats[k]?.lab ?? null })), t);
       kt = res.tracker;
       players = idx.map((k, j) => { const tr = res.byDet[j]!; return { id: tr.id, team: tr.team, p: trackPos(tr), v: velOf(tr), box: run.persons[k]!.box }; });
       for (const tr of kt.tracks) if (tr.misses > 0) players.push({ id: tr.id, team: tr.team, p: trackPos(tr), v: velOf(tr), box: null });
@@ -178,6 +179,11 @@ export async function analyseClip(video: HTMLVideoElement, opts: { tiled: boolea
       players = idx.map((k, j) => { const tr = res.byDet[j]!; return { id: tr.id, team: tr.team, p: tr.p, v: trackVelocity(tr), box: run.persons[k]!.box }; });
       for (const tr of tracks) if (tr.misses > 0) players.push({ id: tr.id, team: tr.team, p: tr.p, v: trackVelocity(tr), box: null });
     }
+    idx.forEach((k, j) => {
+      const feat = feats[k], id = players[j]!.id;
+      if (dumped) dumped[j]!.id = id;
+      if (feat) { cdets.push({ id, seg, frame: i, feat, x: raw[k]!.x, good: frame.rating === "good" }); cplayers.push(players[j]!); }
+    });
     frame.players = players.sort((a, b) => a.id - b.id);
     // the ball: best candidate (crowd filter), smoothed in image px, mapped to the ground under it
     ball = stepBall(ball, pickBall(run.balls, run.persons, i2p, size.w), dt, size.w);
@@ -190,7 +196,17 @@ export async function analyseClip(video: HTMLVideoElement, opts: { tiled: boolea
     frames.push(frame);
     opts.onProgress?.({ done: i + 1, total: times.length, frame });
   }
+  // final team labels: one model for the clip (best frames), nearest centroid per detection, weighted vote per track (a
+  // detection that is clearly something else than its track keeps its own label)
+  const lab = labelClip(cdets);
+  if (lab.model) {
+    teamRgb = lab.model.centres.map(labToRgb); separation = lab.model.separation;
+    for (const f of frames) for (const p of f.players) p.team = lab.byTrack.get(p.id) ?? p.team;
+    cplayers.forEach((p, k) => { p.team = lab.final[k]!; });
+  }
+  const otherDets = frames.reduce((a, f) => a + f.players.filter((p) => p.box && p.team === "other").length, 0);
   return {
+    teamRefits: lab.refits, otherDets,
     frames, w: size.w, h: size.h, fps, duration: video.duration, capped: video.duration > CLIP.maxSec,
     teamRgb, separation, totalMs: performance.now() - t00, cancelled: !!opts.signal?.aborted,
   };

@@ -119,12 +119,12 @@ const shift = <T extends { box: Box }>(xs: T[], dx: number, dy: number): T[] => 
 const split = (dets: RawDetection[], minScore?: number): Found => ({ persons: keepPersons(dets, minScore), balls: keepBalls(dets) });
 
 /** Tiled pass (IMAGE detector) over src, boxes shifted back to source pixels. */
-async function tiledPass(src: HTMLCanvasElement, s: DetectorSettings): Promise<Found & { passes: number }> {
+async function tiledPass(src: HTMLCanvasElement, s: DetectorSettings, only?: Box[]): Promise<Found & { passes: number }> {
   const det = await loadDetector(s.model);
   const crop = document.createElement("canvas");
   const cx = crop.getContext("2d")!;
   const all = { persons: [] as Person[], balls: [] as Ball[], passes: 0 };
-  for (const t of peopleTiles(src.width, src.height, s)) {
+  for (const t of only ?? peopleTiles(src.width, src.height, s)) {
     crop.width = t.w; crop.height = t.h;
     cx.drawImage(src, t.x, t.y, t.w, t.h, 0, 0, t.w, t.h);
     const f = split(det.detect(crop).detections, s.tileMinScore);
@@ -197,5 +197,21 @@ export async function detectVideoFrame(src: HTMLCanvasElement, tiled: boolean, s
   // live: no ball-only pass (too slow for several frames a second); the ball comes from the regular passes
   if (!tiled) return finish(full, null, t0, 1);
   const tl = await tiledPass(src, s);
+  return finish(full, tl, t0, 1 + tl.passes);
+}
+
+/**
+ * Clip mode, cheap frame of the adaptive tiling: the VIDEO pass, then the tiled IMAGE pass only on the tiles that `focus`
+ * picks from the full plan (given the persons of the full-frame pass), e.g. around predicted players it did not find.
+ */
+export async function detectVideoFrameFocus(src: HTMLCanvasElement, focus: (plan: Box[], persons: Person[]) => Box[], s: DetectorSettings = getSettings()): Promise<DetectRun> {
+  const det = await loadVideoDetector(s.model);
+  await loadDetector(s.model);
+  const t0 = performance.now();
+  lastTs = Math.max(lastTs + 1, Math.round(t0));
+  const full = split(det.detectForVideo(src, lastTs).detections);
+  const only = focus(peopleTiles(src.width, src.height, s), full.persons);
+  if (!only.length) return finish(full, null, t0, 1);
+  const tl = await tiledPass(src, s, only);
   return finish(full, tl, t0, 1 + tl.passes);
 }

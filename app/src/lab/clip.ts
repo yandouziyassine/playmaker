@@ -12,11 +12,13 @@ import { isGrass, type Box, type ImageLike, type TeamLabel } from "./teams.ts";
  * broadcast camera pans all the time); maxGap: tracks survive a pause in tracking (poor calibration) up to this many seconds;
  * cutDist: colour-histogram jump (0..1) between two analysed frames that means a cut; minGrass: below this share of grass
  * the frame is not a pitch view (close-up, crowd, replay graphics) and is skipped; possessionM: the ball "belongs" to the
- * nearest player within this distance; minPlayers: outfield players needed for a team's shape on a frame.
+ * nearest player within this distance; minPlayers: outfield players needed for a team's shape on a frame; fullScanEvery:
+ * adaptive tiling of the tiled mode, the full tiled scan every N frames and only the tiles around predicted players in between.
  */
 export const CLIP = {
   fps: 5, maxSec: 60, maxW: 1280, maxH: 720, seekOffset: 0.01, refineEvery: 1, maxGap: 1, cutDist: 0.3, minGrass: 0.2,
   possessionM: 2, minPlayers: 4, keeperGap: 10, keeperZone: 25, defenders: 4, forwards: 2, minLines: 7, minTrackFrames: 3,
+  fullScanEvery: 1,
 } as const;
 export type ClipOpts = typeof CLIP;
 

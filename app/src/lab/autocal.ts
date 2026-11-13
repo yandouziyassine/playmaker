@@ -475,3 +475,298 @@ export function pickFour(cal: AutoCal, w: number, h: number): { ids: string[]; p
   }
   return { ids: chosen.map((c) => c.id), pts: chosen.map((c) => c.p) };
 }
+
+// ---------- chamfer refinement: all model lines (circle and arcs included) against the distance map of the paint ----------
+
+/** Chamfer cost of H (pitch -> working px): mean capped distance from the reprojected model lines to the paint, n samples. */
+export function chamferCost(scan: LineScan, Hw: Mat3, step = 4, cap = 8): { mean: number; n: number } {
+  let s = 0, n = 0;
+  for (const line of POLYLINES) for (let k = 0; k < line.length - 1; k++) {
+    if (wOf(Hw, line[k]!) <= 0 || wOf(Hw, line[k + 1]!) <= 0) continue;
+    const a = applyH(Hw, line[k]!), b = applyH(Hw, line[k + 1]!);
+    if (!a || !b) continue;
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (len > 4 * (scan.w + scan.h)) continue;
+    const m = Math.max(1, Math.round(len / step));
+    for (let i = 0; i < m; i++) {
+      const x = Math.round(a.x + ((b.x - a.x) * i) / m), y = Math.round(a.y + ((b.y - a.y) * i) / m);
+      if (x < 0 || y < 0 || x >= scan.w || y >= scan.h || !scan.grass[y * scan.w + x]) continue;
+      s += Math.min(cap, scan.dist[y * scan.w + x]!); n++;
+    }
+  }
+  return { mean: n ? s / n : cap, n };
+}
+
+/** The image-space correction that moves the 4 picture corners by d (8 numbers, working px). */
+function cornerWarp(w: number, h: number, d: number[]): Mat3 | null {
+  const src = [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: h }, { x: 0, y: h }];
+  return computeHomography(src, src.map((p, i) => ({ x: p.x + d[2 * i]!, y: p.y + d[2 * i + 1]! })));
+}
+
+/** maxShift / shiftStep: translation search of the propagation (working px); accept: chamfer mean (working px) to keep it. */
+export const CHAMFER = { maxShift: 48, shiftStep: 4, steps: [6, 3, 1.5, 0.75, 0.4], minSamples: 60, accept: 2.5 } as const;
+
+/**
+ * Local refinement of H (pitch -> working px) by coordinate descent on the corner displacements of an image-space
+ * correction, minimising chamferCost. With `shift`, a coarse translation search (the camera motion since the frame H
+ * came from) runs first. Returns the refined H, its cost and the translation found (working px).
+ */
+export function chamferRefine(scan: LineScan, Hw: Mat3, shift = 0): { Hw: Mat3; mean: number; n: number; motion: Pt } {
+  const evalD = (d: number[]) => { const D = cornerWarp(scan.w, scan.h, d); if (!D) return null; const H = mul3(D, Hw); return { H, c: chamferCost(scan, H) }; };
+  const ok = (c: { mean: number; n: number }) => c.n >= CHAMFER.minSamples;
+  let d = new Array<number>(8).fill(0);
+  let cur = chamferCost(scan, Hw);
+  if (!ok(cur)) cur = { mean: Infinity, n: cur.n };
+  const motion = { x: 0, y: 0 };
+  if (shift > 0) {
+    for (let dy = -shift; dy <= shift; dy += CHAMFER.shiftStep) for (let dx = -shift; dx <= shift; dx += CHAMFER.shiftStep) {
+      const e = [dx, dy, dx, dy, dx, dy, dx, dy];
+      const r = evalD(e);
+      if (r && ok(r.c) && r.c.mean < cur.mean - 1e-6) { cur = r.c; d = e; motion.x = dx; motion.y = dy; }
+    }
+  }
+  for (const st of CHAMFER.steps) {
+    for (let it = 0, improved = true; improved && it < 6; it++) {
+      improved = false;
+      for (let k = 0; k < 8; k++) for (const sg of [1, -1]) {
+        const e = [...d]; e[k] = e[k]! + sg * st;
+        const r = evalD(e);
+        if (r && ok(r.c) && r.c.mean < cur.mean - 1e-4) { cur = r.c; d = e; improved = true; }
+      }
+    }
+  }
+  const D = cornerWarp(scan.w, scan.h, d);
+  return { Hw: D ? mul3(D, Hw) : Hw, mean: cur.mean, n: cur.n, motion };
+}
+
+function chamferResult(scan: LineScan, Hw: Mat3): AutoCal | null {
+  const samples = scan.lines.map((l) => lineSamples(l, AUTOCAL.samplesPerLine));
+  const sc = scoreH(scan, Hw, samples, FIT.step);
+  if (!Number.isFinite(sc.score) || sc.rating === "poor") return null;
+  return finish(scan, Hw, sc, inlierPoints(scan, Hw, samples, AUTOCAL.inlierTol));
+}
+
+/**
+ * Clip mode, temporal continuity: the previous homography (pitch -> SOURCE px) moved by the camera motion found by a
+ * translation search on the paint (at most CHAMFER.maxShift working px), then refined on all the model lines. Null when
+ * the result does not fit the paint.
+ */
+export function propagateCalibration(scan: LineScan, Hsource: Mat3, maxShift: number = CHAMFER.maxShift): (AutoCal & { motion: Pt }) | null {
+  const Sinv = invert3(toSourceMat(scan.scale));
+  if (!Sinv) return null;
+  const r = chamferRefine(scan, mul3(Sinv, Hsource), maxShift);
+  if (!Number.isFinite(r.mean) || r.mean > CHAMFER.accept) return null;
+  const res = chamferResult(scan, r.Hw);
+  return res ? { ...res, motion: r.motion } : null;
+}
+
+// ---------- the centre circle: ellipse fit + halfway line + a touchline ----------
+
+/** Conic a x^2 + b xy + c y^2 + d x + e y + f = 0 as [a, b, c, d, e, f]. */
+export type Conic = [number, number, number, number, number, number];
+
+/** Eigenvector of the smallest eigenvalue of a symmetric matrix (cyclic Jacobi). */
+export function smallestEigenvector(M: number[][]): number[] {
+  const n = M.length, A = M.map((r) => [...r]), V: number[][] = M.map((_, i) => M.map((__, j) => (i === j ? 1 : 0)));
+  for (let sweep = 0; sweep < 60; sweep++) {
+    let off = 0, diag = 0;
+    for (let p = 0; p < n; p++) { diag += A[p]![p]! ** 2; for (let q = p + 1; q < n; q++) off += A[p]![q]! ** 2; }
+    if (off <= 1e-24 * (diag || 1)) break;
+    for (let p = 0; p < n; p++) for (let q = p + 1; q < n; q++) {
+      const apq = A[p]![q]!;
+      if (Math.abs(apq) < 1e-300) continue;
+      const th = (A[q]![q]! - A[p]![p]!) / (2 * apq);
+      const t = (th >= 0 ? 1 : -1) / (Math.abs(th) + Math.sqrt(th * th + 1)), c = 1 / Math.sqrt(t * t + 1), s = t * c;
+      for (let k = 0; k < n; k++) { const akp = A[k]![p]!, akq = A[k]![q]!; A[k]![p] = c * akp - s * akq; A[k]![q] = s * akp + c * akq; }
+      for (let k = 0; k < n; k++) { const apk = A[p]![k]!, aqk = A[q]![k]!; A[p]![k] = c * apk - s * aqk; A[q]![k] = s * apk + c * aqk; }
+      for (let k = 0; k < n; k++) { const vkp = V[k]![p]!, vkq = V[k]![q]!; V[k]![p] = c * vkp - s * vkq; V[k]![q] = s * vkp + c * vkq; }
+    }
+  }
+  let best = 0;
+  for (let i = 1; i < n; i++) if (A[i]![i]! < A[best]![best]!) best = i;
+  return V.map((r) => r[best]!);
+}
+
+/** Least-squares (algebraic, normalised) conic through >= 5 points. */
+export function fitConic(pts: Pt[]): Conic | null {
+  if (pts.length < 5) return null;
+  const mx = pts.reduce((s, p) => s + p.x, 0) / pts.length, my = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+  const sc = Math.SQRT2 / (pts.reduce((s, p) => s + Math.hypot(p.x - mx, p.y - my), 0) / pts.length || 1);
+  const M = Array.from({ length: 6 }, () => new Array<number>(6).fill(0));
+  for (const p of pts) {
+    const x = (p.x - mx) * sc, y = (p.y - my) * sc, r = [x * x, x * y, y * y, x, y, 1];
+    for (let i = 0; i < 6; i++) for (let j = 0; j < 6; j++) M[i]![j] = M[i]![j]! + r[i]! * r[j]!;
+  }
+  const [a, b, c, d, e, f] = smallestEigenvector(M) as Conic;
+  // back to pixels: x' = s (x - mx), y' = s (y - my)
+  const s2 = sc * sc;
+  const A = a * s2, B = b * s2, C = c * s2;
+  const D = d * sc - 2 * A * mx - B * my, E = e * sc - 2 * C * my - B * mx;
+  const F = A * mx * mx + B * mx * my + C * my * my - d * sc * mx - e * sc * my + f;
+  const k = Math.hypot(A, B, C, D, E, F) || 1;
+  return [A / k, B / k, C / k, D / k, E / k, F / k];
+}
+
+/** Sampson (first-order geometric) distance of p to the conic, px. */
+export function conicDist(q: Conic, p: Pt): number {
+  const [a, b, c, d, e, f] = q;
+  const v = a * p.x * p.x + b * p.x * p.y + c * p.y * p.y + d * p.x + e * p.y + f;
+  const gx = 2 * a * p.x + b * p.y + d, gy = b * p.x + 2 * c * p.y + e;
+  return Math.abs(v) / (Math.hypot(gx, gy) || 1e-12);
+}
+
+/** Centre and semi-axes of an ellipse conic; null for a hyperbola, a parabola or an imaginary ellipse. */
+export function ellipseOf(q: Conic): { c: Pt; a: number; b: number } | null {
+  const [A, B, C, D, E, F] = q;
+  const disc = B * B - 4 * A * C;
+  if (disc >= 0) return null;
+  const cx = (2 * C * D - B * E) / disc, cy = (2 * A * E - B * D) / disc;
+  const f0 = A * cx * cx + B * cx * cy + C * cy * cy + D * cx + E * cy + F;
+  const tr = A + C, root = Math.sqrt((A - C) ** 2 + B * B);
+  const l1 = (tr + root) / 2, l2 = (tr - root) / 2;
+  const a2 = -f0 / l1, b2 = -f0 / l2;
+  if (!(a2 > 0) || !(b2 > 0)) return null;
+  return { c: { x: cx, y: cy }, a: Math.sqrt(Math.max(a2, b2)), b: Math.sqrt(Math.min(a2, b2)) };
+}
+
+/** RANSAC ellipse on points (deterministic LCG sampling); inliers within tol px. */
+export function ransacEllipse(pts: Pt[], o: { iters?: number; tol?: number; minInliers?: number; maxAxis?: number; seed?: number } = {}): { conic: Conic; inliers: Pt[] } | null {
+  const iters = o.iters ?? 400, tol = o.tol ?? 1.5, minIn = o.minInliers ?? 40, maxAxis = o.maxAxis ?? Infinity;
+  if (pts.length < Math.max(5, minIn)) return null;
+  let s = o.seed ?? 12345;
+  const rnd = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+  let best: { conic: Conic; inliers: Pt[] } | null = null;
+  const valid = (q: Conic) => { const e = ellipseOf(q); return !!e && e.a < maxAxis && e.b > 3 && e.b / e.a > 0.08; };
+  for (let it = 0; it < iters; it++) {
+    const pick: Pt[] = [];
+    for (let k = 0; k < 5; k++) pick.push(pts[Math.floor(rnd() * pts.length)]!);
+    const q = fitConic(pick);
+    if (!q || !valid(q)) continue;
+    let cnt = 0;
+    for (const p of pts) if (conicDist(q, p) < tol) cnt++;
+    if (cnt >= minIn && (!best || cnt > best.inliers.length)) best = { conic: q, inliers: pts.filter((p) => conicDist(q, p) < tol) };
+  }
+  if (!best) return null;
+  for (let r = 0; r < 2; r++) {
+    const q = fitConic(best.inliers);
+    if (!q || !valid(q)) break;
+    const inl = pts.filter((p) => conicDist(q, p) < tol);
+    if (inl.length < best.inliers.length) break;
+    best = { conic: q, inliers: inl };
+  }
+  return best;
+}
+
+const conicMat = (q: Conic): number[][] => [[q[0], q[1] / 2, q[3] / 2], [q[1] / 2, q[2], q[4] / 2], [q[3] / 2, q[4] / 2, q[5]]];
+const polarOf = (q: Conic, p: Vec3): Vec3 => { const M = conicMat(q); return [0, 1, 2].map((i) => M[i]![0]! * p[0] + M[i]![1]! * p[1] + M[i]![2]! * p[2]) as Vec3; };
+
+/** Intersections of the line l = (a, b, c) (a x + b y + c = 0) with the conic (0 or 2 points). */
+export function lineConic(q: Conic, l: Vec3): Pt[] {
+  const n = Math.hypot(l[0], l[1]);
+  if (n < 1e-12) return [];
+  const nx = l[0] / n, ny = l[1] / n, rho = -l[2] / n;
+  const p0 = { x: nx * rho, y: ny * rho }, dx = -ny, dy = nx;
+  const [a, b, c, d, e, f] = q;
+  const A = a * dx * dx + b * dx * dy + c * dy * dy;
+  const B = 2 * a * p0.x * dx + b * (p0.x * dy + p0.y * dx) + 2 * c * p0.y * dy + d * dx + e * dy;
+  const C = a * p0.x * p0.x + b * p0.x * p0.y + c * p0.y * p0.y + d * p0.x + e * p0.y + f;
+  const disc = B * B - 4 * A * C;
+  if (Math.abs(A) < 1e-15 || disc < 0) return [];
+  const r = Math.sqrt(disc);
+  return [(-B - r) / (2 * A), (-B + r) / (2 * A)].map((t) => ({ x: p0.x + t * dx, y: p0.y + t * dy }));
+}
+
+function solve3(M: number[][], b: number[]): number[] | null {
+  const det = (m: number[][]) => m[0]![0]! * (m[1]![1]! * m[2]![2]! - m[1]![2]! * m[2]![1]!) - m[0]![1]! * (m[1]![0]! * m[2]![2]! - m[1]![2]! * m[2]![0]!) + m[0]![2]! * (m[1]![0]! * m[2]![1]! - m[1]![1]! * m[2]![0]!);
+  const D = det(M);
+  if (Math.abs(D) < 1e-12) return null;
+  return [0, 1, 2].map((k) => det(M.map((r, i) => r.map((v, j) => (j === k ? b[i]! : v)))) / D);
+}
+
+/**
+ * Point correspondences of a centre view, all from the picture: the halfway line l meets the image of the circle at the
+ * images of (0, +-R) and a touchline at (0, +-34); the 1-D projectivity along l then gives the centre O; the horizon is the
+ * polar of O, it meets l at the vanishing point of the goal-line direction, whose polar is the image of y = 0: it meets
+ * the ellipse at (+-R, 0). Picture convention of landmarks.ts: far = up, x grows to the right.
+ */
+export function centreCorrespondences(q: Conic, l: Vec3, touch: { p: Pt; far: boolean }): { model: Pt; p: Pt }[] | null {
+  const R = 9.15;
+  const ps = lineConic(q, l);
+  if (ps.length !== 2) return null;
+  const [up, down] = ps[0]!.y < ps[1]!.y ? [ps[0]!, ps[1]!] : [ps[1]!, ps[0]!];
+  // 1-D coordinate along l, growing upwards in the picture
+  const n = Math.hypot(l[0], l[1]);
+  let dx = -l[1] / n, dy = l[0] / n;
+  if (dy > 0) { dx = -dx; dy = -dy; }
+  const t = (p: Pt) => p.x * dx + p.y * dy;
+  // projectivity y -> t from 3 points: t = (alpha y + beta) / (gamma y + 1)
+  const Y = [R, -R, touch.far ? 34 : -34], T = [t(up), t(down), t(touch.p)];
+  const sol = solve3(Y.map((y, i) => [y, 1, -y * T[i]!]), T);
+  if (!sol) return null;
+  const t0 = sol[1]!; // y = 0
+  const base = { x: up.x - t(up) * dx, y: up.y - t(up) * dy };
+  const O = { x: base.x + t0 * dx, y: base.y + t0 * dy };
+  const hor = polarOf(q, [O.x, O.y, 1]);
+  const vx = cross(hor, l);
+  const yAxis = polarOf(q, vx);
+  const es = lineConic(q, yAxis);
+  if (es.length !== 2) return null;
+  const [left, right] = es[0]!.x < es[1]!.x ? [es[0]!, es[1]!] : [es[1]!, es[0]!];
+  return [
+    { model: { x: 0, y: R }, p: up }, { model: { x: 0, y: -R }, p: down }, { model: { x: 0, y: 0 }, p: O },
+    { model: { x: -R, y: 0 }, p: left }, { model: { x: R, y: 0 }, p: right }, { model: { x: 0, y: Y[2]! }, p: touch.p },
+  ];
+}
+
+/**
+ * Centre-circle calibration for midfield views, where the line search lacks straight lines: RANSAC ellipse on the paint
+ * that is not on a long straight line, the halfway line (a steep long line through the ellipse), a touchline (a flat long
+ * line crossing it in the picture), then centreCorrespondences, DLT and the chamfer refinement on all the model lines.
+ */
+export function centreCircleCalibrate(scan: LineScan): AutoCal | null {
+  const long = scan.lines.filter((l) => l.runs.reduce((s, [a, b]) => s + b - a, 0) > 0.12 * scan.w);
+  if (long.length < 2) return null;
+  const pts: Pt[] = [];
+  for (let y = 0; y < scan.h; y++) for (let x = 0; x < scan.w; x++) {
+    if (!scan.mask[y * scan.w + x]) continue;
+    if (long.some((l) => Math.abs(l.nx * x + l.ny * y - l.rho) < 2.5)) continue;
+    pts.push({ x, y });
+  }
+  const stride = Math.max(1, Math.floor(pts.length / 2500));
+  const sub = pts.filter((_, i) => i % stride === 0);
+  const ell = ransacEllipse(sub, { minInliers: Math.max(25, Math.round(120 / stride)), maxAxis: scan.w });
+  if (!ell) return null;
+  const e = ellipseOf(ell.conic)!;
+  const samples = scan.lines.map((l) => lineSamples(l, AUTOCAL.samplesPerLine));
+  let best: AutoCal | null = null;
+  for (const half of long) {
+    // the halfway line: steep (not a touchline) and through the ellipse
+    if (Math.abs(half.ny) > 0.7 || Math.abs(half.nx * e.c.x + half.ny * e.c.y - half.rho) > 0.5 * e.b + 2) continue;
+    const lv = lineVec(half);
+    for (const tl of long) {
+      if (tl === half || Math.abs(tl.ny) < 0.7) continue;
+      const p = intersect(half, tl, 20);
+      if (!p || p.x < -2 || p.y < -2 || p.x > scan.w + 2 || p.y > scan.h + 2) continue;
+      const corr = centreCorrespondences(ell.conic, lv, { p, far: p.y < e.c.y });
+      if (!corr) continue;
+      const H0 = computeHomography(corr.map((c) => c.model), corr.map((c) => c.p));
+      if (!H0) continue;
+      const Hw0 = orientH(H0, { x: 0, y: 0 });
+      if (!orientationOk(Hw0, { x: 0, y: 0 })) continue;
+      const r = chamferRefine(scan, Hw0, 0);
+      if (r.mean > CHAMFER.accept) continue;
+      const res = chamferResult(scan, r.Hw);
+      if (res && (!best || res.score < best.score)) best = res;
+    }
+  }
+  return best;
+}
+
+/** Chamfer polish of a calibration (pitch -> SOURCE px) on all the model lines; the input when it does not improve. */
+export function polishCalibration(scan: LineScan, cal: AutoCal): AutoCal {
+  const before = chamferCost(scan, cal.Hwork);
+  const r = chamferRefine(scan, cal.Hwork, 0);
+  if (!(r.mean < before.mean - 0.05)) return cal;
+  const res = chamferResult(scan, r.Hw);
+  return res && res.score <= cal.score + 0.3 ? res : cal;
+}

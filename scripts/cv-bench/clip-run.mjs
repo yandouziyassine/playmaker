@@ -3,6 +3,8 @@
 // compared with the ground truth: median position error, recall, team purity, ID switches, cut detection, ball error and
 // the team numbers (clip.ts) computed from the tracked players vs from the true positions of the players in view.
 //   node scripts/cv-bench/clip-run.mjs [--data scripts/cv-bench/clip-data] [--port 5191] [--notiled] [--shot out.png]
+//     [--loop '{"tracker":"nn","fullScanEvery":3,"motion":false,"circle":false,"polish":false}'] (cliprun.ts CLIP_LOOP switches)
+//     [--out report.json]
 import { chromium } from "@playwright/test";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -23,6 +25,8 @@ let run, wall;
 try {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  const loop = opt("loop", null);
+  if (loop) await page.addInitScript((o) => { window.__clipLoop = JSON.parse(o); }, loop);
   page.on("console", (m) => { if (m.type() === "error") console.error("[page]", m.text()); });
   await page.goto(`http://localhost:${PORT}/lab.html?debug`);
   await page.click("#mode-clip");
@@ -111,4 +115,4 @@ const report = {
   possession: { tracked: possOurs, truth: possGt },
 };
 console.log(JSON.stringify(report, null, 1));
-writeFileSync(join(DATA, "report.json"), JSON.stringify({ report, run }, null, 1));
+writeFileSync(opt("out", join(DATA, "report.json")), JSON.stringify({ report, run }, null, 1));

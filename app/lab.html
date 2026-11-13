@@ -4,8 +4,22 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title data-i18n="lab.title">Playmaker Lab · from a TV picture to tactics</title>
-  <meta name="description" data-i18n-content="lab.desc" content="Computer-vision lab: detect players in a football picture in your browser, calibrate the pitch with 4 taps and see the shape from above." />
+  <meta name="description" data-i18n-content="lab.desc" content="Computer vision in your browser: detect players in a football picture, calibrate the pitch from its lines and see the shape from above with the AI coach's options." />
   <meta name="theme-color" content="#0b2a1a" />
+  <!-- Social previews (absolute URLs: crawlers do not resolve relative ones); the card is scripts/showcase/og.mjs -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Playmaker" />
+  <meta property="og:title" content="Playmaker Lab · from a TV picture to tactics" />
+  <meta property="og:description" content="Computer vision in your browser: detect players in a football picture, calibrate the pitch from its lines and see the shape from above with the AI coach's options." />
+  <meta property="og:url" content="https://yandouziyassine.github.io/playmaker/lab.html" />
+  <meta property="og:image" content="https://yandouziyassine.github.io/playmaker/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Playmaker: a real pro moment drawn on the game's pitch, with the line: five real pro moments a day, pick the pass." />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Playmaker Lab · from a TV picture to tactics" />
+  <meta name="twitter:description" content="Computer vision in your browser: detect players in a football picture, calibrate the pitch from its lines and see the shape from above with the AI coach's options." />
+  <meta name="twitter:image" content="https://yandouziyassine.github.io/playmaker/og.png" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="/src/lab/lab.css" />
 </head>
@@ -23,6 +37,7 @@
     <div class="mode" role="group" aria-label="Lab mode" data-i18n-aria="lab.modeGroup">
       <button id="mode-picture" class="chip" type="button" aria-pressed="true" data-i18n="lab.modePicture">Picture</button>
       <button id="mode-live" class="chip" type="button" aria-pressed="false" data-i18n="lab.modeLive">Live camera</button>
+      <button id="mode-clip" class="chip" type="button" aria-pressed="false" data-i18n="lab.modeClip">Video clip</button>
     </div>
 
     <section class="card" id="load-card">
@@ -53,6 +68,24 @@
         or switch to another tab or app.</p>
     </section>
 
+    <section class="card" id="clip-card" hidden>
+      <h2 data-i18n="lab.clip.h2">1 · Video clip</h2>
+      <p class="fine" data-i18n="lab.clip.fine">Load a short match clip (mp4 or webm) filmed by the main camera. It is analysed offline on this device:
+        the first 60 seconds, 5 frames a second, at 720p. Nothing is uploaded.</p>
+      <label id="clip-drop" class="drop" tabindex="0">
+        <input id="clip-file" type="file" accept="video/mp4,video/webm,video/*" hidden />
+        <strong data-i18n="lab.clip.drop">Choose or drop a video clip</strong>
+        <span class="fine" data-i18n="lab.clip.dropFine">Your own clip, kept on this device. A wide view of the pitch with its painted lines works best.</span>
+      </label>
+      <div class="row-actions">
+        <label class="check"><input id="clip-tiled" type="checkbox" checked /> <span data-i18n="lab.clip.tiled">Tiled scan (small players, slower)</span></label>
+        <button id="clip-cancel" class="ghost" type="button" hidden data-i18n="lab.clip.cancel">Cancel</button>
+      </div>
+      <progress id="clip-progress" class="clip-progress" max="1" value="0" hidden></progress>
+      <p id="clip-msg" class="hint" role="status"></p>
+      <video id="clip-video" class="clip-video" muted playsinline preload="auto" aria-hidden="true"></video>
+    </section>
+
     <section id="work" hidden>
       <div class="stats" aria-live="polite">
         <div class="stat"><b id="st-count">–</b><span data-i18n="lab.st.people">people</span></div>
@@ -65,6 +98,12 @@
         <button id="freeze" class="ghost" type="button" data-i18n="lab.freeze">Freeze frame</button>
         <button id="ask-coach" class="primary" type="button" data-i18n="lab.askCoach">Freeze &amp; ask the coach</button>
         <button id="recal" class="ghost" type="button" data-i18n="lab.recal">Recalibrate</button>
+      </div>
+      <div class="row-actions clip-nav" id="clip-nav" hidden>
+        <button id="clip-play" class="ghost" type="button" data-i18n="lab.clip.play">Play</button>
+        <input id="clip-scrub" type="range" min="0" max="0" step="1" value="0" aria-label="Clip frame" data-i18n-aria="lab.clip.scrubAria" />
+        <span id="clip-time" class="fine clip-time"></span>
+        <button id="clip-coach" class="primary" type="button" data-i18n="lab.clip.coach">Ask the coach on this frame</button>
       </div>
       <div class="stage"><video id="cam" class="cam" playsinline muted aria-hidden="true"></video><canvas id="img" role="img" data-i18n-aria="lab.imgAria" aria-label="Your picture with detections and calibration points"></canvas></div>
       <div class="row-actions">
@@ -125,6 +164,19 @@
       </div>
     </section>
 
+    <section class="card" id="clip-results" hidden>
+      <h2 data-i18n="lab.clip.res.h2">4 · Over the clip</h2>
+      <p class="hint approx" data-i18n="lab.clip.approx">Approximate, from a broadcast clip: only the players in view are counted, positions are a few metres off.</p>
+      <p id="clip-sides" class="fine"></p>
+      <div class="clip-table-wrap"><table class="clip-table" id="clip-table"></table></div>
+      <div class="heat">
+        <figure><canvas id="heat-a" width="420" height="292" role="img"></canvas><figcaption id="heat-a-cap"></figcaption></figure>
+        <figure><canvas id="heat-b" width="420" height="292" role="img"></canvas><figcaption id="heat-b-cap"></figcaption></figure>
+      </div>
+      <h3 data-i18n="lab.clip.diag.h3">Diagnostics</h3>
+      <ul id="clip-diag" class="clip-diag"></ul>
+    </section>
+
     <section class="card limits">
       <h2 data-i18n="lab.limits.h2">Honest limits</h2>
       <ul>
@@ -143,6 +195,9 @@
           calibration is refined from the painted lines every couple of seconds and redone automatically when the camera (yours
           or the broadcast one) moves, which takes a few seconds and fails when too few lines are in view: then freeze and tap
           the points. A few detections per second on a phone, players can blink in and out.</li>
+        <li data-i18n="lab.limits.8">Video clip: only the first 60 s at 5 frames a second. A cut to another camera (close-up, replay) pauses the
+          tracking until a wide view is calibrated again; identities are lost at every cut and when players overlap. The team numbers
+          only count the players in view and the attacking directions are a guess: read them as rough trends, not measurements.</li>
       </ul>
       <p class="fine" data-i18n-html="lab.limits.fine.html">Detector: MediaPipe Tasks Vision with EfficientDet-Lite0 (both Apache-2.0), running on your device.
         <a href="./">The daily game</a> · <a href="about.html">About</a></p>

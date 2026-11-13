@@ -19,13 +19,13 @@ export const W = 1280, H = 720;
 
 // ---------- tracking data (same decoder as app/src/replay/data.ts) ----------
 const ABSENT = -32768;
-const match = JSON.parse(readFileSync(join(root, "app/public/replay/match.json"), "utf8"));
-const halves = match.halves.map((info, i) => {
+export const match = JSON.parse(readFileSync(join(root, "app/public/replay/match.json"), "utf8"));
+export const halves = match.halves.map((info, i) => {
   const buf = readFileSync(join(root, `app/public/replay/h${i}.bin`));
   const data = new Int16Array(buf.buffer, buf.byteOffset, buf.byteLength / 2);
   return { info, data, stride: (info.slots.length + 1) * 2 };
 });
-const read = (h, frame, col) => { const i = frame * h.stride + col * 2, x = h.data[i]; return x === undefined || x === ABSENT ? null : [x / 100, h.data[i + 1] / 100]; };
+export const read = (h, frame, col) => { const i = frame * h.stride + col * 2, x = h.data[i]; return x === undefined || x === ABSENT ? null : [x / 100, h.data[i + 1] / 100]; };
 
 /** Picks N frames evenly over the match where the ball is in play and every slot is present. */
 export function pickFrames(n) {
@@ -72,7 +72,7 @@ export function cameraFor(fr, r) {
 
 // ---------- browser side: projection, drawing, ground truth ----------
 // Runs inside Chromium (plain canvas). `fr` is the frame record, `cam` the camera, `look` the exposure/blur/seed knobs.
-function renderInBrowser({ fr, cam, look, W, H }) {
+export function renderInBrowser({ fr, cam, look, W, H }) {
   const seed = look.seed;
   let s = seed | 0;
   const rnd = () => { s |= 0; s = (s + 0x6d2b79f5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };

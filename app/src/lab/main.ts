@@ -23,6 +23,8 @@ import { initLang, num, pct, t, xg } from "../i18n/index.ts";
 import { localizeLab, tl, tln, type LabKey } from "./i18n.ts";
 import { translatePhrase } from "../i18n/phrases.ts";
 import { mountLangSwitch } from "../i18n/ui.ts";
+import { CLIP, diagnostics, frameAt, guessSides, heatBins, possessionShare, processingSize, teamNumbers, teamPoints, type Avg, type ClipFrame } from "./clip.ts";
+import { analyseClip, seekTo, type ClipRun } from "./cliprun.ts";
 
 initLang();
 localizeLab();
@@ -145,6 +147,7 @@ function calibration(): Calib | null {
 function mapped(cal: Calib | null): (Pt | null)[] {
   if (!cal || "error" in cal) return st.persons.map(() => null);
   if (live.on && live.pos.length === st.persons.length) return live.pos; // tracked, smoothed positions
+  if (clip.on && clip.pos.length === st.persons.length) return clip.pos; // the clip frame's tracked positions
   return st.persons.map((p) => toPitch(cal.i2p, feet(p.box)));
 }
 
@@ -152,6 +155,7 @@ function mapped(cal: Calib | null): (Pt | null)[] {
 function currentBall(cal: Calib | null): (Ball & { predicted?: boolean }) | null {
   if (live.on) return live.ball && (live.ball.hits >= 2 || live.ball.misses === 0)
     ? { box: trackBox(live.ball), score: live.ball.score, predicted: live.ball.misses > 0 } : null;
+  if (clip.on) { const f = clipFrame(); return f?.ballBox ? { box: f.ballBox, score: f.ballScore } : null; }
   return pickBall(st.balls, st.persons, cal && !("error" in cal) ? cal.i2p : null, img.width);
 }
 
@@ -420,8 +424,8 @@ function drawTop(cal: Calib | null, pos: (Pt | null)[], advice: Advice | null, b
   for (let k = top3.length - 1; k >= 0; k--) arrow(ctx, from!, toTop(top3[k]!.to), RANK_COLOURS[k]!, s);
   const r = Math.max(6, s * 1.5);
   // live: estimated velocities, drawn as the distance covered in the next second
-  if (live.on) pos.forEach((p, i) => {
-    const v = live.vel[i];
+  if (live.on || clip.on) pos.forEach((p, i) => {
+    const v = velOf(i);
     if (!p || !v || Math.hypot(v.x, v.y) < 0.8) return;
     arrow(ctx, toTop(p), toTop({ x: p.x + v.x, y: p.y + v.y }), "rgba(241,250,238,0.85)", s * 0.45);
   });
@@ -524,12 +528,13 @@ function coachData(pos: (Pt | null)[]): CoachView {
   const c = st.carrier;
   if (c === null) return null;
   if (live.on && !live.frozen) return { msg: tl("lab.coach.freezeFirst") };
+  if (clip.on && clip.playing) return { msg: tl("lab.coach.pauseFirst") };
   const team = st.labels[c];
   if (!pos[c] || team === undefined || team === "other") return { msg: tl("lab.coach.carrierTeam") };
   if (!coachW || !coachText) { ensureCoach(); return { msg: coachErr || tl("lab.coach.loading") }; }
   const ps = coachText.stateFromPicture(pos, st.labels, c, st.dir);
   if (!ps) return { msg: tl("lab.coach.carrierTeamShort") };
-  if (live.on) withVelocities(ps.state, st.dir);
+  if (live.on || clip.on) withVelocities(ps.state, st.dir);
   const advice = coachText.advise(ps, coachW.coach, coachW.models);
   return advice ? { advice } : { msg: tl("lab.coach.noOpp") };
 }
@@ -537,7 +542,7 @@ function coachData(pos: (Pt | null)[]): CoachView {
 /** Live: the tracked velocities (pitch frame) into the coach State (attack-normalised: rotated 180° for the left goal). */
 function withVelocities(s: State, dir: 1 | -1) {
   const fill = (idx: number[], out: [number, number][]) => idx.forEach((i, r) => {
-    const v = live.vel[i];
+    const v = velOf(i);
     if (v) out[r] = dir === 1 ? [v.x, v.y] : [-v.x, -v.y];
   });
   fill(s.attIdx, s.attV as [number, number][]); fill(s.defIdx, s.defV as [number, number][]);
@@ -550,9 +555,10 @@ function renderSide(pos: (Pt | null)[], view: CoachView) {
   $("st-ms").textContent = st.ms === null ? "–" : String(Math.round(st.ms));
   $("st-teams").textContent = st.ms === null ? "–" : `${counts["0"]} / ${counts["1"]} / ${counts["other"]}`;
   $("st-mapped").textContent = st.ms === null ? "–" : String(pos.filter(Boolean).length);
-  const nVel = live.on ? live.vel.filter(Boolean).length : 0;
-  $("coach-tag").textContent = tl(live.on ? "lab.coach.tagLive" : "lab.coach.tagPicture");
-  $("coach-still").textContent = !live.on ? tl("lab.coach.still") : nVel ? tln("lab.coach.vel", nVel) : tl("lab.coach.noVel");
+  const moving = live.on || clip.on;
+  const nVel = live.on ? live.vel.filter(Boolean).length : clip.on ? clip.vel.filter(Boolean).length : 0;
+  $("coach-tag").textContent = tl(live.on ? "lab.coach.tagLive" : clip.on ? "lab.coach.tagClip" : "lab.coach.tagPicture");
+  $("coach-still").textContent = !moving ? tl("lab.coach.still") : nVel ? tln("lab.coach.vel", nVel) : tl("lab.coach.noVel");
   const legend = $("legend");
   legend.innerHTML = "";
   if (st.persons.length) {
@@ -642,7 +648,7 @@ function render() {
  * chose it, the attacking direction (ball.ts heuristics). A tap on the map overrides it until the next detection.
  */
 function autoCarrier(pos: (Pt | null)[], ballPt: Pt | null) {
-  if (st.carrierManual || (live.on && !live.frozen)) return;
+  if (st.carrierManual || (live.on && !live.frozen) || (clip.on && clip.playing)) return;
   const pick = ballPt ? pickCarrier(ballPt, pos, st.labels) : null;
   if (!pick) {
     if (st.autoNote) { st.carrier = null; st.autoNote = ""; }
@@ -660,7 +666,7 @@ function autoCarrier(pos: (Pt | null)[], ballPt: Pt | null) {
     }
   }
   st.autoNote = [tl("lab.auto.carrier", { n: pick.index + 1, team: teamName(team), d: num(pick.dist, 1) }), dirNote, tl("lab.auto.override")].filter(Boolean).join(" ");
-  if (first && !live.on) $<HTMLDetailsElement>("opts").open = true; // picture mode: the coach runs straight away
+  if (first && !live.on && !clip.on) $<HTMLDetailsElement>("opts").open = true; // picture mode: the coach runs straight away
 }
 
 function renderFit(f: Fit | null) {
@@ -868,7 +874,7 @@ for (const el of [drop, img]) {
   el.addEventListener("drop", (e) => {
     e.preventDefault(); drop.classList.remove("over");
     const f = (e as DragEvent).dataTransfer?.files[0];
-    if (f && !live.on) void loadFile(f);
+    if (f && mode === "picture") void loadFile(f);
   });
 }
 
@@ -926,16 +932,22 @@ function calibChanged() {
   live.watch = START_WATCH;
 }
 
-function setMode(on: boolean) {
-  if (live.on === on) return;
+type Mode = "picture" | "live" | "clip";
+let mode: Mode = "picture";
+function setMode(m: Mode) {
+  if (mode === m) return;
+  mode = m;
+  const on = m === "live";
   live.on = on;
   document.body.classList.toggle("live", on);
-  $("mode-picture").setAttribute("aria-pressed", String(!on));
-  $("mode-live").setAttribute("aria-pressed", String(on));
-  $("load-card").hidden = on;
+  document.body.classList.toggle("clip", m === "clip");
+  for (const k of ["picture", "live", "clip"] as const) $(`mode-${k}`).setAttribute("aria-pressed", String(k === m));
+  $("load-card").hidden = m !== "picture";
   $("live-card").hidden = !on;
   $("live-actions").hidden = !on;
   stopCamera();
+  stopClip();
+  clip.on = m === "clip";
   // the picture (or the last camera frame) belongs to the other mode
   Object.assign(st, { loaded: false, persons: [], colours: [], labels: [], ms: null, carrier: null, pts: [null, null, null, null], active: 0,
     snaps: [null, null, null, null], balls: [], carrierManual: false, dirManual: false, autoNote: "" });
@@ -1188,8 +1200,9 @@ function setFrozen(f: boolean) {
   render();
 }
 
-$("mode-picture").addEventListener("click", () => setMode(false));
-$("mode-live").addEventListener("click", () => setMode(true));
+$("mode-picture").addEventListener("click", () => setMode("picture"));
+$("mode-live").addEventListener("click", () => setMode("live"));
+$("mode-clip").addEventListener("click", () => setMode("clip"));
 $("cam-start").addEventListener("click", () => void startCamera());
 $("cam-stop").addEventListener("click", () => { stopCamera(); setFrozen(true); camStatus(tl("lab.cam.stopped")); });
 $("freeze").addEventListener("click", () => setFrozen(!live.frozen));
@@ -1208,6 +1221,266 @@ $("recal").addEventListener("click", () => {
   status.classList.remove("bad");
   buildCalib(); render();
 });
+// ---------- video clip mode: offline analysis of a local file (cliprun.ts), replay, team numbers, heatmaps (clip.ts) ----------
+// The analysed frames are replayed through the picture pipeline: the selected frame is drawn into `src`, its tracked players
+// become st.persons, its calibration the 4 points, and the coach reads it (paused) with the tracked velocities.
+const clipVideo = $<HTMLVideoElement>("clip-video"), clipMsg = $("clip-msg");
+const clip = {
+  on: false,
+  run: null as ClipRun | null,
+  idx: -1,
+  want: -1,
+  showing: false,
+  pos: [] as (Pt | null)[],
+  vel: [] as (Pt | null)[],
+  playing: false,
+  timer: 0 as ReturnType<typeof setTimeout> | 0,
+  abort: null as AbortController | null,
+  url: "",
+};
+function clipFrame(): ClipFrame | null { return clip.run && clip.idx >= 0 ? clip.run.frames[clip.idx] ?? null : null; }
+function velOf(i: number): Pt | null { return (live.on ? live.vel[i] : clip.on ? clip.vel[i] : null) ?? null; }
+
+function clipStatus(text: string, bad = false, busy = false) {
+  clipMsg.replaceChildren(...(busy ? [spinner()] : []), text);
+  clipMsg.classList.toggle("bad", bad);
+}
+
+function stopClip() {
+  clip.abort?.abort(); clip.abort = null;
+  pauseClip();
+  Object.assign(clip, { run: null, idx: -1, want: -1, pos: [], vel: [] });
+  if (clip.url) { URL.revokeObjectURL(clip.url); clip.url = ""; clipVideo.removeAttribute("src"); clipVideo.load(); }
+  $("clip-nav").hidden = true; $("clip-results").hidden = true; $("clip-progress").hidden = true; $("clip-cancel").hidden = true;
+  clipStatus("");
+}
+
+/** Resolves once the video has a first frame (false on a decoding error). A MediaRecorder webm has no duration: seek far to learn it. */
+async function clipReady(): Promise<boolean> {
+  const ok = await new Promise<boolean>((r) => {
+    if (clipVideo.readyState >= 2) { r(true); return; }
+    clipVideo.addEventListener("loadeddata", () => r(true), { once: true });
+    clipVideo.addEventListener("error", () => r(false), { once: true });
+  });
+  if (!ok || !clipVideo.videoWidth) return false;
+  if (!Number.isFinite(clipVideo.duration)) { await seekTo(clipVideo, 1e7); await seekTo(clipVideo, 0); }
+  return clipVideo.duration > 0 && Number.isFinite(clipVideo.duration);
+}
+
+async function loadClip(file: File) {
+  if (!file.type.startsWith("video/") && !/\.(mp4|webm|m4v|mov)$/i.test(file.name)) { clipStatus(tl("lab.clip.notVideo"), true); return; }
+  stopClip();
+  Object.assign(st, { loaded: false, persons: [], colours: [], labels: [], ms: null, carrier: null, balls: [], carrierManual: false, dirManual: false, autoNote: "" });
+  $("work").hidden = true;
+  const url = URL.createObjectURL(file);
+  clip.url = url;
+  clipVideo.src = url;
+  clipStatus(tl("lab.clip.opening"), false, true);
+  if (!(await clipReady())) { if (clip.url === url) clipStatus(tl("lab.clip.cantRead"), true); return; }
+  if (clip.url !== url) return;
+  const size = processingSize(clipVideo.videoWidth, clipVideo.videoHeight);
+  src.width = size.w; src.height = size.h; img.width = size.w; img.height = size.h;
+  top.width = 840; top.height = Math.round(840 * (PITCH.width + 2 * TOP_M) / (PITCH.length + 2 * TOP_M));
+  const ctrl = new AbortController();
+  clip.abort = ctrl;
+  const prog = $<HTMLProgressElement>("clip-progress");
+  prog.hidden = false; prog.value = 0;
+  $("clip-cancel").hidden = false;
+  clipStatus(tl("lab.st.loadingDetector"), false, true);
+  let run: ClipRun;
+  try {
+    run = await analyseClip(clipVideo, {
+      tiled: $<HTMLInputElement>("clip-tiled").checked, signal: ctrl.signal,
+      onProgress: ({ done, total, frame }) => {
+        if (clip.abort !== ctrl) return;
+        prog.value = done / total;
+        clipStatus(tl("lab.clip.progress", { done, total, ms: Math.round(frame?.ms ?? 0) }), false, true);
+      },
+    });
+  } catch (e) {
+    console.error(e);
+    if (clip.abort === ctrl) { clip.abort = null; prog.hidden = true; $("clip-cancel").hidden = true; clipStatus(tl("lab.clip.fail"), true); }
+    return;
+  }
+  if (clip.abort !== ctrl) return; // another clip, or another mode, meanwhile
+  clip.abort = null;
+  prog.hidden = true; $("clip-cancel").hidden = true;
+  if (!run.frames.length) { clipStatus(tl("lab.clip.none"), true); return; }
+  clip.run = run;
+  clipStatus([tl(run.cancelled ? "lab.clip.cancelled" : "lab.clip.done", { n: run.frames.length, s: num(run.totalMs / 1000, 1) }),
+    run.capped ? tl("lab.clip.capped", { s: CLIP.maxSec }) : ""].filter(Boolean).join(" "));
+  st.loaded = true;
+  $("work").hidden = false; $("clip-nav").hidden = false;
+  const scrub = $<HTMLInputElement>("clip-scrub");
+  scrub.max = String(run.frames.length - 1);
+  renderClipResults(run);
+  await showClipFrame(Math.max(0, run.frames.findIndex((f) => f.status === "ok")));
+}
+
+/** Shows analysed frame i (seeks the video, then swaps the frame into the picture pipeline); fast scrubbing keeps the last wish. */
+async function showClipFrame(i: number) {
+  const run = clip.run;
+  if (!run) return;
+  clip.want = Math.max(0, Math.min(run.frames.length - 1, i));
+  if (clip.showing) return;
+  clip.showing = true;
+  try {
+    while (clip.run === run && clip.want !== clip.idx) {
+      const k = clip.want, f = run.frames[k]!;
+      await seekTo(clipVideo, f.t);
+      if (clip.run !== run) return;
+      src.getContext("2d", { willReadFrequently: true })!.drawImage(clipVideo, 0, 0, src.width, src.height);
+      setClipFrame(run, k, f);
+    }
+  } finally {
+    clip.showing = false;
+  }
+}
+
+function setClipFrame(run: ClipRun, k: number, f: ClipFrame) {
+  clip.idx = k;
+  const seen = f.players.filter((q) => q.box);
+  Object.assign(st, {
+    persons: seen.map((q) => ({ box: q.box!, score: 1 })), colours: seen.map(() => null), labels: seen.map((q) => q.team),
+    teamRgb: run.teamRgb.slice(0, 2), separation: run.separation, ms: f.ms, carrier: null, balls: [], carrierManual: false, autoNote: "",
+    snaps: [null, null, null, null], ids: f.cal ? [...f.cal.ids] : [...DEFAULT_LANDMARKS], pts: f.cal ? f.cal.pts.map((p) => ({ ...p })) : [null, null, null, null],
+    active: f.cal ? null : 0,
+  });
+  clip.pos = seen.map((q) => q.p); clip.vel = seen.map((q) => q.v);
+  scan = null;
+  $<HTMLInputElement>("clip-scrub").value = String(k);
+  $("clip-time").textContent = tl("lab.clip.time", { t: num(f.t, 1), d: num(Math.min(run.duration, CLIP.maxSec), 1), k: k + 1, n: run.frames.length });
+  const note = f.status === "ok"
+    ? tl("lab.clip.frame.ok", { people: tln("lab.people", seen.length), rating: tl(`lab.fit.${f.rating ?? "check"}`) })
+    : tl(f.status === "noPitch" ? "lab.clip.frame.noPitch" : "lab.clip.frame.poorCal");
+  status.textContent = note + (f.cut ? " " + tl("lab.clip.frame.cut") : "");
+  status.classList.toggle("bad", f.status !== "ok");
+  buildCalib(); render();
+}
+
+function pauseClip() {
+  clip.playing = false;
+  if (clip.timer) clearTimeout(clip.timer);
+  clip.timer = 0;
+  const b = $("clip-play");
+  b.textContent = tl("lab.clip.play"); b.setAttribute("aria-pressed", "false");
+}
+
+function playClip() {
+  const run = clip.run;
+  if (!run) return;
+  clip.playing = true;
+  const b = $("clip-play");
+  b.textContent = tl("lab.clip.pause"); b.setAttribute("aria-pressed", "true");
+  const period = 1000 / run.fps;
+  const step = async () => {
+    if (!clip.playing || clip.run !== run) return;
+    const t0 = performance.now(), next = clip.idx + 1;
+    if (next >= run.frames.length) { pauseClip(); render(); return; }
+    await showClipFrame(next);
+    clip.timer = setTimeout(() => void step(), Math.max(0, period - (performance.now() - t0)));
+  };
+  if (clip.idx >= run.frames.length - 1) void showClipFrame(0).then(() => { clip.timer = setTimeout(() => void step(), period); });
+  else clip.timer = setTimeout(() => void step(), period);
+  render();
+}
+
+const HEAT = { cols: 21, rows: 14, margin: 3 } as const;
+function drawHeat(cv: HTMLCanvasElement, bins: number[], colour: RGB) {
+  const M = HEAT.margin, s = cv.width / (PITCH.length + 2 * M);
+  cv.height = Math.round(s * (PITCH.width + 2 * M));
+  const ctx = cv.getContext("2d")!;
+  const P = (p: Pt) => ({ x: (p.x + PITCH.halfL + M) * s, y: (PITCH.halfW + M - p.y) * s });
+  ctx.fillStyle = "#14532d"; ctx.fillRect(0, 0, cv.width, cv.height);
+  const max = Math.max(1, ...bins), cw = PITCH.length / HEAT.cols, ch = PITCH.width / HEAT.rows;
+  for (let r = 0; r < HEAT.rows; r++) for (let c = 0; c < HEAT.cols; c++) {
+    const v = bins[r * HEAT.cols + c]! / max;
+    if (v <= 0) continue;
+    const a = P({ x: -PITCH.halfL + c * cw, y: -PITCH.halfW + (r + 1) * ch }), b = P({ x: -PITCH.halfL + (c + 1) * cw, y: -PITCH.halfW + r * ch });
+    ctx.fillStyle = `rgba(${colour.map((x) => Math.round(x)).join(",")},${(0.15 + 0.8 * Math.sqrt(v)).toFixed(3)})`;
+    ctx.fillRect(a.x, a.y, b.x - a.x, b.y - a.y);
+  }
+  ctx.strokeStyle = "rgba(241,250,238,0.7)"; ctx.lineWidth = Math.max(1, s * 0.25);
+  for (const line of pitchLines()) {
+    ctx.beginPath();
+    line.forEach((m, k) => { const p = P(m); if (k) ctx.lineTo(p.x, p.y); else ctx.moveTo(p.x, p.y); });
+    ctx.stroke();
+  }
+}
+
+function renderClipResults(run: ClipRun) {
+  const fr = run.frames;
+  const sides = guessSides(fr), nums = teamNumbers(fr, sides.sides), poss = possessionShare(fr), d = diagnostics(fr, run.fps);
+  const side = (s: 1 | -1) => tl(s === -1 ? "lab.side.left" : "lab.side.right");
+  $("clip-sides").textContent = sides.n
+    ? tl("lab.clip.sides", { a: side(sides.sides[0]), b: side(sides.sides[1]), p: pct(sides.agree), n: sides.n })
+    : tl("lab.clip.sidesNone");
+  const table = $<HTMLTableElement>("clip-table");
+  table.replaceChildren();
+  const cap = table.createCaption();
+  cap.className = "fine"; cap.textContent = tl("lab.clip.tableCap");
+  const head = table.createTHead().insertRow();
+  for (const h of [tl("lab.clip.col.metric"), tl("lab.clip.team", { t: "A" }), tl("lab.clip.team", { t: "B" })]) {
+    const th = document.createElement("th"); th.scope = "col"; th.textContent = h; head.append(th);
+  }
+  const body = table.createTBody();
+  const metres = (a: Avg) => a.mean === null ? "–" : tl("lab.clip.approxM", { v: num(a.mean, 1) });
+  const row = (label: string, cells: [string, string], notes: [string, string] = ["", ""]) => {
+    const tr = body.insertRow();
+    const th = document.createElement("th"); th.scope = "row"; th.textContent = label; tr.append(th);
+    cells.forEach((c, k) => {
+      const td = tr.insertCell(); td.textContent = c;
+      if (notes[k]) { const sm = document.createElement("small"); sm.textContent = " " + notes[k]; td.append(sm); }
+    });
+  };
+  const nNote = (a: Avg) => a.n ? tln("lab.clip.frames", a.n) : "";
+  for (const key of ["width", "depth", "lineHeight", "gapDM", "gapMA"] as const)
+    row(tl(`lab.clip.m.${key}`), [metres(nums[0][key]), metres(nums[1][key])], [nNote(nums[0][key]), nNote(nums[1][key])]);
+  const share = (v: number | null) => (v === null ? "–" : `≈ ${pct(v)}`);
+  row(tl("lab.clip.m.poss"), [share(poss.a), share(poss.b)]);
+  const foot = table.createTFoot().insertRow().insertCell();
+  foot.colSpan = 3; foot.className = "fine";
+  foot.textContent = tl("lab.clip.possNote", { n: poss.n, open: poss.open, m: CLIP.possessionM });
+  ([0, 1] as const).forEach((t) => {
+    const pts = teamPoints(fr, t), id = t === 0 ? "a" : "b";
+    const cv = $<HTMLCanvasElement>(`heat-${id}`);
+    drawHeat(cv, heatBins(pts, HEAT.cols, HEAT.rows), run.teamRgb[t] ?? [200, 200, 200]);
+    cv.setAttribute("aria-label", tl("lab.clip.heatAria", { t: t === 0 ? "A" : "B" }));
+    $(`heat-${id}-cap`).textContent = tl("lab.clip.heatCap", { t: t === 0 ? "A" : "B", n: pts.length });
+  });
+  const items = [
+    tl("lab.clip.d.frames", { n: d.frames, fps: run.fps, w: run.w, h: run.h }),
+    tl("lab.clip.d.cal", { p: pct(d.goodCal) }),
+    tln("lab.clip.d.cuts", d.cuts),
+    tl("lab.clip.d.skipped", { np: d.noPitch, pc: d.poorCal }),
+    tl("lab.clip.d.tracks", { n: d.tracks, s: d.avgTrackSec === null ? "–" : num(d.avgTrackSec, 1) }),
+    tl("lab.clip.d.speed", { ms: Math.round(d.msPerFrame ?? 0), s: num(run.totalMs / 1000, 1) }),
+  ];
+  $("clip-diag").replaceChildren(...items.map((x) => { const li = document.createElement("li"); li.textContent = x; return li; }));
+  $("clip-results").hidden = false;
+}
+
+const clipInput = $<HTMLInputElement>("clip-file");
+clipInput.addEventListener("change", () => { const f = clipInput.files?.[0]; if (f) void loadClip(f); clipInput.value = ""; });
+const clipDrop = $("clip-drop");
+clipDrop.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); clipInput.click(); } });
+clipDrop.addEventListener("dragover", (e) => { e.preventDefault(); clipDrop.classList.add("over"); });
+clipDrop.addEventListener("dragleave", () => clipDrop.classList.remove("over"));
+clipDrop.addEventListener("drop", (e) => {
+  e.preventDefault(); clipDrop.classList.remove("over");
+  const f = (e as DragEvent).dataTransfer?.files[0];
+  if (f) void loadClip(f);
+});
+$("clip-cancel").addEventListener("click", () => { clip.abort?.abort(); clipStatus(tl("lab.clip.cancelling"), false, true); });
+$("clip-play").addEventListener("click", () => { if (clip.playing) { pauseClip(); render(); } else playClip(); });
+$("clip-scrub").addEventListener("input", () => { pauseClip(); void showClipFrame(Number($<HTMLInputElement>("clip-scrub").value)); });
+$("clip-coach").addEventListener("click", () => {
+  pauseClip();
+  $<HTMLDetailsElement>("opts").open = true;
+  render();
+  top.scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth", block: "center" });
+});
+
 // privacy and battery: no camera while the page is hidden or left
 document.addEventListener("visibilitychange", () => {
   if (document.hidden && live.stream) {
@@ -1216,6 +1489,6 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 addEventListener("pagehide", () => stopCamera());
-if (new URLSearchParams(location.search).has("debug")) Object.assign(window, { __labLive: live, __labState: st, __labScan: () => getScan(), __labFit: () => fitReport(calibration()), __labBall: () => currentBall(calibration()), __labAutoCal: () => runAutoCal(), __labCalTick: () => calTick() }); // headless checks
+if (new URLSearchParams(location.search).has("debug")) Object.assign(window, { __labClip: () => clip.run, __labLive: live, __labState: st, __labScan: () => getScan(), __labFit: () => fitReport(calibration()), __labBall: () => currentBall(calibration()), __labAutoCal: () => runAutoCal(), __labCalTick: () => calTick() }); // headless checks
 
 buildCalib();

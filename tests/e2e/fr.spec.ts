@@ -94,6 +94,14 @@ test("the Lab in French: strings, landmark names and the EN | FR switch", async 
   await expect(page.locator("#status")).toContainText(/^Calibrage automatique en \d+\sms \(moitié droite\)\s:\sajustement bon/);
   await expect(page.locator("#calib-msg")).toContainText("Calibré");
   await expect(page.locator("#fit")).toContainText(/Ajustement|ajustement/);
+  // video clip mode: its card, in French, and the picture pipeline put away
+  await page.getByRole("button", { name: "Clip vidéo" }).click();
+  await expect(page.getByRole("button", { name: "Clip vidéo" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#clip-card h2")).toHaveText("1 · Clip vidéo");
+  await expect(page.locator("#clip-drop")).toContainText("Choisis ou dépose un clip vidéo");
+  await expect(page.locator("#load-card")).toBeHidden();
+  await expect(page.locator("#work")).toBeHidden();
+  await expect(page.locator(".limits")).toContainText("Clip vidéo : seulement les 60 premières secondes");
   await page.getByRole("button", { name: "English" }).click();
   await expect(page.locator(".topbar .page")).toHaveText("Lab");
 });

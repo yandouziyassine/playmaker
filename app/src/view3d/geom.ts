@@ -232,6 +232,11 @@ export interface Overlay3D extends Overlay {
   balls?: Cm[];
   /** Free play: the coach's ranked options as arrows (option k in this colour), the first drawn on top. */
   coach?: { k: number; color: string }[];
+  /** Free play: the ball centre's height in metres (z<i>.bin); without it the ball rests on the grass. */
+  ballH?: number;
+  /** The daily reveal's "what really happened" replay is running: its progress 0..1. The stadium camera follows the
+   *  ball like a broadcast, the eyes turn towards it, tactical stays put; the arrows fade out as it runs. */
+  replay?: number;
 }
 
 export interface ArrowSpec { from: Vec; to: Vec; color: string; dashed: boolean }
@@ -459,6 +464,69 @@ export function dragOrbit(o: Orbit, dx: number, dy: number, heightPx: number): O
   return { azimuth: wrapAngle(o.azimuth - dx * k), elevation: clamp(o.elevation + dy * k, -ELEV_MAX, ELEV_MAX), zoom: o.zoom };
 }
 export const zoomOrbit = (o: Orbit, wheel: number): Orbit => ({ ...o, zoom: clamp(o.zoom * Math.exp(wheel * WHEEL_K), ORBIT_ZOOM_MIN, ORBIT_ZOOM_MAX) });
+
+// ---- the reveal's broadcast camera ----
+
+/** tau: s for the aim to close 63 % of its gap; lead: s of the ball's velocity the aim runs ahead (capped at maxLead m);
+ *  velTau: s of smoothing on the velocity so a pass does not jerk the camera; yawTau: the eyes' turn towards the ball. */
+export const BROADCAST = { tau: 0.55, lead: 0.7, maxLead: 10, velTau: 0.3, yawTau: 0.35, near: 2.5 };
+export interface Follow { focus: Vec; vel: Vec }
+
+/** One step of the TV camera: the aim damps towards the ball plus a look-ahead along its (smoothed) velocity, so the
+ *  camera leads a long pass instead of chasing it. `rawVel` is the ball's velocity now (m/s). With reduced motion the
+ *  camera does not move (the state comes back unchanged); a jump larger than STADIUM.snap cuts. */
+export function broadcastFollow(st: Follow, ball: Vec, rawVel: Vec, dt: number, reduced = false, k = BROADCAST): Follow {
+  if (reduced || dt <= 0) return st;
+  const vel = dampVec(st.vel, rawVel, dt, k.velTau);
+  const sp = Math.hypot(vel[0], vel[1]), lead = Math.min(k.maxLead, sp * k.lead), s = sp > 1e-9 ? lead / sp : 0;
+  const want: Vec = [ball[0] + vel[0] * s, ball[1] + vel[1] * s];
+  if (Math.hypot(want[0] - st.focus[0], want[1] - st.focus[1]) > STADIUM.snap) return { focus: want, vel };
+  return { focus: dampVec(st.focus, want, dt, k.tau), vel };
+}
+
+/** The eyes during the replay: the turn (radians, left positive, relative to the resting direction towards the goal)
+ *  that looks at the ball, damped from `cur`. Unchanged with reduced motion or when the ball is at his feet. */
+export function eyesFollowYaw(cur: number, eye: Vec, ball: Vec, dt: number, reduced = false, goal: Vec = GOAL, k = BROADCAST): number {
+  if (reduced || Math.hypot(ball[0] - eye[0], ball[1] - eye[1]) < k.near) return cur;
+  const g = goalDirection(eye, goal);
+  const want = wrapAngle(Math.atan2(ball[1] - eye[1], ball[0] - eye[0]) - Math.atan2(g[1], g[0]));
+  return turnTowards(cur, want, dt, k.yawTau);
+}
+
+/** The arrows' opacity factor over the replay: fully there for its first 15 %, gone by 85 %, eased in between. */
+export function arrowFade(progress: number | undefined): number {
+  if (progress === undefined) return 1;
+  const x = clamp((progress - 0.15) / 0.7, 0, 1);
+  return 1 - x * x * (3 - 2 * x);
+}
+
+// ---- the ball in the air (free play) ----
+
+/** The ball's shadow on the grass under it: a little wider and fainter as the ball rises, so height reads at a glance. */
+export function ballShadow(h: number): { scale: number; opacity: number } {
+  const k = clamp(h / 12, 0, 1);
+  return { scale: 1 + 1.5 * k, opacity: 1 - 0.3 * k };
+}
+/** The ball's scale so it stays at least `minPx` across on screen (a 32 cm ball 60 m away is a pixel or two), at most 3x. */
+export function ballScale(dist: number, fov: number, heightPx: number, radius: number, minPx = 7): number {
+  return clamp((minPx * metresPerPx(dist, fov, heightPx)) / (2 * radius), 1, 3);
+}
+
+// ---- name labels ----
+
+/** Labels farther than this from the camera are hidden in the eyes and stadium views (they would pile up). */
+export const LABEL_MAX_M = 45;
+/** Whether a name label `dist` m from the camera is drawn: tactical shows every name, the others only the near ones. */
+export const labelVisible = (mode: CameraMode, dist: number): boolean => mode === "tactical" || dist <= LABEL_MAX_M;
+/** The surname in a match-sheet name: "D. Ginczek" -> "Ginczek", "Matthias Zimmermann" -> "Zimmermann",
+ *  "Kevin De Bruyne" -> "De Bruyne" (a lower- or particle-led last part stays with it). */
+export function surname(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return parts[0] ?? "";
+  let i = parts.length - 1;
+  while (i > 1 && /^(de|da|di|du|van|von|der|den|le|la|del|dos|ter|ten|mac|al|el)$/i.test(parts[i - 1]!)) i--;
+  return parts.slice(i).join(" ");
+}
 
 /** Each mode's camera for this frame: the eyes at the carrier (`eye`), the others following `focus` (the ball). */
 export function cameraPose(mode: CameraMode, eye: Vec, focus: Vec, look: Look, fov: number, framing: Framing, orbit: Orbit, goal: Vec = GOAL): Pose {

@@ -172,6 +172,8 @@ export const fr: Record<Key, string> = {
   "v3d.modeTactical": "Vue tactique",
   "v3d.canvasAria": "Vue 3D de l’action : les yeux du porteur du ballon, la caméra du stade ou la vue tactique ; glisse pour regarder autour",
   "v3d.title3dReplay": "Regarder le match en 3D",
+  "v3d.names": "Noms",
+  "v3d.namesTitle": "Afficher le nom des joueurs au-dessus d’eux",
 
   "rp.title": "Playmaker Jeu libre · un match complet avec l’entraîneur",
   "rp.desc": "Regarde un match complet de Bundesliga vu du dessus et mets pause quand tu veux : l’entraîneur IA montre les meilleures options du porteur du ballon.",

@@ -11,9 +11,9 @@ import { clearOfflineReveal, renderOfflineReveal } from "./offline/ui.ts";
 
 type Cm = [number, number] | null;
 /** Paints the 2D pitch and mirrors the frame into the 3D view (shown instead of the canvas when 3D is on). */
-function draw(ctx: CanvasRenderingContext2D, v: View, mo: Moment, frame: Cm[], ball: Cm, o: Overlay = {}) {
+function draw(ctx: CanvasRenderingContext2D, v: View, mo: Moment, frame: Cm[], ball: Cm, o: Overlay = {}, o3?: Overlay) {
   draw2D(ctx, v, mo, frame, ball, o);
-  paint3D(mo, frame, ball, o);
+  paint3D(mo, frame, ball, o3 ?? o);
 }
 
 export interface RoundUI {
@@ -240,7 +240,10 @@ async function playAfter(ctx: CanvasRenderingContext2D, v: View, mo: Moment, res
   if (!a || reduced()) return;
   await sleep(1400);
   for (let f = 0; f < a.frames.length; f++) {
-    draw(ctx, v, mo, a.frames[f]!, a.ball[f] ?? null, { trail: ballTrail(a.ball.slice(0, f + 1), v), balls: a.ball.slice(0, f + 1), dim: true });
+    const balls = a.ball.slice(0, f + 1);
+    // 3D: the arrows stay and fade out, the camera follows the ball (view3d/view.ts, overlay.replay)
+    draw(ctx, v, mo, a.frames[f]!, a.ball[f] ?? null, { trail: ballTrail(balls, v), balls, dim: true },
+      { ...arrows, balls, dim: true, replay: a.frames.length > 1 ? f / (a.frames.length - 1) : 1 });
     await sleep(1000 / a.fps);
   }
   await sleep(500);

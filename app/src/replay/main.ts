@@ -7,12 +7,12 @@
 import type { LoadedCoach } from "../coach/picture.ts";
 import type { FrameAdvice, Outcome, ProChoice } from "./coach.ts";
 import {
-  carrierAt, clock, decodeHalf, frameDots, fromGlobal, goals, minuteLabel, playerAt, scoreAt, toGlobal, toView, totalFrames, trail,
+  ballHeightAt, carrierAt, clock, decodeBallZ, decodeHalf, frameDots, fromGlobal, goals, minuteLabel, playerAt, scoreAt, toGlobal, toView, totalFrames, trail,
   viewFlip, type HalfData, type MatchMeta,
 } from "./data.ts";
 import type { Vec } from "../coach/geometry.ts";
 import type { Moment3D, Overlay3D } from "../view3d/geom.ts";
-import { paint3D, pick3D, setup3D } from "../view3d/toggle.ts";
+import { is3D, on3DChange, paint3D, pick3D, setup3D } from "../view3d/toggle.ts";
 import { ARROW_COLORS, TOP, drawPitch, drawScene, type View } from "./draw.ts";
 import { setIconText, spinner } from "../design/icons.ts";
 import { getLang, initLang, localizeDom, num, t } from "../i18n/index.ts";
@@ -35,6 +35,8 @@ let C = null as unknown as typeof import("./coach.ts");
 let meta = null as unknown as MatchMeta, brain = null as unknown as LoadedCoach, flip: 1 | -1 = 1;
 let ready = false, playing = false, speed = 1, g = 0, last = 0;
 const halves: (HalfData | undefined)[] = [], loads: (Promise<HalfData> | undefined)[] = [];
+/** The ball's height per half (z<i>.bin): undefined not asked yet, null missing (the 3D ball then rests on the grass). */
+const heights: (Int16Array | null | undefined)[] = [], heightLoads: (Promise<void> | undefined)[] = [];
 let advice: FrameAdvice | null = null;
 let pending: { half: number; pro: ProChoice; result: Outcome; mine: string; followed: boolean } | null = null;
 const tally = { decisions: 0, followed: 0, you: 0, coach: 0 };
@@ -54,6 +56,15 @@ function getHalf(i: number): Promise<HalfData> {
     .then((r) => { if (!r.ok) throw new Error(`h${i}.bin: HTTP ${r.status}`); return r.arrayBuffer(); })
     .then((buf) => (halves[i] = decodeHalf(buf, meta.halves[i]!, meta.players.length)))
     .catch((e) => { loads[i] = undefined; throw e; }));
+}
+
+/** The ball's height is only drawn in 3D: fetched the first time 3D shows that half (68 kB), then a redraw. */
+function needHeight(i: number) {
+  if (heights[i] !== undefined || heightLoads[i] || !meta) return;
+  heightLoads[i] = fetch(`${BASE}z${i}.bin`)
+    .then(async (r) => { heights[i] = r.ok ? decodeBallZ(await r.arrayBuffer(), meta.halves[i]!.frames) : null; })
+    .catch((e) => { console.warn(e); heights[i] = null; })
+    .finally(() => { heightLoads[i] = undefined; if (!playing) draw(); });
 }
 
 // ---------- drawing ----------
@@ -77,6 +88,7 @@ function draw() {
     players, ball, trail: tr, advice: shown,
     carrierAt: shown ? playerAt(h, shown.frame, shown.carrier.player) : null, top: TOP,
   });
+  if (is3D()) needHeight(fpos.half);
   paint3D(...scene3D(h, fpos.half, fpos.frame, players, ball, tr, shown));
 }
 
@@ -101,7 +113,7 @@ function scene3D(h: HalfData, half: number, frame: number, players: { player: nu
     attack, colors: meta.meta.colors, live: true,
   };
   last3D = mo;
-  const o: Overlay3D = { balls: tr.map(cm3D) };
+  const o: Overlay3D = { balls: tr.map(cm3D), ballH: ballHeightAt(heights[half], frame) };
   if (shown) o.coach = options.map((q, i) => ({ k: q.k, color: ARROW_COLORS[i] ?? "#f1faee" }));
   return [mo, fr, ball ? cm3D(ball) : null, o];
 }
@@ -253,6 +265,7 @@ document.addEventListener("keydown", (e) => {
 new ResizeObserver(resize).observe(canvas);
 resize();
 setup3D(canvas, true); // once: wraps the canvas with the 3D view and its toggle
+on3DChange(() => { if (ready && is3D()) needHeight(where().half); });
 
 async function boot() {
   const [m, c] = await Promise.all([

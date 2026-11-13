@@ -8,6 +8,11 @@
 // Tracking frames arrive at 10-12.5 fps: the loop interpolates positions between the last two frames at the screen's
 // rate, turns each figure towards its direction of motion and bobs it when it runs (not with reduced motion). Renders
 // only while something moves (a frame transition, a drag, the camera settling).
+// Free play passes the ball's real height (overlay.ballH): the ball flies, its shadow stays on the grass under it, a faint
+// line joins them. During the daily reveal's replay (overlay.replay) the stadium camera follows the ball like a
+// broadcast (damped, leading along its velocity), the eyes turn towards it, tactical holds still, the arrows fade out;
+// with reduced motion the camera holds still and only the figures move. "Names" (off by default, remembered) puts
+// "number surname" labels over the players, hidden beyond 45 m in the eyes and stadium views.
 import {
   BackSide, BufferAttribute, BufferGeometry, CanvasTexture, CapsuleGeometry, Color, CylinderGeometry, DirectionalLight,
   DoubleSide, DynamicDrawUsage, Fog, HemisphereLight, InstancedBufferAttribute, InstancedMesh, Line, Group,
@@ -18,10 +23,10 @@ import {
 import { t } from "../i18n/index.ts";
 import {
   CAMERA_MODES, COLORS, EYES_ARROW, EYES_FOV, FAR_ARROW, GOAL_H, GOAL_HALF_WIDTH, HALF_LENGTH, HALF_WIDTH, LOOK_HOME, NO_FRAMING,
-  ORBIT_HOME, arrowSpecs, atlasCell, badgeItems, cameraPose, carrierAt, cmToM, dragLook, dragOrbit, eyesArrow, followFocus,
-  frameTips, goalOf, isCameraMode, isTap, lerpFrame, lerpPoint, motion, pickTargets, pitchMarkings, rayPick, ribbon, runBob,
-  toWorld, turnTowards, zoomFov, zoomOrbit,
-  type CameraMode, type Framing, type Look, type Moment3D, type Orbit, type Overlay3D, type PickTarget, type Vec,
+  ORBIT_HOME, arrowFade, arrowSpecs, atlasCell, badgeItems, ballScale, ballShadow, broadcastFollow, cameraPose, carrierAt, cmToM, damp, dragLook,
+  dragOrbit, eyesArrow, eyesFollowYaw, followFocus, frameTips, goalOf, isCameraMode, isTap, labelVisible, lerpFrame, lerpPoint, motion,
+  pickTargets, pitchMarkings, rayPick, ribbon, runBob, surname, toWorld, turnTowards, zoomFov, zoomOrbit,
+  type CameraMode, type Follow, type Framing, type Look, type Moment3D, type Orbit, type Overlay3D, type PickTarget, type Vec,
 } from "./geom.ts";
 
 type Cm = [number, number] | null;
@@ -47,7 +52,8 @@ export interface View3D {
   dispose(): void;
 }
 
-export const MODE_KEY = "playmaker.view3d.mode";
+export const MODE_KEY = "playmaker.view3d.mode", NAMES_KEY = "playmaker.view3d.names";
+const LABEL_FRAC = 0.034, TETHER_MIN = 0.6; // label height: 3.4 % of the canvas; the ball's line to its shadow above 0.6 m
 const MAX_CARRIES = 16, Y_AXIS = new Vector3(0, 1, 0);
 const MAX_FIGURES = 36, MAX_ARROW_VERTS = 8 * 60 * 3, MAX_TRAIL = 200, MAX_DPR = 1.5;
 const BODY_Y = 0.78, HEAD_Y = 1.7, NUMBER_Y = 2.3, BALL_R = 0.11, BALL_VIS_R = 0.16;
@@ -160,6 +166,20 @@ export function hasWebGL(): boolean {
 
 const flat = <T extends BufferGeometry>(g: T): T => { g.rotateX(-Math.PI / 2); return g; };
 const readMode = (): CameraMode => { try { const v = localStorage.getItem(MODE_KEY); return isCameraMode(v) ? v : "eyes"; } catch { return "eyes"; } };
+const readNames = (): boolean => { try { return localStorage.getItem(NAMES_KEY) === "1"; } catch { return false; } };
+
+/** A name label: "number surname" in white on a dark pill (drawn here); the canvas aspect for the sprite's scale. */
+function labelTexture(text: string): { tex: CanvasTexture; aspect: number } {
+  const c = document.createElement("canvas"), g = c.getContext("2d")!, h = 48, font = "700 30px system-ui, sans-serif";
+  g.font = font;
+  const w = Math.ceil(g.measureText(text).width) + 28;
+  c.width = w; c.height = h;
+  g.font = font; g.fillStyle = "rgba(7, 23, 14, 0.78)"; g.beginPath(); g.roundRect(0, 4, w, h - 8, (h - 8) / 2); g.fill();
+  g.fillStyle = "#ffffff"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(text, w / 2, h / 2 + 1);
+  const tex = new CanvasTexture(c);
+  tex.colorSpace = SRGBColorSpace;
+  return { tex, aspect: w / h };
+}
 
 // the mode selector's icons: local SVG (20 px grid like design/icons.ts, but only the 3D chunk needs them)
 const MODE_ICON: Record<CameraMode, string> = {
@@ -255,8 +275,17 @@ export function createView3D(host: HTMLElement): View3D | null {
   carrierRing.visible = false;
   const ball = new Mesh(new SphereGeometry(BALL_VIS_R, 16, 12), new MeshLambertMaterial({ color: COLORS.ball }));
   ball.visible = false;
-  const ballShadow = new Mesh(flat(new PlaneGeometry(0.6, 0.6)), shadowMat);
-  ballShadow.visible = false;
+  const ballShadowMat = new MeshBasicMaterial({ map: blob, transparent: true, depthWrite: false });
+  const ballShadowMesh = new Mesh(flat(new PlaneGeometry(0.8, 0.8)), ballShadowMat);
+  ballShadowMesh.visible = false;
+  const tetherPos = new BufferAttribute(new Float32Array(6), 3).setUsage(DynamicDrawUsage);
+  const tetherGeo = new BufferGeometry();
+  tetherGeo.setAttribute("position", tetherPos);
+  const tether = new Line(tetherGeo, new LineBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.35, depthWrite: false }));
+  tether.visible = false; tether.frustumCulled = false;
+  // name labels: one sprite per player (texture drawn once per name), placed in render()
+  const labels = new Group(), labelOf = new Map<number, { sprite: Sprite; aspect: number; text: string }>();
+  let names = readNames();
 
   const arrowPos = new BufferAttribute(new Float32Array(MAX_ARROW_VERTS * 3), 3).setUsage(DynamicDrawUsage);
   const arrowCol = new BufferAttribute(new Float32Array(MAX_ARROW_VERTS * 3), 3).setUsage(DynamicDrawUsage);
@@ -284,7 +313,8 @@ export function createView3D(host: HTMLElement): View3D | null {
   for (let i = 0; i < MAX_CARRIES; i++) chevrons.setColorAt(i, colour.set(COLORS.ball));
   chevrons.count = 0; chevrons.frustumCulled = false;
   const badges = new Group();
-  scene.add(shadows, outlines, bodies, heads, numbers, ring, carrierRing, ball, ballShadow, arrows, trail, chevrons, badges);
+  scene.add(shadows, outlines, bodies, heads, numbers, ring, carrierRing, ball, ballShadowMesh, tether, arrows, trail, chevrons, badges, labels);
+  const arrowMat = arrows.material as MeshBasicMaterial;
 
   // ---- camera, steering and the motion state ----
   const camera = new PerspectiveCamera(EYES_FOV, 1, 0.1, 500);
@@ -299,6 +329,9 @@ export function createView3D(host: HTMLElement): View3D | null {
   // per player: last drawn position, facing (radians, pitch frame), speed (m/s), distance run (for the bob phase)
   const drawn: Cm[] = [], heading: number[] = [], speeds: number[] = [], run: number[] = [];
   let lastTick = 0, moving = false, settled = true;
+  // the reveal's replay: the broadcast follow, the eyes' turn and pull-back, the framing it started from
+  let follow: Follow = { focus: [0, 0], vel: [0, 0] }, followYaw = 0, followBack = 0, inReplay = false, replayFraming: Framing = NO_FRAMING;
+  let replayEye: Vec = [0, 0];
   const times: number[] = []; // the last frame times, for stats()
 
   const aspect = () => Math.max(1, canvas.clientWidth) / Math.max(1, canvas.clientHeight);
@@ -315,12 +348,44 @@ export function createView3D(host: HTMLElement): View3D | null {
     const frame = u >= 1 ? cur : lerpFrame(prev, cur, u), b = u >= 1 ? curBall : lerpPoint(prevBall, curBall, u);
     const mo = lastMo, o = lastOverlay;
     if (!mo) return;
+    const bm: Vec | null = b ? cmToM(b) : null;
+
+    // the eyes stand at the carrier (the ball when he is not tracked; during the replay, where he was last seen)
+    const replayNow = o.replay !== undefined;
+    const ec = carrierAt(mo, frame);
+    if (replayNow && !inReplay) { follow = { focus, vel: [0, 0] }; replayFraming = framing; followYaw = framing.yaw; followBack = framing.back; replayEye = ec ?? eye; }
+    inReplay = replayNow;
+    if (ec) eye = ec;
+    else if (b && !inReplay) eye = bm!;
+    if (inReplay && reduced) eye = replayEye; // no camera motion: the eyes stay where the replay started
+
+    // the camera: the eyes at the carrier; the others following the ball with a lag (the replay: see the header)
+    const want: Vec = bm ?? eye;
+    let next: Vec;
+    if (inReplay) {
+      const vel: Vec = dur > 0 && prevBall && curBall ? [(curBall[0] - prevBall[0]) / dur * 10, (curBall[1] - prevBall[1]) / dur * 10] : [0, 0]; // cm/ms -> m/s
+      const yaw0 = followYaw;
+      if (mode === "stadium" && bm) follow = broadcastFollow(follow, bm, vel, dt, reduced);
+      if (mode === "eyes" && bm) followYaw = eyesFollowYaw(followYaw, eye, bm, dt, reduced, goal);
+      if (!reduced) followBack = damp(followBack, 0, dt, 0.4);
+      framing = mode === "eyes" ? { yaw: followYaw, back: followBack, fov: replayFraming.fov } : framing;
+      next = mode === "stadium" ? follow.focus : focus; // tactical (and reduced motion) hold still
+      settled = Math.hypot(next[0] - focus[0], next[1] - focus[1]) < 0.01 && Math.abs(followYaw - yaw0) < 1e-4 && followBack < 0.01;
+    } else {
+      next = dt > 0 ? followFocus(focus, want, dt) : want;
+      settled = Math.hypot(next[0] - focus[0], next[1] - focus[1]) < 0.01 && Math.hypot(want[0] - next[0], want[1] - next[1]) < 0.05;
+    }
+    focus = next;
+    const pose = cameraPose(mode, eye, focus, look, fov, framing, orbit, goal);
+    camera.position.set(...pose.position);
+    camera.fov = pose.fov;
+    camera.updateProjectionMatrix();
+    camera.lookAt(aim.set(...pose.target));
 
     // figures: colour by side, facing their motion, bobbing when they run; the carrier hidden from his own eyes
     const showCarrier = mode !== "eyes" || framing.back > 0;
-    const ec = carrierAt(mo, frame);
-    if (ec) eye = ec;
-    else if (b) eye = cmToM(b);
+    const labelH = LABEL_FRAC * 2 * Math.tan((camera.fov * Math.PI) / 360); // constant height on screen
+    for (const l of labelOf.values()) l.sprite.visible = false;
     let n = 0;
     moving = false;
     frame.forEach((cm, i) => {
@@ -343,7 +408,24 @@ export function createView3D(host: HTMLElement): View3D | null {
       bodies.setColorAt(n, colour.set(side));
       outlines.setColorAt(n, dark.set(side).multiplyScalar(0.3));
       heads.setMatrixAt(n, m.compose(p.set(x, HEAD_Y + bob, z), q, s.set(k, k, k)));
-      const kn = i === mo.carrier && mode === "eyes" ? 0 : 1; // seen from just behind him, his own number would fill the screen
+      let kn = i === mo.carrier && mode === "eyes" ? 0 : 1; // seen from just behind him, his own number would fill the screen
+      if (names && kn && labelVisible(mode, Math.hypot(x - camera.position.x, NUMBER_Y - camera.position.y, z - camera.position.z))) {
+        const text = `${pl.shirt} ${surname(pl.name)}`;
+        let l = labelOf.get(i);
+        if (!l || l.text !== text) {
+          if (l) { l.sprite.material.map?.dispose(); l.sprite.material.dispose(); labels.remove(l.sprite); }
+          const { tex, aspect } = labelTexture(text);
+          const sprite = new Sprite(new SpriteMaterial({ map: tex, sizeAttenuation: false, transparent: true, depthWrite: false }));
+          sprite.renderOrder = 5;
+          l = { sprite, aspect, text };
+          labelOf.set(i, l);
+          labels.add(sprite);
+        }
+        l.sprite.visible = true;
+        l.sprite.position.set(x, NUMBER_Y + 0.15 + bob, z);
+        l.sprite.scale.set(labelH * l.aspect, labelH, 1);
+        kn = 0; // the label carries the number
+      }
       numbers.setMatrixAt(n, m.compose(p.set(x, NUMBER_Y + bob, z), q, s.set(kn, kn, kn)));
       const [cx, cy] = atlasCell(pl.shirt);
       cells.setXY(n, cx, cy);
@@ -360,19 +442,20 @@ export function createView3D(host: HTMLElement): View3D | null {
     carrierRing.visible = !!carrier && showCarrier;
     if (carrier) { const [cx, cy] = cmToM(carrier); carrierRing.position.set(cx, 0.02, -cy); }
 
-    ball.visible = ballShadow.visible = !!b;
-    if (b) { const [bx, by] = cmToM(b); ball.position.set(bx, Math.max(BALL_R, BALL_VIS_R), -by); ballShadow.position.set(bx, 0.015, -by); }
-
-    // the camera: the eyes at the carrier; the others following the ball with a lag
-    const want: Vec = b ? cmToM(b) : eye;
-    const next = dt > 0 ? followFocus(focus, want, dt) : want;
-    settled = Math.hypot(next[0] - focus[0], next[1] - focus[1]) < 0.01 && Math.hypot(want[0] - next[0], want[1] - next[1]) < 0.05;
-    focus = next;
-    const pose = cameraPose(mode, eye, focus, look, fov, framing, orbit, goal);
-    camera.position.set(...pose.position);
-    camera.fov = pose.fov;
-    camera.updateProjectionMatrix();
-    camera.lookAt(aim.set(...pose.target));
+    // the ball at its height (free play), its shadow on the grass right under it, a faint line between them when high
+    const bh = o.ballH ?? BALL_R;
+    ball.visible = ballShadowMesh.visible = !!bm;
+    tether.visible = !!bm && bh > TETHER_MIN;
+    if (bm) {
+      const [bx, by] = bm, sh = ballShadow(bh), y = Math.max(BALL_VIS_R, bh + BALL_VIS_R - BALL_R);
+      const k = ballScale(Math.hypot(bx - camera.position.x, y - camera.position.y, -by - camera.position.z), camera.fov, canvas.clientHeight, BALL_VIS_R);
+      ball.position.set(bx, Math.max(y, BALL_VIS_R * k), -by);
+      ball.scale.setScalar(k);
+      ballShadowMesh.position.set(bx, 0.015, -by);
+      ballShadowMesh.scale.setScalar(sh.scale * k);
+      ballShadowMat.opacity = sh.opacity;
+      if (tether.visible) { tetherPos.setXYZ(0, bx, 0.02, -by); tetherPos.setXYZ(1, bx, ball.position.y - BALL_VIS_R, -by); tetherPos.needsUpdate = true; }
+    }
     numberSize.value = mode === "eyes" ? 0.75 : 1.15;
     renderer.render(scene, camera);
     times.push(performance.now() - t1);
@@ -481,6 +564,25 @@ export function createView3D(host: HTMLElement): View3D | null {
   }
   paintModes();
 
+  // ---- the "Names" switch, under the mode selector: off by default, remembered ----
+  const namesBtn = document.createElement("button");
+  namesBtn.type = "button"; namesBtn.className = "v3d-names";
+  namesBtn.textContent = t("v3d.names");
+  namesBtn.title = t("v3d.namesTitle");
+  const paintNames = () => namesBtn.setAttribute("aria-pressed", String(names));
+  namesBtn.addEventListener("click", () => {
+    names = !names;
+    try { localStorage.setItem(NAMES_KEY, names ? "1" : "0"); } catch { /* private mode */ }
+    paintNames();
+    request();
+  });
+  paintNames();
+  host.prepend(namesBtn);
+  function clearLabels() {
+    for (const l of labelOf.values()) { l.sprite.material.map?.dispose(); l.sprite.material.dispose(); labels.remove(l.sprite); }
+    labelOf.clear();
+  }
+
   // ---- score badges: sprites with a drawn label, constant size on screen ----
   function clearBadges() {
     for (const sp of [...badges.children] as Sprite[]) { sp.material.map?.dispose(); sp.material.dispose(); badges.remove(sp); }
@@ -562,6 +664,9 @@ export function createView3D(host: HTMLElement): View3D | null {
     });
     arrowGeo.setDrawRange(0, v - (v % 3));
     arrowPos.needsUpdate = arrowCol.needsUpdate = true;
+    const fade = arrowFade(o.replay); // the reveal's replay: the arrows stay at first, then fade out as it runs
+    arrowMat.opacity = 0.95 * fade;
+    arrows.visible = fade > 0.01;
 
     const tr = (o.balls ?? []).filter((x): x is [number, number] => !!x).slice(-MAX_TRAIL).map(cmToM);
     tr.forEach((tp, i) => trailPos.setXYZ(i, tp[0], 0.05, -tp[1]));
@@ -606,6 +711,7 @@ export function createView3D(host: HTMLElement): View3D | null {
       canvas.removeEventListener("webglcontextlost", lost);
       ro.disconnect();
       clearBadges();
+      clearLabels();
       const mats = new Set<Material>();
       scene.traverse((obj) => {
         const mesh = obj as Mesh;
@@ -618,6 +724,7 @@ export function createView3D(host: HTMLElement): View3D | null {
       renderer.dispose();
       renderer.forceContextLoss();
       modes.remove();
+      namesBtn.remove();
       canvas.remove();
     },
   };

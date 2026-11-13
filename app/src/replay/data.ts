@@ -132,6 +132,28 @@ export function trail(h: HalfData, t: number, fps: number, seconds = 1): Vec[] {
   return out;
 }
 
+// ---------- the ball's height (3D only) ----------
+// z<i>.bin (library coach/export.py, same data and licence as h<i>.bin): one little-endian int16 per frame of the half,
+// the ball centre's height in centimetres, -32768 = unknown. 68 kB per half, fetched the first time 3D shows the half.
+/** Height (m) of the ball's centre when it rests on the grass. */
+export const BALL_REST_M = 0.11;
+
+export function decodeBallZ(buf: ArrayBuffer, frames: number): Int16Array {
+  if (buf.byteLength !== frames * 2) throw new Error(`ball height file has ${buf.byteLength} bytes, expected ${frames * 2}`);
+  return new Int16Array(buf);
+}
+
+/** The ball centre's height (m) at a fractional frame, linear between frames like the positions; an unknown frame takes
+ *  its neighbour's value; resting height without data, when both are unknown, or below it. */
+export function ballHeightAt(z: Int16Array | null | undefined, t: number): number {
+  if (!z || !z.length) return BALL_REST_M;
+  const last = z.length - 1, f0 = Math.max(0, Math.min(last, Math.floor(t))), f1 = Math.min(last, f0 + 1);
+  const a = Math.max(0, Math.min(1, t - f0)), v0 = z[f0]!, v1 = z[f1]!;
+  if (v0 === ABSENT && v1 === ABSENT) return BALL_REST_M;
+  const cm = v0 === ABSENT ? v1 : v1 === ABSENT ? v0 : v0 + (v1 - v0) * a;
+  return Math.max(BALL_REST_M, cm / 100);
+}
+
 // ---------- time ----------
 /** Match clock "mm:ss" (the second half starts at 45:00). */
 export function clock(half: number, frame: number, fps: number): string {

@@ -179,6 +179,8 @@ export const en = {
   "v3d.modeTactical": "Tactical view",
   "v3d.canvasAria": "3D view of the moment: the ball carrier's eyes, the stadium camera or the tactical view; drag to look around",
   "v3d.title3dReplay": "Watch the match in 3D",
+  "v3d.names": "Names",
+  "v3d.namesTitle": "Show the players' names over their heads",
 
   // replay (free play) page
   "rp.title": "Playmaker Free play · a full match with the coach",

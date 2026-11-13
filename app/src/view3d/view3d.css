@@ -24,3 +24,9 @@
 .v3d-mode[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
 .v3d-mode:hover:not([aria-pressed="true"]) { color: var(--fg); }
 .v3d-mode .icon { width: 20px; height: 20px; }
+/* "Names": a small switch under the mode selector (top-left) */
+.v3d-names { position: absolute; top: calc(var(--s-2) + var(--tap) + var(--s-1)); left: var(--s-2); min-height: var(--tap); padding: 0 var(--s-3);
+  border-radius: calc(var(--r-stage) - var(--s-2)); font-size: var(--fs-xs); font-weight: 600; color: var(--muted);
+  background: rgba(7, 23, 14, 0.82); border: 1px solid var(--line-strong); box-shadow: var(--shadow-float); }
+.v3d-names[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.v3d-names:hover:not([aria-pressed="true"]) { color: var(--fg); }

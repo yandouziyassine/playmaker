@@ -81,6 +81,11 @@ test("in 3D, tapping a teammate selects a pass", async ({ page }) => {
   test.skip((await toggle.textContent()) === "3D unavailable", "no WebGL in this browser");
   const host = page.locator(".v3d-host canvas");
   await expect(host).toBeVisible();
+  const names = page.getByRole("button", { name: "Names" }); // name labels: off by default, a switch
+  await expect(names).toHaveAttribute("aria-pressed", "false");
+  await names.click();
+  await expect(names).toHaveAttribute("aria-pressed", "true");
+  await names.click();
   const box = (await host.boundingBox())!;
   let picked = false;
   for (let y = 0.35; y < 0.95 && !picked; y += 0.05) {

@@ -16,6 +16,19 @@ initLang(); // ?lang=, saved choice, browser language; sets <html lang>
 localizeDom();
 mountLangSwitch();
 registerSW(); // offline play (production builds; see app/src/offline/register.ts)
+prefetch3DOnIntent();
+
+/** The three.js 3D view is a ~140 kB (gzip) lazy chunk: nothing loads it on page load. Its download starts when the
+ *  visitor shows intent (pointer over, touch or keyboard focus on the 3D toggle), so a tap finds it (nearly) ready. */
+function prefetch3DOnIntent() {
+  const evs = ["pointerover", "touchstart", "focusin"] as const;
+  const go = (e: Event) => {
+    if (!(e.target instanceof Element) || !e.target.closest(".v3d-toggle")) return;
+    for (const ev of evs) document.removeEventListener(ev, go, true);
+    import("./view3d/view.ts").catch(() => { /* toggle.ts reports a failure when the visitor turns 3D on */ });
+  };
+  for (const ev of evs) document.addEventListener(ev, go, { capture: true, passive: true });
+}
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const history = new History(localStorage);
@@ -233,6 +246,7 @@ async function start() {
   try { day = await getDay(date); } catch {
     $("intro-text").textContent = t("intro.noDay");
     play.hidden = true;
+    $("preview").hidden = true; // shown from the first paint (index.html) for a shift-free intro; nothing to show here
     void renderArchive();
     return;
   }

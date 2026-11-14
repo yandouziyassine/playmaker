@@ -23,6 +23,18 @@ initLang();
 localizeDom();
 mountLangSwitch();
 
+// The three.js 3D view is a large lazy chunk, never loaded with the page: it starts downloading on intent (pointer over,
+// touch or keyboard focus on the 3D toggle), so the tap that turns 3D on finds it (nearly) ready.
+{
+  const evs = ["pointerover", "touchstart", "focusin"] as const;
+  const go = (e: Event) => {
+    if (!(e.target instanceof Element) || !e.target.closest(".v3d-toggle")) return;
+    for (const ev of evs) document.removeEventListener(ev, go, true);
+    import("../view3d/view.ts").catch(() => { /* toggle.ts reports a failure when 3D is turned on */ });
+  };
+  for (const ev of evs) document.addEventListener(ev, go, { capture: true, passive: true });
+}
+
 const BASE = "replay/"; // relative: works at / and under a base path (GitHub Pages demo)
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const canvas = $<HTMLCanvasElement>("pitch"), ctx = canvas.getContext("2d")!;
@@ -50,11 +62,17 @@ const setPlayLabel = (on: boolean) => setIconText(playBtn, on ? "pause" : "play"
 const failed = (e: unknown) => { console.warn(e); say(t("rp.failed")); };
 const where = () => fromGlobal(meta, Math.floor(g));
 
+const bufs: (Promise<ArrayBuffer> | undefined)[] = [];
+/** The raw bytes of h<i>.bin: needs no match.json, so boot() starts half 0 on the first round trip. */
+function fetchHalf(i: number): Promise<ArrayBuffer> {
+  return (bufs[i] ??= fetch(`${BASE}h${i}.bin`)
+    .then((r) => { if (!r.ok) throw new Error(`h${i}.bin: HTTP ${r.status}`); return r.arrayBuffer(); })
+    .catch((e) => { bufs[i] = undefined; throw e; }));
+}
 function getHalf(i: number): Promise<HalfData> {
   if (halves[i]) return Promise.resolve(halves[i]!);
-  return (loads[i] ??= fetch(`${BASE}h${i}.bin`)
-    .then((r) => { if (!r.ok) throw new Error(`h${i}.bin: HTTP ${r.status}`); return r.arrayBuffer(); })
-    .then((buf) => (halves[i] = decodeHalf(buf, meta.halves[i]!, meta.players.length)))
+  return (loads[i] ??= fetchHalf(i)
+    .then((buf) => { bufs[i] = undefined; return (halves[i] = decodeHalf(buf, meta.halves[i]!, meta.players.length)); })
     .catch((e) => { loads[i] = undefined; throw e; }));
 }
 
@@ -268,12 +286,14 @@ setup3D(canvas, true); // once: wraps the canvas with the 3D view and its toggle
 on3DChange(() => { if (ready && is3D()) needHeight(where().half); });
 
 async function boot() {
-  const [m, c] = await Promise.all([
+  // all on the first round trip: match.json, the first half's positions, the coach chunk and its weights (they used to
+  // wait for each other: match.json + coach, then models.json, then h0.bin)
+  fetchHalf(0).catch(() => { /* getHalf(0) below retries and reports */ });
+  const [m, [c, b]] = await Promise.all([
     fetch(`${BASE}match.json`).then((r) => { if (!r.ok) throw new Error(`match.json: HTTP ${r.status}`); return r.json() as Promise<MatchMeta>; }),
-    import("./coach.ts"),
+    import("./coach.ts").then(async (c) => [c, await c.loadCoach("coach/models.json")] as const),
   ]);
-  meta = m; C = c; flip = viewFlip(meta);
-  brain = await C.loadCoach("coach/models.json");
+  meta = m; C = c; brain = b; flip = viewFlip(meta);
   await getHalf(0);
   $("home").textContent = meta.meta.home; $("guest").textContent = meta.meta.guest;
   $("home-dot").style.background = meta.meta.colors[0]; $("guest-dot").style.background = meta.meta.colors[1];

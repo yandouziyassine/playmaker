@@ -42,6 +42,10 @@ test("plays one moment in French with the guided first moment", async ({ page })
   await expect(reveal).toContainText("Le pro");
   await expect(reveal).toContainText("l’avis d’un modèle, pas la vérité");
   await expect(reveal.locator(".reasons li").first()).not.toContainText(/\b(pass|lane|receiver|if it arrives)\b/); // coach phrases in French
+  const note = reveal.locator(".lesson"); // the first list option is never the AI's pick in this fixture moment
+  await expect(note).toContainText("Note de l’entraîneur");
+  await note.getByText("Pourquoi ?").click();
+  await expect(note.locator(".lwhy li").first()).not.toContainText(/\b(pass|lane|receiver|your|the AI)\b/);
   await expect(page.locator("#hint .legend")).toContainText("Entraîneur IA");
   await expect(tour).toContainText("Bleu = l’entraîneur IA, jaune = le pro, blanc = toi.");
   await page.getByRole("button", { name: "Compris" }).click();

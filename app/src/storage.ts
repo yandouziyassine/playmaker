@@ -3,12 +3,17 @@ const KEY_ID = "pm.player", KEY_DAYS = "pm.days", KEY_LIVE = "pm.live", KEY_MOME
 
 export type Zone = "build" | "middle" | "final";
 export type PickKind = "pass" | "carry" | "shot";
+/** Coach's notebook skills (app/src/lessons.ts). */
+export type Skill = "scanning" | "risk" | "progression" | "finishing" | "reading";
 /** One answered moment, as remembered for the personal stats (no positions, no names). */
 export interface MomentRecord {
   id: string; points: number; among_best: boolean; pro_instinct: boolean; same_as_ai: boolean;
   kind: PickKind; zone: Zone; league: string; outcome: "goal" | "shot" | "kept" | "lost";
   /** Second question: did the player guess the pro's real pass? Missing/null on records from before it existed. */
   guess_right?: boolean | null;
+  /** Coach's notebook: rule ids and skills of the moment's lessons (empty: none). Missing on older records. */
+  lessons?: string[];
+  skills?: Skill[];
 }
 
 /** Everything the game remembers lives in this browser only (no account). Storage failures (private mode, blocked

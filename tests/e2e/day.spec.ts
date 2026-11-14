@@ -28,6 +28,13 @@ test("plays a full day: both questions, reveal, recap", async ({ page }) => {
     await expect(reveal).toContainText("AI coach");
     await expect(reveal).toContainText("The pro");
     await expect(reveal).toContainText("model opinion");
+    const note = reveal.locator(".lesson"); // Coach's note: one lesson at most, when the pick was not the AI's
+    expect(await note.count()).toBeLessThanOrEqual(1);
+    if (await note.count()) {
+      await expect(note).toContainText("Coach's note");
+      const why = note.locator("details.lwhy");
+      if (await why.count()) { await why.locator("summary").click(); await expect(why.locator("li").first()).toBeVisible(); }
+    }
     await expect(page.locator(".dot").nth(i)).not.toHaveClass(/now|todo/);
     await page.locator("#next").click();
   }
@@ -35,8 +42,15 @@ test("plays a full day: both questions, reveal, recap", async ({ page }) => {
   await expect(page.locator("#squares")).toHaveText(/^([🟩🟨⬜] ?){5}$/u);
   await expect(page.locator("#reads")).toHaveText(/^Pro reads [0-5]\/5$/);
   await expect(page.locator("#streak")).toContainText("Streak: 1 day");
+  // Coach's notebook: the day's lessons (or a clean day) and, once something was flagged, the skill to work on
+  const notebook = page.locator("#done .notebook");
+  await expect(notebook.locator("h2")).toHaveText("Coach's notebook");
+  await expect(notebook.locator(".nbentry, .nbclean").first()).toBeVisible();
+  expect(await notebook.locator(".nbentry").count()).toBeLessThanOrEqual(3);
+  if (await notebook.locator(".nbentry").count()) await expect(notebook.locator(".nbweak")).toContainText("Skill to work on:");
   await page.reload();
   await expect(page.locator("#done")).toBeVisible();
+  await expect(notebook.locator("h2")).toHaveText("Coach's notebook"); // rebuilt from the stored records
   await expect(page.locator("#reads")).toHaveText(/^Pro reads [0-5]\/5$/);
   await expect(page.locator("#howto")).not.toHaveAttribute("open", "");
 });

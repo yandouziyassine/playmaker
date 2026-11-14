@@ -117,6 +117,29 @@ body[data-screen="game"] main { padding: 0 var(--s-2) var(--s-4); }
   background: var(--surface-2); text-decoration: none; color: var(--fg); font-variant-numeric: tabular-nums; }
 .archive a .pts { margin-left: auto; color: var(--muted); }
 
+/* ---------- Coach's note (reveal) and Coach's notebook (done) ---------- */
+.lesson { margin-top: var(--s-4); padding: var(--s-3); border-radius: var(--r-inner); background: var(--accent-soft); border-left: 3px solid var(--accent); }
+.lesson p { margin: 0; }
+.lhead, .nbtop { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); font-size: var(--fs-xs); }
+.llabel { display: inline-flex; align-items: center; gap: var(--s-1); font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.04em; }
+.lskill { padding: 1px var(--s-2); border-radius: var(--r-pill); border: 1px solid var(--line-strong); color: var(--muted); font-weight: 600; white-space: nowrap; }
+.ltitle { font-weight: 700; margin-top: var(--s-1) !important; }
+.lbody { font-size: var(--fs-sm); margin-top: 2px !important; }
+.lwhy { margin-top: var(--s-2); font-size: var(--fs-sm); }
+.lwhy summary { cursor: pointer; font-weight: 600; color: var(--accent); min-height: var(--tap); display: inline-flex; align-items: center; }
+.lwhy .reasons { margin-bottom: var(--s-1); }
+.notebook { text-align: left; margin-top: var(--s-6); }
+.nbhead { display: flex; align-items: center; gap: var(--s-2); }
+.nbhead .icon { color: var(--accent); }
+.nbhead h2 { margin: 0; }
+.nblead, .nbclean { margin: var(--s-1) 0 var(--s-3); }
+.nblist { list-style: none; padding: 0; margin: 0; display: grid; gap: var(--s-2); }
+.nbentry { padding: var(--s-2) var(--s-3); border-radius: var(--r-inner); background: var(--surface-2); }
+.nbentry p { margin: 0; }
+.nbcount { color: var(--pro); font-weight: 700; }
+.nbweak { display: flex; align-items: flex-start; gap: var(--s-2); margin: var(--s-3) 0 0; font-size: var(--fs-sm); font-weight: 600; }
+.nbweak .icon { color: var(--attack-ink); margin-top: 0.1em; flex: none; }
+
 @media (prefers-reduced-motion: reduce) {
   .reveal, .proread.ok, .proread.miss, .dot.just, .tile { animation: none; }
   #pitch.skeleton { animation: none; }

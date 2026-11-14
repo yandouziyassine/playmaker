@@ -1,6 +1,7 @@
 import type { Moment, PickResult } from "./api.ts";
 import type { MomentRecord, PickKind, Zone } from "./storage.ts";
 import { pct, t, tn } from "./i18n/index.ts";
+import { lessonsFor } from "./lessons.ts";
 
 /** Thirds of the pitch, from the release position (cm, attack towards +x, pitch x in [-5250, 5250]). */
 export const ZONE_EDGE_CM = 1750;
@@ -14,8 +15,11 @@ export function zoneOf(x: number | null | undefined): Zone {
   return x < -ZONE_EDGE_CM ? "build" : x > ZONE_EDGE_CM ? "final" : "middle";
 }
 
-/** The record of one answered moment, built from the moment and the server's answer. */
+/** The record of one answered moment, built from the moment and the server's answer (with its notebook lessons:
+ *  rule ids and skills only). */
 export function toRecord(mo: Moment, res: PickResult): MomentRecord {
+  let ls: ReturnType<typeof lessonsFor> = [];
+  try { ls = lessonsFor(mo, res); } catch { /* the record still counts without its lessons */ }
   const release = mo.lead_up[mo.lead_up.length - 1];
   const pos = release?.[mo.carrier] ?? mo.ball[mo.ball.length - 1] ?? null;
   const kind = mo.options.find((o) => o.k === res.option)?.kind ?? "pass";
@@ -23,6 +27,7 @@ export function toRecord(mo: Moment, res: PickResult): MomentRecord {
     id: mo.id, points: res.points, among_best: res.among_best, pro_instinct: res.pro_instinct,
     same_as_ai: res.option === res.ai_pick, kind, zone: zoneOf(pos?.[0]), league: mo.league, outcome: res.outcome.kind,
     guess_right: typeof res.guess_right === "boolean" ? res.guess_right : null,
+    lessons: ls.map((l) => l.id), skills: ls.map((l) => l.skill),
   };
 }
 

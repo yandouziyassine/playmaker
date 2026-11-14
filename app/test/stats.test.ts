@@ -37,6 +37,7 @@ describe("toRecord", () => {
     expect(toRecord(mo, res)).toEqual({
       id: "m1", points: 60, among_best: false, pro_instinct: true, same_as_ai: false,
       kind: "shot", zone: "final", league: "Bundesliga", outcome: "shot", guess_right: null,
+      lessons: ["shot", "pro"], skills: ["finishing", "reading"], // a 22.6 m shot against the AI's pass, picked like the pro
     });
   });
 

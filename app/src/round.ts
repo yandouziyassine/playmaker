@@ -1,6 +1,7 @@
 import { getMoment, postPick, type Day, type Moment, type PickResult } from "./api.ts";
 import { ballTrail, draw as draw2D, hitOption, optionTargets, stepOption, type View } from "./pitch.ts";
 import { optionLabel, outcomeText, pct, progress, proReadLine, tier, verdict } from "./text.ts";
+import { lessonsFor, revealLesson, type Lesson } from "./lessons.ts";
 import { t, type Key } from "./i18n/index.ts";
 import { translatePhrase } from "./i18n/phrases.ts";
 import { is3D, on3DChange, paint3D, pick3D, setup3D } from "./view3d/toggle.ts";
@@ -266,7 +267,28 @@ function countUp(node: HTMLElement, to: number) {
   requestAnimationFrame(step);
 }
 
-function renderReveal(ui: RoundUI, mo: Moment, res: PickResult, pick: number, replay: () => void, showAll: () => void) {
+/** The Coach's note in the reveal: one lesson, its skill, the facts behind it in a collapsed "Why?". */
+export function lessonCard(l: Lesson): HTMLElement {
+  const card = el("div", `lesson skill-${l.skill}`);
+  const head = el("p", "lhead");
+  const lab = el("span", "llabel"); setIconText(lab, "coach", t("lesson.label"));
+  head.append(lab, el("span", "lskill", t(`skill.${l.skill}`)));
+  card.append(head, el("p", "ltitle", l.title), el("p", "lbody", l.body));
+  if (l.evidence.length) {
+    const why = el("details", "lwhy");
+    why.append(el("summary", "", t("lesson.why")));
+    const ul = el("ul", "reasons");
+    for (const x of l.evidence) {
+      const li = el("li", x.effect > 0 ? "plus" : x.effect < 0 ? "minus" : "value");
+      li.append(icon(x.effect > 0 ? "plus" : x.effect < 0 ? "minus" : "approx"), el("span", "", x.text));
+      ul.append(li);
+    }
+    why.append(ul); card.append(why);
+  }
+  return card;
+}
+
+function renderReveal(ui: RoundUI, mo: Moment, res: PickResult, pick: number, replay: () => void, showAll: () => void, lesson: Lesson | null = null) {
   const r = ui.reveal;
   r.innerHTML = ""; r.hidden = false;
   const head = el("p", `points ${tier(res.points)}`);
@@ -291,6 +313,7 @@ function renderReveal(ui: RoundUI, mo: Moment, res: PickResult, pick: number, re
   const out = el("span", "out"); out.append(icon(OUTCOME_ICON[res.outcome.kind]), outcomeText(res.outcome.kind));
   proWhat.append(document.createElement("br"), out);
   r.append(rows);
+  if (lesson) r.append(lessonCard(lesson));
   const reasons = res.reasons[res.ai_pick] ?? [];
   if (reasons.length) {
     const why = el("div", "why"); why.append(el("p", "label", t("reveal.why")));
@@ -324,7 +347,8 @@ function renderReveal(ui: RoundUI, mo: Moment, res: PickResult, pick: number, re
 export type OnOffline = (mo: Moment, option: number, guess: number | null, index: number) => void;
 
 /** Resolves null when the answer was saved offline (only with `onOffline`; without it a network error throws). */
-export async function playMoment(ui: RoundUI, mo: Moment, player: string, index: number, total: number, points: number[], onOffline?: OnOffline): Promise<PickResult | null> {
+/** `seen`: lesson ids already shown today (the reveal prefers a new one; app/src/lessons.ts revealLesson). */
+export async function playMoment(ui: RoundUI, mo: Moment, player: string, index: number, total: number, points: number[], onOffline?: OnOffline, seen: Set<string> = new Set()): Promise<PickResult | null> {
   setup3D(ui.canvas); // once: wraps the canvas with the 3D view and its toggle
   if (ui.tour?.started && !ui.tour.ended) ui.tour.end(); // moved on without "Got it": the tour is done
   if (ui.tour && !ui.tour.ended && ui.tour.host.parentElement !== ui.canvas.parentElement) ui.canvas.parentElement?.append(ui.tour.host); // over the pitch's bottom edge
@@ -364,7 +388,9 @@ export async function playMoment(ui: RoundUI, mo: Moment, player: string, index:
     draw(ctx, v, mo, release, mo.ball[mo.ball.length - 1] ?? null, { ai: res.ai_pick, pro: res.pro_pick, mine, scores: res.all_points });
     ui.hint.textContent = t("reveal.allHint");
   };
-  renderReveal(ui, mo, res, mine, () => void playAfter(ctx, v, mo, res, mine), showAll);
+  let lesson: Lesson | null = null;
+  try { lesson = revealLesson(lessonsFor(mo, res, (k) => optionLabel(mo, k)), seen); } catch { /* the note is a bonus */ }
+  renderReveal(ui, mo, res, mine, () => void playAfter(ctx, v, mo, res, mine), showAll, lesson);
   if (res.repeat) ui.reveal.prepend(el("p", "fine", t("reveal.repeat")));
   renderDots(ui, [...points, res.points], total, true);
   await playAfter(ctx, v, mo, res, mine);
@@ -394,12 +420,13 @@ async function loading<T>(ui: RoundUI, p: Promise<T>): Promise<T> {
 export async function playDay(ui: RoundUI, day: Day, player: string, onResult: OnResult = () => {}, onOffline?: OnOffline): Promise<number[]> {
   const points: number[] = [];
   ui.pending = new Set();
+  const seen = new Set<string>(); // lesson ids shown today
   const total = day.moments.length;
   let nextMoment = getMoment(day.moments[0]!);
   for (let i = 0; i < total; i++) {
     const mo = await loading(ui, nextMoment);
     if (i + 1 < total) nextMoment = getMoment(day.moments[i + 1]!); // prefetch while this one is played
-    const res = await playMoment(ui, mo, player, i, total, points, onOffline);
+    const res = await playMoment(ui, mo, player, i, total, points, onOffline, seen);
     if (res) { points.push(res.points); onResult(mo, res, i); } else points.push(0); // offline: scored later
     ui.next.hidden = false;
     if (i < total - 1) setIconText(ui.next, "arrowRight", t("game.next"), true); else ui.next.replaceChildren(t("game.seeScore"));

@@ -3,7 +3,8 @@ import { playDay, Tour } from "./round.ts";
 import { shareText, square } from "./share.ts";
 import { shareCardFile, shareFileName, shareScore } from "./shareImage.ts";
 import { computeStats, kindLabel, KINDS, proReads, zoneLabel, ZONES, toRecord, type Bucket } from "./stats.ts";
-import { readsText } from "./text.ts";
+import { optionLabel, readsText } from "./text.ts";
+import { dayNotebook, lessonsFor, notebookFromRecords, weakestSkill, type Lesson, type NotebookEntry } from "./lessons.ts";
 import { History } from "./storage.ts";
 import { icon, setIconText } from "./design/icons.ts";
 import { startPreview } from "./preview.ts";
@@ -129,6 +130,47 @@ function buildStats(s: ReturnType<typeof computeStats>, compact: boolean): HTMLE
   return card;
 }
 
+/** The lessons of the day being played, per answered moment (in memory: a reopened day rebuilds its notebook from
+ *  the stored rule ids, with the generic tips). */
+const dayLessons: { date: string; perMoment: Lesson[][] } = { date: "", perMoment: [] };
+
+/** "Coach's notebook" on the done screen: the day's 2-3 most useful lessons and the weakest skill over all history. */
+function renderNotebook(host: HTMLElement) {
+  host.querySelector(".notebook")?.remove();
+  const recs = history.moments()[date];
+  const live = dayLessons.date === date && dayLessons.perMoment.length > 0;
+  const aware = live || (Array.isArray(recs) && recs.some((r) => r && Array.isArray(r.lessons)));
+  if (!aware) return; // a day played before the notebook existed
+  const entries: NotebookEntry[] = live ? dayNotebook(dayLessons.perMoment) : notebookFromRecords(recs);
+  const box = el("section", "card notebook");
+  box.setAttribute("aria-labelledby", "notebook-h");
+  const h = el("h2", "", t("notebook.h2")); h.id = "notebook-h";
+  const head = el("div", "nbhead"); head.append(icon("coach"), h);
+  box.append(head);
+  if (!entries.length) box.append(el("p", "fine nbclean", t("notebook.clean")));
+  else {
+    box.append(el("p", "fine nblead", t("notebook.lead")));
+    const ol = el("ol", "nblist");
+    for (const { lesson: l, count } of entries) {
+      const li = el("li", `nbentry skill-${l.skill}`);
+      const top = el("p", "nbtop");
+      top.append(el("span", "lskill", t(`skill.${l.skill}`)));
+      if (count > 1) top.append(el("span", "nbcount tnum", t("notebook.times", { n: count })));
+      li.append(top, el("p", "ltitle", l.title), el("p", "lbody", l.body));
+      ol.append(li);
+    }
+    box.append(ol);
+  }
+  const weak = weakestSkill(history.moments());
+  if (weak) {
+    const p = el("p", "nbweak");
+    p.append(icon("target"), el("span", "", tn("notebook.weakest", weak.of, { skill: t(`skill.${weak.skill}`), k: weak.n })));
+    box.append(p);
+  }
+  const anchor = host.querySelector("#next-in");
+  if (anchor) anchor.after(box); else host.append(box);
+}
+
 let savedUrl = "";
 function finish(day: Day, pts: number[]) {
   show("done");
@@ -173,6 +215,7 @@ ${location.origin}`;
       if (how === "copied") setIconText(btn, "check", t("done.copied"));
     } catch { /* cancelled */ }
   };
+  try { renderNotebook($("done")); } catch { /* the notebook is a bonus */ }
   renderStats($("done"), false);
   void renderArchive();
 }
@@ -211,6 +254,7 @@ async function start() {
     show("game");
     // guided first moment: first visit only (no day played, never finished or skipped); ?tour=0 turns it off
     const tourOn = !history.flag(TOUR_FLAG) && params.get("tour") !== "0" && !Object.keys(history.days()).length;
+    dayLessons.date = date; dayLessons.perMoment = [];
     const tour = tourOn ? new Tour($("tour"), () => (!$("next").hidden ? $("next") : $("pitch")), () => history.setFlag(TOUR_FLAG)) : null;
     const pts = await playDay(
       {
@@ -219,7 +263,10 @@ async function start() {
       },
       day,
       history.player(),
-      (mo, res) => { try { history.record(date, toRecord(mo, res)); } catch { /* stats are best effort */ } },
+      (mo, res) => {
+        try { history.record(date, toRecord(mo, res)); } catch { /* stats are best effort */ }
+        try { dayLessons.perMoment.push(lessonsFor(mo, res, (k) => optionLabel(mo, k))); } catch { /* notebook: best effort */ }
+      },
       (mo, option, guess, index) => pickQueue.enqueue({ player: history.player(), moment: mo.id, option, guess, date, index }),
     );
     for (const [k, p] of scoredEarly) if (k.startsWith(`${date}#`)) pts[Number(k.slice(date.length + 1))] = p; // back online mid-day

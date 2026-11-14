@@ -30,6 +30,12 @@ export type DetectorSettings = {
   overlap: number;
   /** Minimum "person" score for detections found in a tile (the full-frame pass keeps MIN_SCORE). */
   tileMinScore: number;
+  /**
+   * Small players (scaletile.ts): most extra perspective tiles per frame sized from the first pass (0 / absent = off), and
+   * most second-stage zoomed crops around low-confidence candidates and predicted players (0 / absent = off).
+   */
+  scaleTiles?: number;
+  refine?: number;
 };
 
 /**
@@ -38,10 +44,15 @@ export type DetectorSettings = {
  * Lite0, tileMinScore 0.25 vs 0.3 on the benchmark: recall 69.9 % vs 63.3 %, precision 85.9 % vs 88.3 % (F1 0.77 vs 0.74).
  * Lite2, tileMinScore 0.25 vs 0.3 (docs/cv-robustness.md): randomised set (148 frames) recall 35.4 % vs 32.6 %, precision
  * 79.4 % vs 82.1 % (F1 0.489 vs 0.467); original 60 frames recall 83.8 % vs 80.1 %, precision 91.0 % vs 94.0 % (F1 0.873 vs 0.865).
+ * Small-player stages (scaleTiles 16, refine 8; scaletile.ts, docs/cv-robustness.md "Small players"), F1 randomised / original:
+ * Lite0 42.6 -> 47.0 / 77.1 -> 78.4, Lite2 48.9 -> 49.3 / 87.3 -> 90.7, for ~40 % more model passes per single image.
  */
 export const MODEL_PRESETS: Record<ModelId, Omit<DetectorSettings, "model">> = {
+  // lite0 (default) keeps the plain tiling: the small-player stages cost it 10 points of precision on the original set
+  // (85.9 -> 75.9 %), i.e. phantom players on the map that the coach would reason about. Lite2 ("accurate") gains
+  // recall without losing precision there (83.8 -> 89.9 % recall, 91.0 -> 91.6 % precision), so it keeps them.
   lite0: { tile: 384, overlap: 0.25, tileMinScore: 0.25 },
-  lite2: { tile: 448, overlap: 0.25, tileMinScore: 0.25 },
+  lite2: { tile: 448, overlap: 0.25, tileMinScore: 0.25, scaleTiles: 16, refine: 8 },
 };
 export const presetFor = (model: ModelId): DetectorSettings => ({ model, ...MODEL_PRESETS[model] });
 
@@ -77,10 +88,12 @@ export function sanitise(s: DetectorSettings): DetectorSettings {
     tile: Number.isFinite(s.tile) && s.tile >= 0 ? Math.round(s.tile) : DEFAULT_SETTINGS.tile,
     overlap: Number.isFinite(s.overlap) ? Math.min(0.6, Math.max(0, s.overlap)) : DEFAULT_SETTINGS.overlap,
     tileMinScore: Number.isFinite(s.tileMinScore) ? Math.min(0.9, Math.max(0.05, s.tileMinScore)) : DEFAULT_SETTINGS.tileMinScore,
+    ...(Number.isFinite(s.scaleTiles) && s.scaleTiles! > 0 ? { scaleTiles: Math.min(64, Math.round(s.scaleTiles!)) } : {}),
+    ...(Number.isFinite(s.refine) && s.refine! > 0 ? { refine: Math.min(32, Math.round(s.refine!)) } : {}),
   };
 }
 
-/** Rough cost of one tiled detection: number of model passes (full frame + tiles + the ball pass is extra). */
+/** Rough cost of one tiled detection: number of model passes (full frame + tiles; the ball pass and the small-player stages, up to scaleTiles + refine, are extra). */
 export function passesFor(w: number, h: number, s: DetectorSettings): number {
   if (s.tile <= 0) return 1 + 6;
   const n = (len: number) => Math.max(1, Math.ceil((len - s.tile * s.overlap) / (s.tile * (1 - s.overlap))));

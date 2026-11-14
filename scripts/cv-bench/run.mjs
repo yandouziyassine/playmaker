@@ -14,7 +14,7 @@ const root = join(here, "..", "..");
 
 export const CONFIGS = {
   legacy: { model: "lite0", tile: 0, overlap: 0.2, tileMinScore: 0.3 },
-  // = DEFAULT_SETTINGS of app/src/lab/settings.ts
+  // DEFAULT_SETTINGS of app/src/lab/settings.ts before the small-player stages ("small" = DEFAULT_SETTINGS now)
   default: { model: "lite0", tile: 384, overlap: 0.25, tileMinScore: 0.25 },
   "tiles-t30": { model: "lite0", tile: 384, overlap: 0.25, tileMinScore: 0.3 },
   // Lite2 as first measured; "lite2-t25" = MODEL_PRESETS.lite2 of settings.ts since robust.mjs (docs/cv-robustness.md)
@@ -23,6 +23,14 @@ export const CONFIGS = {
   "lite2-t20": { model: "lite2", tile: 448, overlap: 0.25, tileMinScore: 0.2 },
   "t20": { model: "lite0", tile: 384, overlap: 0.25, tileMinScore: 0.2 },
   "tile320": { model: "lite0", tile: 320, overlap: 0.25, tileMinScore: 0.25 },
+  // small players (app/src/lab/scaletile.ts, docs/cv-robustness.md): perspective tiles (scaleTiles = cap) + refinement crops;
+  // "small" = MODEL_PRESETS.lite0 and "lite2-small" = MODEL_PRESETS.lite2 of settings.ts
+  "small": { model: "lite0", tile: 384, overlap: 0.25, tileMinScore: 0.25, scaleTiles: 16, refine: 8 },
+  "small-scale": { model: "lite0", tile: 384, overlap: 0.25, tileMinScore: 0.25, scaleTiles: 16 },
+  "small-refine": { model: "lite0", tile: 384, overlap: 0.25, tileMinScore: 0.25, refine: 8 },
+  "small-8": { model: "lite0", tile: 384, overlap: 0.25, tileMinScore: 0.25, scaleTiles: 8, refine: 4 },
+  "small-32": { model: "lite0", tile: 384, overlap: 0.25, tileMinScore: 0.25, scaleTiles: 32, refine: 12 },
+  "lite2-small": { model: "lite2", tile: 448, overlap: 0.25, tileMinScore: 0.25, scaleTiles: 16, refine: 8 },
   // experiment: the proposed auto-gain for dark frames (see preGain), not in the app
   "default-gain": { model: "lite0", tile: 384, overlap: 0.25, tileMinScore: 0.25, pre: "gain" },
 };

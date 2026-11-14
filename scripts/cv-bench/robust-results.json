@@ -1,6 +1,6 @@
 {
  "meta": {
-  "date": "2026-11-14T22:06:19.164Z",
+  "date": "2026-11-14T22:35:27.044Z",
   "frames": 148,
   "seed": 1
  },
@@ -29,6 +29,30 @@
    "overlap": 0.25,
    "tileMinScore": 0.25,
    "pre": "gain"
+  },
+  "small": {
+   "model": "lite0",
+   "tile": 384,
+   "overlap": 0.25,
+   "tileMinScore": 0.25,
+   "scaleTiles": 16,
+   "refine": 8
+  },
+  "small-8": {
+   "model": "lite0",
+   "tile": 384,
+   "overlap": 0.25,
+   "tileMinScore": 0.25,
+   "scaleTiles": 8,
+   "refine": 4
+  },
+  "lite2-small": {
+   "model": "lite2",
+   "tile": 448,
+   "overlap": 0.25,
+   "tileMinScore": 0.25,
+   "scaleTiles": 16,
+   "refine": 8
   }
  },
  "robust": {
@@ -1887,6 +1911,1398 @@
      "teamPurity": 0.8260869565217391
     }
    }
+  },
+  "small": {
+   "all": {
+    "frames": 148,
+    "targets": 2705,
+    "recall": 0.3567467652495379,
+    "precision": 0.6906628652886672,
+    "f1": 0.4704782844952504,
+    "smallRecall": 0.2446043165467626,
+    "smallTargets": 1946,
+    "ballRecall": 0.21621621621621623,
+    "teamPurity": 0.8261390887290168
+   },
+   "light": {
+    "day": {
+     "frames": 49,
+     "targets": 878,
+     "recall": 0.33940774487471526,
+     "precision": 0.631578947368421,
+     "f1": 0.4415359920977898,
+     "smallRecall": 0.2366288492706645,
+     "smallTargets": 617,
+     "ballRecall": 0.16326530612244897,
+     "teamPurity": 0.8070866141732284
+    },
+    "overcast": {
+     "frames": 49,
+     "targets": 900,
+     "recall": 0.3511111111111111,
+     "precision": 0.7188208616780045,
+     "f1": 0.4717795109453298,
+     "smallRecall": 0.24386503067484663,
+     "smallTargets": 652,
+     "ballRecall": 0.24489795918367346,
+     "teamPurity": 0.8450184501845018
+    },
+    "night": {
+     "frames": 50,
+     "targets": 927,
+     "recall": 0.3786407766990291,
+     "precision": 0.7227926078028748,
+     "f1": 0.4969501710438198,
+     "smallRecall": 0.25258493353028066,
+     "smallTargets": 677,
+     "ballRecall": 0.24,
+     "teamPurity": 0.8252427184466019
+    }
+   },
+   "expo": {
+    "under": {
+     "frames": 23,
+     "targets": 424,
+     "recall": 0.35377358490566035,
+     "precision": 0.7438423645320197,
+     "f1": 0.4794970044668374,
+     "smallRecall": 0.23100303951367782,
+     "smallTargets": 329,
+     "ballRecall": 0.21739130434782608,
+     "teamPurity": 0.828125
+    },
+    "normal": {
+     "frames": 99,
+     "targets": 1806,
+     "recall": 0.3754152823920266,
+     "precision": 0.6858006042296072,
+     "f1": 0.4852170623285728,
+     "smallRecall": 0.2571656050955414,
+     "smallTargets": 1256,
+     "ballRecall": 0.23232323232323232,
+     "teamPurity": 0.8344709897610921
+    },
+    "over": {
+     "frames": 26,
+     "targets": 475,
+     "recall": 0.28842105263157897,
+     "precision": 0.6618357487922706,
+     "f1": 0.4017595307917889,
+     "smallRecall": 0.21329639889196675,
+     "smallTargets": 361,
+     "ballRecall": 0.15384615384615385,
+     "teamPurity": 0.7833333333333333
+    }
+   },
+   "kitSim": {
+    "distinct": {
+     "frames": 65,
+     "targets": 1210,
+     "recall": 0.3776859504132231,
+     "precision": 0.7133956386292835,
+     "f1": 0.49389433842944686,
+     "smallRecall": 0.2754098360655738,
+     "smallTargets": 915,
+     "ballRecall": 0.18461538461538463,
+     "teamPurity": 0.9698492462311558
+    },
+    "similar": {
+     "frames": 59,
+     "targets": 1079,
+     "recall": 0.3985171455050973,
+     "precision": 0.6916932907348243,
+     "f1": 0.5056851899884165,
+     "smallRecall": 0.27137042062415195,
+     "smallTargets": 737,
+     "ballRecall": 0.288135593220339,
+     "teamPurity": 0.6595744680851063
+    },
+    "grass": {
+     "frames": 24,
+     "targets": 416,
+     "recall": 0.1875,
+     "precision": 0.5777777777777777,
+     "f1": 0.2831215970961887,
+     "smallRecall": 0.08163265306122448,
+     "smallTargets": 294,
+     "ballRecall": 0.125,
+     "teamPurity": 0.9166666666666666
+    }
+   },
+   "cam": {
+    "far": {
+     "frames": 21,
+     "targets": 471,
+     "recall": 0.18683651804670912,
+     "precision": 0.5641025641025641,
+     "f1": 0.2807017543859649,
+     "smallRecall": 0.18336886993603413,
+     "smallTargets": 469,
+     "ballRecall": 0.047619047619047616,
+     "teamPurity": 0.7887323943661971
+    },
+    "high": {
+     "frames": 19,
+     "targets": 388,
+     "recall": 0.11082474226804123,
+     "precision": 0.6142857142857143,
+     "f1": 0.18777292576419213,
+     "smallRecall": 0.10852713178294573,
+     "smallTargets": 387,
+     "ballRecall": 0.10526315789473684,
+     "teamPurity": 0.8536585365853658
+    },
+    "main": {
+     "frames": 44,
+     "targets": 905,
+     "recall": 0.33591160220994476,
+     "precision": 0.6440677966101694,
+     "f1": 0.44153957879448075,
+     "smallRecall": 0.3058984910836763,
+     "smallTargets": 729,
+     "ballRecall": 0.1590909090909091,
+     "teamPurity": 0.8661710037174721
+    },
+    "low": {
+     "frames": 27,
+     "targets": 396,
+     "recall": 0.6515151515151515,
+     "precision": 0.7565217391304347,
+     "f1": 0.7001029287919902,
+     "smallRecall": 0.48936170212765956,
+     "smallTargets": 141,
+     "ballRecall": 0.2962962962962963,
+     "teamPurity": 0.8116591928251121
+    },
+    "zoom": {
+     "frames": 21,
+     "targets": 216,
+     "recall": 0.7037037037037037,
+     "precision": 0.827027027027027,
+     "f1": 0.760397593512948,
+     "smallRecall": null,
+     "smallTargets": 0,
+     "ballRecall": 0.6190476190476191,
+     "teamPurity": 0.8320610687022901
+    },
+    "endzone": {
+     "frames": 16,
+     "targets": 329,
+     "recall": 0.364741641337386,
+     "precision": 0.6857142857142857,
+     "f1": 0.47619047619047616,
+     "smallRecall": 0.2545454545454545,
+     "smallTargets": 220,
+     "ballRecall": 0.0625,
+     "teamPurity": 0.7575757575757576
+    }
+   },
+   "blur": {
+    "low": {
+     "frames": 77,
+     "targets": 1404,
+     "recall": 0.5377492877492878,
+     "precision": 0.7412109375,
+     "f1": 0.623296402567823,
+     "smallRecall": 0.42203742203742206,
+     "smallTargets": 962,
+     "ballRecall": 0.2987012987012987,
+     "teamPurity": 0.8229954614220878
+    },
+    "mid": {
+     "frames": 30,
+     "targets": 514,
+     "recall": 0.3035019455252918,
+     "precision": 0.6582278481012658,
+     "f1": 0.41544607190412775,
+     "smallRecall": 0.16901408450704225,
+     "smallTargets": 355,
+     "ballRecall": 0.26666666666666666,
+     "teamPurity": 0.8244274809160306
+    },
+    "high": {
+     "frames": 41,
+     "targets": 787,
+     "recall": 0.06861499364675985,
+     "precision": 0.38028169014084506,
+     "f1": 0.11625403659849301,
+     "smallRecall": 0.01589825119236884,
+     "smallTargets": 629,
+     "ballRecall": 0.024390243902439025,
+     "teamPurity": 0.8809523809523809
+    }
+   },
+   "compression": {
+    "light": {
+     "frames": 59,
+     "targets": 1120,
+     "recall": 0.3991071428571429,
+     "precision": 0.7140575079872205,
+     "f1": 0.5120274914089347,
+     "smallRecall": 0.28734321550741165,
+     "smallTargets": 877,
+     "ballRecall": 0.23728813559322035,
+     "teamPurity": 0.8805194805194805
+    },
+    "heavy": {
+     "frames": 89,
+     "targets": 1585,
+     "recall": 0.32681388012618295,
+     "precision": 0.6718146718146718,
+     "f1": 0.4397197720708766,
+     "smallRecall": 0.20954162768942938,
+     "smallTargets": 1069,
+     "ballRecall": 0.20224719101123595,
+     "teamPurity": 0.779510022271715
+    }
+   },
+   "overlay": {
+    "none": {
+     "frames": 41,
+     "targets": 783,
+     "recall": 0.3831417624521073,
+     "precision": 0.7049180327868853,
+     "f1": 0.4964498066154823,
+     "smallRecall": 0.26344086021505375,
+     "smallTargets": 558,
+     "ballRecall": 0.21951219512195122,
+     "teamPurity": 0.8212927756653993
+    },
+    "score": {
+     "frames": 64,
+     "targets": 1133,
+     "recall": 0.38658428949691087,
+     "precision": 0.7062600321027287,
+     "f1": 0.49966683692121017,
+     "smallRecall": 0.27214377406931967,
+     "smallTargets": 779,
+     "ballRecall": 0.25,
+     "teamPurity": 0.7968337730870713
+    },
+    "ticker": {
+     "frames": 19,
+     "targets": 366,
+     "recall": 0.30601092896174864,
+     "precision": 0.6256983240223464,
+     "f1": 0.41100917431192663,
+     "smallRecall": 0.264026402640264,
+     "smallTargets": 303,
+     "ballRecall": 0.10526315789473684,
+     "teamPurity": 0.9263157894736842
+    },
+    "score+ticker": {
+     "frames": 24,
+     "targets": 423,
+     "recall": 0.2718676122931442,
+     "precision": 0.6666666666666666,
+     "f1": 0.3862300587741394,
+     "smallRecall": 0.12091503267973856,
+     "smallTargets": 306,
+     "ballRecall": 0.20833333333333334,
+     "teamPurity": 0.8556701030927835
+    }
+   },
+   "crowd": {
+    "sparse": {
+     "frames": 51,
+     "targets": 968,
+     "recall": 0.2944214876033058,
+     "precision": 0.6968215158924206,
+     "f1": 0.4139433551198257,
+     "smallRecall": 0.21156373193166886,
+     "smallTargets": 761,
+     "ballRecall": 0.17647058823529413,
+     "teamPurity": 0.8464730290456431
+    },
+    "medium": {
+     "frames": 47,
+     "targets": 806,
+     "recall": 0.3213399503722084,
+     "precision": 0.6752577319587629,
+     "f1": 0.43545613224498175,
+     "smallRecall": 0.19230769230769232,
+     "smallTargets": 572,
+     "ballRecall": 0.23404255319148937,
+     "teamPurity": 0.8805309734513275
+    },
+    "dense": {
+     "frames": 50,
+     "targets": 931,
+     "recall": 0.4522019334049409,
+     "precision": 0.6963696369636964,
+     "f1": 0.5483327366328812,
+     "smallRecall": 0.33442088091353994,
+     "smallTargets": 613,
+     "ballRecall": 0.24,
+     "teamPurity": 0.779291553133515
+    }
+   },
+   "crowdPal": {
+    "mixed": {
+     "frames": 67,
+     "targets": 1184,
+     "recall": 0.38344594594594594,
+     "precision": 0.6700879765395894,
+     "f1": 0.4877726526831516,
+     "smallRecall": 0.2698019801980198,
+     "smallTargets": 808,
+     "ballRecall": 0.208955223880597,
+     "teamPurity": 0.8278481012658228
+    },
+    "dark": {
+     "frames": 28,
+     "targets": 547,
+     "recall": 0.33638025594149906,
+     "precision": 0.6928838951310862,
+     "f1": 0.4528914404316039,
+     "smallRecall": 0.22857142857142856,
+     "smallTargets": 420,
+     "ballRecall": 0.14285714285714285,
+     "teamPurity": 0.8198757763975155
+    },
+    "kit": {
+     "frames": 53,
+     "targets": 974,
+     "recall": 0.33572895277207393,
+     "precision": 0.7202643171806168,
+     "f1": 0.4579831932773109,
+     "smallRecall": 0.22562674094707522,
+     "smallTargets": 718,
+     "ballRecall": 0.2641509433962264,
+     "teamPurity": 0.8273381294964028
+    }
+   },
+   "mow": {
+    "none": {
+     "frames": 49,
+     "targets": 858,
+     "recall": 0.34032634032634035,
+     "precision": 0.6704805491990846,
+     "f1": 0.45148523211204283,
+     "smallRecall": 0.22772277227722773,
+     "smallTargets": 606,
+     "ballRecall": 0.22448979591836735,
+     "teamPurity": 0.7568627450980392
+    },
+    "vertical": {
+     "frames": 39,
+     "targets": 742,
+     "recall": 0.3975741239892183,
+     "precision": 0.7272727272727273,
+     "f1": 0.5141052172965908,
+     "smallRecall": 0.266260162601626,
+     "smallTargets": 492,
+     "ballRecall": 0.15384615384615385,
+     "teamPurity": 0.9090909090909091
+    },
+    "horizontal": {
+     "frames": 35,
+     "targets": 657,
+     "recall": 0.3455098934550989,
+     "precision": 0.672566371681416,
+     "f1": 0.4565047695910456,
+     "smallRecall": 0.23828920570264767,
+     "smallTargets": 491,
+     "ballRecall": 0.2857142857142857,
+     "teamPurity": 0.8426395939086294
+    },
+    "checker": {
+     "frames": 25,
+     "targets": 448,
+     "recall": 0.33705357142857145,
+     "precision": 0.6909090909090909,
+     "f1": 0.4530775000987012,
+     "smallRecall": 0.25210084033613445,
+     "smallTargets": 357,
+     "ballRecall": 0.2,
+     "teamPurity": 0.7751937984496124
+    }
+   },
+   "grass": {
+    "lush": {
+     "frames": 50,
+     "targets": 833,
+     "recall": 0.4105642256902761,
+     "precision": 0.7211740041928721,
+     "f1": 0.523245108809258,
+     "smallRecall": 0.2603978300180832,
+     "smallTargets": 553,
+     "ballRecall": 0.22,
+     "teamPurity": 0.8466666666666667
+    },
+    "yellow": {
+     "frames": 21,
+     "targets": 394,
+     "recall": 0.37817258883248733,
+     "precision": 0.704225352112676,
+     "f1": 0.49209022755044746,
+     "smallRecall": 0.29042904290429045,
+     "smallTargets": 303,
+     "ballRecall": 0.19047619047619047,
+     "teamPurity": 0.8015267175572519
+    },
+    "dark": {
+     "frames": 25,
+     "targets": 502,
+     "recall": 0.31673306772908366,
+     "precision": 0.6437246963562753,
+     "f1": 0.42456608811748997,
+     "smallRecall": 0.26288659793814434,
+     "smallTargets": 388,
+     "ballRecall": 0.24,
+     "teamPurity": 0.8444444444444444
+    },
+    "blue": {
+     "frames": 34,
+     "targets": 649,
+     "recall": 0.29892141756548535,
+     "precision": 0.6610169491525424,
+     "f1": 0.41167668743368613,
+     "smallRecall": 0.18969072164948453,
+     "smallTargets": 485,
+     "ballRecall": 0.20588235294117646,
+     "teamPurity": 0.7865853658536586
+    },
+    "worn": {
+     "frames": 18,
+     "targets": 327,
+     "recall": 0.37003058103975534,
+     "precision": 0.7076023391812866,
+     "f1": 0.48594377510040154,
+     "smallRecall": 0.2304147465437788,
+     "smallTargets": 217,
+     "ballRecall": 0.2222222222222222,
+     "teamPurity": 0.8365384615384616
+    }
+   }
+  },
+  "small-8": {
+   "all": {
+    "frames": 148,
+    "targets": 2705,
+    "recall": 0.333456561922366,
+    "precision": 0.6822289156626506,
+    "f1": 0.4479609360996288,
+    "smallRecall": 0.21788283658787255,
+    "smallTargets": 1946,
+    "ballRecall": 0.21621621621621623,
+    "teamPurity": 0.8277634961439588
+   },
+   "light": {
+    "day": {
+     "frames": 49,
+     "targets": 878,
+     "recall": 0.3234624145785877,
+     "precision": 0.6355555555555555,
+     "f1": 0.4287267621691809,
+     "smallRecall": 0.2188006482982172,
+     "smallTargets": 617,
+     "ballRecall": 0.16326530612244897,
+     "teamPurity": 0.7925311203319502
+    },
+    "overcast": {
+     "frames": 49,
+     "targets": 900,
+     "recall": 0.31,
+     "precision": 0.6947890818858561,
+     "f1": 0.4287160743832268,
+     "smallRecall": 0.19478527607361965,
+     "smallTargets": 652,
+     "ballRecall": 0.24489795918367346,
+     "teamPurity": 0.8541666666666666
+    },
+    "night": {
+     "frames": 50,
+     "targets": 927,
+     "recall": 0.3656957928802589,
+     "precision": 0.7157894736842105,
+     "f1": 0.4840772356443128,
+     "smallRecall": 0.23929098966026588,
+     "smallTargets": 677,
+     "ballRecall": 0.24,
+     "teamPurity": 0.835016835016835
+    }
+   },
+   "expo": {
+    "under": {
+     "frames": 23,
+     "targets": 424,
+     "recall": 0.3443396226415094,
+     "precision": 0.735,
+     "f1": 0.46897124377239746,
+     "smallRecall": 0.22492401215805471,
+     "smallTargets": 329,
+     "ballRecall": 0.21739130434782608,
+     "teamPurity": 0.819672131147541
+    },
+    "normal": {
+     "frames": 99,
+     "targets": 1806,
+     "recall": 0.35437430786268,
+     "precision": 0.6811440677966102,
+     "f1": 0.46620120560683087,
+     "smallRecall": 0.2300955414012739,
+     "smallTargets": 1256,
+     "ballRecall": 0.23232323232323232,
+     "teamPurity": 0.8462929475587704
+    },
+    "over": {
+     "frames": 26,
+     "targets": 475,
+     "recall": 0.24421052631578946,
+     "precision": 0.6304347826086957,
+     "f1": 0.3520485584218513,
+     "smallRecall": 0.16897506925207756,
+     "smallTargets": 361,
+     "ballRecall": 0.15384615384615385,
+     "teamPurity": 0.7378640776699029
+    }
+   },
+   "kitSim": {
+    "distinct": {
+     "frames": 65,
+     "targets": 1210,
+     "recall": 0.3537190082644628,
+     "precision": 0.7044334975369458,
+     "f1": 0.47095577768030966,
+     "smallRecall": 0.24699453551912567,
+     "smallTargets": 915,
+     "ballRecall": 0.18461538461538463,
+     "teamPurity": 0.9704301075268817
+    },
+    "similar": {
+     "frames": 59,
+     "targets": 1079,
+     "recall": 0.3744207599629286,
+     "precision": 0.6851851851851852,
+     "f1": 0.48423200894086393,
+     "smallRecall": 0.24151967435549526,
+     "smallTargets": 737,
+     "ballRecall": 0.288135593220339,
+     "teamPurity": 0.6685552407932012
+    },
+    "grass": {
+     "frames": 24,
+     "targets": 416,
+     "recall": 0.16826923076923078,
+     "precision": 0.56,
+     "f1": 0.2587800369685767,
+     "smallRecall": 0.06802721088435375,
+     "smallTargets": 294,
+     "ballRecall": 0.125,
+     "teamPurity": 0.8867924528301887
+    }
+   },
+   "cam": {
+    "far": {
+     "frames": 21,
+     "targets": 471,
+     "recall": 0.12738853503184713,
+     "precision": 0.4838709677419355,
+     "f1": 0.20168067226890757,
+     "smallRecall": 0.12366737739872068,
+     "smallTargets": 469,
+     "ballRecall": 0.047619047619047616,
+     "teamPurity": 0.7391304347826086
+    },
+    "high": {
+     "frames": 19,
+     "targets": 388,
+     "recall": 0.08762886597938144,
+     "precision": 0.53125,
+     "f1": 0.15044247787610618,
+     "smallRecall": 0.08785529715762273,
+     "smallTargets": 387,
+     "ballRecall": 0.10526315789473684,
+     "teamPurity": 0.84375
+    },
+    "main": {
+     "frames": 44,
+     "targets": 905,
+     "recall": 0.31933701657458563,
+     "precision": 0.6509009009009009,
+     "f1": 0.4284655300222387,
+     "smallRecall": 0.289437585733882,
+     "smallTargets": 729,
+     "ballRecall": 0.1590909090909091,
+     "teamPurity": 0.872093023255814
+    },
+    "low": {
+     "frames": 27,
+     "targets": 396,
+     "recall": 0.6439393939393939,
+     "precision": 0.7724550898203593,
+     "f1": 0.7023668449540403,
+     "smallRecall": 0.48226950354609927,
+     "smallTargets": 141,
+     "ballRecall": 0.2962962962962963,
+     "teamPurity": 0.8036529680365296
+    },
+    "zoom": {
+     "frames": 21,
+     "targets": 216,
+     "recall": 0.6944444444444444,
+     "precision": 0.825136612021858,
+     "f1": 0.7541704125461991,
+     "smallRecall": null,
+     "smallTargets": 0,
+     "ballRecall": 0.6190476190476191,
+     "teamPurity": 0.8294573643410853
+    },
+    "endzone": {
+     "frames": 16,
+     "targets": 329,
+     "recall": 0.3465045592705167,
+     "precision": 0.6368715083798883,
+     "f1": 0.4488188976377953,
+     "smallRecall": 0.2409090909090909,
+     "smallTargets": 220,
+     "ballRecall": 0.0625,
+     "teamPurity": 0.7978723404255319
+    }
+   },
+   "blur": {
+    "low": {
+     "frames": 77,
+     "targets": 1404,
+     "recall": 0.5078347578347578,
+     "precision": 0.739938080495356,
+     "f1": 0.602299175583851,
+     "smallRecall": 0.3814968814968815,
+     "smallTargets": 962,
+     "ballRecall": 0.2987012987012987,
+     "teamPurity": 0.826645264847512
+    },
+    "mid": {
+     "frames": 30,
+     "targets": 514,
+     "recall": 0.2782101167315175,
+     "precision": 0.6355555555555555,
+     "f1": 0.3870094722598105,
+     "smallRecall": 0.13802816901408452,
+     "smallTargets": 355,
+     "ballRecall": 0.26666666666666666,
+     "teamPurity": 0.825
+    },
+    "high": {
+     "frames": 41,
+     "targets": 787,
+     "recall": 0.05844980940279543,
+     "precision": 0.34328358208955223,
+     "f1": 0.0998914223669924,
+     "smallRecall": 0.012718600953895072,
+     "smallTargets": 629,
+     "ballRecall": 0.024390243902439025,
+     "teamPurity": 0.8571428571428571
+    }
+   },
+   "compression": {
+    "light": {
+     "frames": 59,
+     "targets": 1120,
+     "recall": 0.36875,
+     "precision": 0.7120689655172414,
+     "f1": 0.48588235294117643,
+     "smallRecall": 0.2531356898517674,
+     "smallTargets": 877,
+     "ballRecall": 0.23728813559322035,
+     "teamPurity": 0.8704225352112676
+    },
+    "heavy": {
+     "frames": 89,
+     "targets": 1585,
+     "recall": 0.3085173501577287,
+     "precision": 0.6590909090909091,
+     "f1": 0.42029608334197777,
+     "smallRecall": 0.18896164639850327,
+     "smallTargets": 1069,
+     "ballRecall": 0.20224719101123595,
+     "teamPurity": 0.7919621749408984
+    }
+   },
+   "overlay": {
+    "none": {
+     "frames": 41,
+     "targets": 783,
+     "recall": 0.36015325670498083,
+     "precision": 0.6970443349753694,
+     "f1": 0.4749212243477019,
+     "smallRecall": 0.23655913978494625,
+     "smallTargets": 558,
+     "ballRecall": 0.21951219512195122,
+     "teamPurity": 0.8448979591836735
+    },
+    "score": {
+     "frames": 64,
+     "targets": 1133,
+     "recall": 0.36363636363636365,
+     "precision": 0.696969696969697,
+     "f1": 0.47792207792207797,
+     "smallRecall": 0.24646983311938384,
+     "smallTargets": 779,
+     "ballRecall": 0.25,
+     "teamPurity": 0.7899159663865546
+    },
+    "ticker": {
+     "frames": 19,
+     "targets": 366,
+     "recall": 0.27049180327868855,
+     "precision": 0.592814371257485,
+     "f1": 0.3714821763602251,
+     "smallRecall": 0.22112211221122113,
+     "smallTargets": 303,
+     "ballRecall": 0.10526315789473684,
+     "teamPurity": 0.9166666666666666
+    },
+    "score+ticker": {
+     "frames": 24,
+     "targets": 423,
+     "recall": 0.2576832151300236,
+     "precision": 0.6832298136645962,
+     "f1": 0.37422556531781076,
+     "smallRecall": 0.10784313725490197,
+     "smallTargets": 306,
+     "ballRecall": 0.20833333333333334,
+     "teamPurity": 0.8478260869565217
+    }
+   },
+   "crowd": {
+    "sparse": {
+     "frames": 51,
+     "targets": 968,
+     "recall": 0.2644628099173554,
+     "precision": 0.6736842105263158,
+     "f1": 0.3798219584569733,
+     "smallRecall": 0.17871222076215507,
+     "smallTargets": 761,
+     "ballRecall": 0.17647058823529413,
+     "teamPurity": 0.8317757009345794
+    },
+    "medium": {
+     "frames": 47,
+     "targets": 806,
+     "recall": 0.3064516129032258,
+     "precision": 0.6648936170212766,
+     "f1": 0.4195371842430666,
+     "smallRecall": 0.17482517482517482,
+     "smallTargets": 572,
+     "ballRecall": 0.23404255319148937,
+     "teamPurity": 0.875
+    },
+    "dense": {
+     "frames": 50,
+     "targets": 931,
+     "recall": 0.42857142857142855,
+     "precision": 0.6993006993006993,
+     "f1": 0.5314437555358724,
+     "smallRecall": 0.3066884176182708,
+     "smallTargets": 613,
+     "ballRecall": 0.24,
+     "teamPurity": 0.7959770114942529
+    }
+   },
+   "crowdPal": {
+    "mixed": {
+     "frames": 67,
+     "targets": 1184,
+     "recall": 0.3581081081081081,
+     "precision": 0.6640746500777605,
+     "f1": 0.4652994088923155,
+     "smallRecall": 0.2376237623762376,
+     "smallTargets": 808,
+     "ballRecall": 0.208955223880597,
+     "teamPurity": 0.8310626702997275
+    },
+    "dark": {
+     "frames": 28,
+     "targets": 547,
+     "recall": 0.3217550274223035,
+     "precision": 0.69140625,
+     "f1": 0.4391471365638766,
+     "smallRecall": 0.21428571428571427,
+     "smallTargets": 420,
+     "ballRecall": 0.14285714285714285,
+     "teamPurity": 0.8311688311688312
+    },
+    "kit": {
+     "frames": 53,
+     "targets": 974,
+     "recall": 0.31006160164271046,
+     "precision": 0.703962703962704,
+     "f1": 0.4305060584461868,
+     "smallRecall": 0.1977715877437326,
+     "smallTargets": 718,
+     "ballRecall": 0.2641509433962264,
+     "teamPurity": 0.8210116731517509
+    }
+   },
+   "mow": {
+    "none": {
+     "frames": 49,
+     "targets": 858,
+     "recall": 0.317016317016317,
+     "precision": 0.6610169491525424,
+     "f1": 0.4285194910119168,
+     "smallRecall": 0.20132013201320131,
+     "smallTargets": 606,
+     "ballRecall": 0.22448979591836735,
+     "teamPurity": 0.7679324894514767
+    },
+    "vertical": {
+     "frames": 39,
+     "targets": 742,
+     "recall": 0.3746630727762803,
+     "precision": 0.7246753246753247,
+     "f1": 0.4939499694314245,
+     "smallRecall": 0.24390243902439024,
+     "smallTargets": 492,
+     "ballRecall": 0.15384615384615385,
+     "teamPurity": 0.891213389121339
+    },
+    "horizontal": {
+     "frames": 35,
+     "targets": 657,
+     "recall": 0.3302891933028919,
+     "precision": 0.662613981762918,
+     "f1": 0.4408370181577586,
+     "smallRecall": 0.219959266802444,
+     "smallTargets": 491,
+     "ballRecall": 0.2857142857142857,
+     "teamPurity": 0.8457446808510638
+    },
+    "checker": {
+     "frames": 25,
+     "targets": 448,
+     "recall": 0.3013392857142857,
+     "precision": 0.6766169154228856,
+     "f1": 0.4169742116439367,
+     "smallRecall": 0.20728291316526612,
+     "smallTargets": 357,
+     "ballRecall": 0.2,
+     "teamPurity": 0.7894736842105263
+    }
+   },
+   "grass": {
+    "lush": {
+     "frames": 50,
+     "targets": 833,
+     "recall": 0.3949579831932773,
+     "precision": 0.722707423580786,
+     "f1": 0.5107773126487729,
+     "smallRecall": 0.23869801084990958,
+     "smallTargets": 553,
+     "ballRecall": 0.22,
+     "teamPurity": 0.8402777777777778
+    },
+    "yellow": {
+     "frames": 21,
+     "targets": 394,
+     "recall": 0.34517766497461927,
+     "precision": 0.6682926829268293,
+     "f1": 0.45522734491436384,
+     "smallRecall": 0.2508250825082508,
+     "smallTargets": 303,
+     "ballRecall": 0.19047619047619047,
+     "teamPurity": 0.8220338983050848
+    },
+    "dark": {
+     "frames": 25,
+     "targets": 502,
+     "recall": 0.28087649402390436,
+     "precision": 0.6380090497737556,
+     "f1": 0.39004149377593356,
+     "smallRecall": 0.22422680412371135,
+     "smallTargets": 388,
+     "ballRecall": 0.24,
+     "teamPurity": 0.8235294117647058
+    },
+    "blue": {
+     "frames": 34,
+     "targets": 649,
+     "recall": 0.27889060092449924,
+     "precision": 0.65,
+     "f1": 0.39031268142987474,
+     "smallRecall": 0.16907216494845362,
+     "smallTargets": 485,
+     "ballRecall": 0.20588235294117646,
+     "teamPurity": 0.8079470198675497
+    },
+    "worn": {
+     "frames": 18,
+     "targets": 327,
+     "recall": 0.3516819571865443,
+     "precision": 0.7012195121951219,
+     "f1": 0.46843177189409363,
+     "smallRecall": 0.21658986175115208,
+     "smallTargets": 217,
+     "ballRecall": 0.2222222222222222,
+     "teamPurity": 0.8333333333333334
+    }
+   }
+  },
+  "lite2-small": {
+   "all": {
+    "frames": 148,
+    "targets": 2705,
+    "recall": 0.37818853974121996,
+    "precision": 0.7073002754820936,
+    "f1": 0.4928523529523522,
+    "smallRecall": 0.2841726618705036,
+    "smallTargets": 1946,
+    "ballRecall": 0.22297297297297297,
+    "teamPurity": 0.8268156424581006
+   },
+   "light": {
+    "day": {
+     "frames": 49,
+     "targets": 878,
+     "recall": 0.4054669703872437,
+     "precision": 0.6845124282982792,
+     "f1": 0.5092705070008312,
+     "smallRecall": 0.32901134521880065,
+     "smallTargets": 617,
+     "ballRecall": 0.22448979591836735,
+     "teamPurity": 0.7610062893081762
+    },
+    "overcast": {
+     "frames": 49,
+     "targets": 900,
+     "recall": 0.35333333333333333,
+     "precision": 0.6765327695560254,
+     "f1": 0.4642187521383897,
+     "smallRecall": 0.27300613496932513,
+     "smallTargets": 652,
+     "ballRecall": 0.22448979591836735,
+     "teamPurity": 0.8339483394833949
+    },
+    "night": {
+     "frames": 50,
+     "targets": 927,
+     "recall": 0.37648327939590076,
+     "precision": 0.7653508771929824,
+     "f1": 0.5046999276934201,
+     "smallRecall": 0.25406203840472674,
+     "smallTargets": 677,
+     "ballRecall": 0.22,
+     "teamPurity": 0.8888888888888888
+    }
+   },
+   "expo": {
+    "under": {
+     "frames": 23,
+     "targets": 424,
+     "recall": 0.3915094339622642,
+     "precision": 0.7904761904761904,
+     "f1": 0.5236593059936909,
+     "smallRecall": 0.2735562310030395,
+     "smallTargets": 329,
+     "ballRecall": 0.21739130434782608,
+     "teamPurity": 0.8297872340425532
+    },
+    "normal": {
+     "frames": 99,
+     "targets": 1806,
+     "recall": 0.39313399778516056,
+     "precision": 0.6976516634050881,
+     "f1": 0.5028863089319118,
+     "smallRecall": 0.2961783439490446,
+     "smallTargets": 1256,
+     "ballRecall": 0.23232323232323232,
+     "teamPurity": 0.8378812199036918
+    },
+    "over": {
+     "frames": 26,
+     "targets": 475,
+     "recall": 0.3094736842105263,
+     "precision": 0.6727272727272727,
+     "f1": 0.4239282930631333,
+     "smallRecall": 0.2520775623268698,
+     "smallTargets": 361,
+     "ballRecall": 0.19230769230769232,
+     "teamPurity": 0.7709923664122137
+    }
+   },
+   "kitSim": {
+    "distinct": {
+     "frames": 65,
+     "targets": 1210,
+     "recall": 0.3933884297520661,
+     "precision": 0.7523659305993691,
+     "f1": 0.5166413714483352,
+     "smallRecall": 0.2983606557377049,
+     "smallTargets": 915,
+     "ballRecall": 0.15384615384615385,
+     "teamPurity": 0.9784688995215312
+    },
+    "similar": {
+     "frames": 59,
+     "targets": 1079,
+     "recall": 0.4077849860982391,
+     "precision": 0.6753048780487805,
+     "f1": 0.5085066335175579,
+     "smallRecall": 0.31343283582089554,
+     "smallTargets": 737,
+     "ballRecall": 0.3389830508474576,
+     "teamPurity": 0.6529562982005142
+    },
+    "grass": {
+     "frames": 24,
+     "targets": 416,
+     "recall": 0.25721153846153844,
+     "precision": 0.6604938271604939,
+     "f1": 0.370242214532872,
+     "smallRecall": 0.16666666666666666,
+     "smallTargets": 294,
+     "ballRecall": 0.125,
+     "teamPurity": 0.875
+    }
+   },
+   "cam": {
+    "far": {
+     "frames": 21,
+     "targets": 471,
+     "recall": 0.25690021231422505,
+     "precision": 0.6335078534031413,
+     "f1": 0.365558912386707,
+     "smallRecall": 0.2537313432835821,
+     "smallTargets": 469,
+     "ballRecall": 0.14285714285714285,
+     "teamPurity": 0.7692307692307693
+    },
+    "high": {
+     "frames": 19,
+     "targets": 388,
+     "recall": 0.10051546391752578,
+     "precision": 0.5735294117647058,
+     "f1": 0.17105263157894737,
+     "smallRecall": 0.10077519379844961,
+     "smallTargets": 387,
+     "ballRecall": 0,
+     "teamPurity": 0.8787878787878788
+    },
+    "main": {
+     "frames": 44,
+     "targets": 905,
+     "recall": 0.36685082872928176,
+     "precision": 0.6535433070866141,
+     "f1": 0.46992215145081384,
+     "smallRecall": 0.35253772290809327,
+     "smallTargets": 729,
+     "ballRecall": 0.13636363636363635,
+     "teamPurity": 0.8624161073825504
+    },
+    "low": {
+     "frames": 27,
+     "targets": 396,
+     "recall": 0.6515151515151515,
+     "precision": 0.8074534161490683,
+     "f1": 0.7211507450170935,
+     "smallRecall": 0.5460992907801419,
+     "smallTargets": 141,
+     "ballRecall": 0.4444444444444444,
+     "teamPurity": 0.8026905829596412
+    },
+    "zoom": {
+     "frames": 21,
+     "targets": 216,
+     "recall": 0.7407407407407407,
+     "precision": 0.8797814207650273,
+     "f1": 0.8042962407893093,
+     "smallRecall": null,
+     "smallTargets": 0,
+     "ballRecall": 0.5238095238095238,
+     "teamPurity": 0.8394160583941606
+    },
+    "endzone": {
+     "frames": 16,
+     "targets": 329,
+     "recall": 0.3434650455927052,
+     "precision": 0.6333333333333333,
+     "f1": 0.44538948241883625,
+     "smallRecall": 0.2772727272727273,
+     "smallTargets": 220,
+     "ballRecall": 0.0625,
+     "teamPurity": 0.8
+    }
+   },
+   "blur": {
+    "low": {
+     "frames": 77,
+     "targets": 1404,
+     "recall": 0.5804843304843305,
+     "precision": 0.7472627737226277,
+     "f1": 0.6533990238439716,
+     "smallRecall": 0.49376299376299376,
+     "smallTargets": 962,
+     "ballRecall": 0.3116883116883117,
+     "teamPurity": 0.8210818307905686
+    },
+    "mid": {
+     "frames": 30,
+     "targets": 514,
+     "recall": 0.30544747081712065,
+     "precision": 0.6624472573839663,
+     "f1": 0.4181091877496671,
+     "smallRecall": 0.18028169014084508,
+     "smallTargets": 355,
+     "ballRecall": 0.23333333333333334,
+     "teamPurity": 0.849624060150376
+    },
+    "high": {
+     "frames": 41,
+     "targets": 787,
+     "recall": 0.06480304955527319,
+     "precision": 0.42857142857142855,
+     "f1": 0.11258278145695363,
+     "smallRecall": 0.022257551669316374,
+     "smallTargets": 629,
+     "ballRecall": 0.04878048780487805,
+     "teamPurity": 0.8536585365853658
+    }
+   },
+   "compression": {
+    "light": {
+     "frames": 59,
+     "targets": 1120,
+     "recall": 0.40714285714285714,
+     "precision": 0.7491803278688525,
+     "f1": 0.5275746835443039,
+     "smallRecall": 0.3124287343215507,
+     "smallTargets": 877,
+     "ballRecall": 0.2711864406779661,
+     "teamPurity": 0.855
+    },
+    "heavy": {
+     "frames": 89,
+     "targets": 1585,
+     "recall": 0.35772870662460565,
+     "precision": 0.6769596199524941,
+     "f1": 0.46809823414905455,
+     "smallRecall": 0.2609915809167446,
+     "smallTargets": 1069,
+     "ballRecall": 0.19101123595505617,
+     "teamPurity": 0.804040404040404
+    }
+   },
+   "overlay": {
+    "none": {
+     "frames": 41,
+     "targets": 783,
+     "recall": 0.3818646232439336,
+     "precision": 0.672645739910314,
+     "f1": 0.4871637511065731,
+     "smallRecall": 0.2939068100358423,
+     "smallTargets": 558,
+     "ballRecall": 0.24390243902439024,
+     "teamPurity": 0.8244274809160306
+    },
+    "score": {
+     "frames": 64,
+     "targets": 1133,
+     "recall": 0.411297440423654,
+     "precision": 0.7335423197492164,
+     "f1": 0.527067785468466,
+     "smallRecall": 0.31450577663671375,
+     "smallTargets": 779,
+     "ballRecall": 0.234375,
+     "teamPurity": 0.8132678132678133
+    },
+    "ticker": {
+     "frames": 19,
+     "targets": 366,
+     "recall": 0.32786885245901637,
+     "precision": 0.6153846153846154,
+     "f1": 0.4278074866310161,
+     "smallRecall": 0.2871287128712871,
+     "smallTargets": 303,
+     "ballRecall": 0.10526315789473684,
+     "teamPurity": 0.8942307692307693
+    },
+    "score+ticker": {
+     "frames": 24,
+     "targets": 423,
+     "recall": 0.3262411347517731,
+     "precision": 0.8034682080924855,
+     "f1": 0.4640563196284066,
+     "smallRecall": 0.18627450980392157,
+     "smallTargets": 306,
+     "ballRecall": 0.25,
+     "teamPurity": 0.819672131147541
+    }
+   },
+   "crowd": {
+    "sparse": {
+     "frames": 51,
+     "targets": 968,
+     "recall": 0.33884297520661155,
+     "precision": 0.7376681614349776,
+     "f1": 0.46437731302177465,
+     "smallRecall": 0.27463863337713534,
+     "smallTargets": 761,
+     "ballRecall": 0.19607843137254902,
+     "teamPurity": 0.8586572438162544
+    },
+    "medium": {
+     "frames": 47,
+     "targets": 806,
+     "recall": 0.337468982630273,
+     "precision": 0.6546762589928058,
+     "f1": 0.44536408946146794,
+     "smallRecall": 0.21328671328671328,
+     "smallTargets": 572,
+     "ballRecall": 0.19148936170212766,
+     "teamPurity": 0.8305084745762712
+    },
+    "dense": {
+     "frames": 50,
+     "targets": 931,
+     "recall": 0.45435016111707843,
+     "precision": 0.7215619694397284,
+     "f1": 0.5575957395994554,
+     "smallRecall": 0.3621533442088091,
+     "smallTargets": 613,
+     "ballRecall": 0.28,
+     "teamPurity": 0.800531914893617
+    }
+   },
+   "crowdPal": {
+    "mixed": {
+     "frames": 67,
+     "targets": 1184,
+     "recall": 0.42736486486486486,
+     "precision": 0.6576227390180879,
+     "f1": 0.518060947400181,
+     "smallRecall": 0.33292079207920794,
+     "smallTargets": 808,
+     "ballRecall": 0.2537313432835821,
+     "teamPurity": 0.7969094922737306
+    },
+    "dark": {
+     "frames": 28,
+     "targets": 547,
+     "recall": 0.33455210237659966,
+     "precision": 0.7290836653386454,
+     "f1": 0.45864661654135347,
+     "smallRecall": 0.2642857142857143,
+     "smallTargets": 420,
+     "ballRecall": 0.17857142857142858,
+     "teamPurity": 0.8525641025641025
+    },
+    "kit": {
+     "frames": 53,
+     "targets": 974,
+     "recall": 0.34291581108829566,
+     "precision": 0.7845433255269321,
+     "f1": 0.477236472826226,
+     "smallRecall": 0.24094707520891365,
+     "smallTargets": 718,
+     "ballRecall": 0.20754716981132076,
+     "teamPurity": 0.8601398601398601
+    }
+   },
+   "mow": {
+    "none": {
+     "frames": 49,
+     "targets": 858,
+     "recall": 0.3414918414918415,
+     "precision": 0.7077294685990339,
+     "f1": 0.4606918238993711,
+     "smallRecall": 0.25742574257425743,
+     "smallTargets": 606,
+     "ballRecall": 0.20408163265306123,
+     "teamPurity": 0.8293650793650794
+    },
+    "vertical": {
+     "frames": 39,
+     "targets": 742,
+     "recall": 0.42857142857142855,
+     "precision": 0.7723970944309927,
+     "f1": 0.5512672811059908,
+     "smallRecall": 0.31097560975609756,
+     "smallTargets": 492,
+     "ballRecall": 0.20512820512820512,
+     "teamPurity": 0.8754448398576512
+    },
+    "horizontal": {
+     "frames": 35,
+     "targets": 657,
+     "recall": 0.3729071537290715,
+     "precision": 0.6534391534391535,
+     "f1": 0.47483414348991126,
+     "smallRecall": 0.2973523421588595,
+     "smallTargets": 491,
+     "ballRecall": 0.2857142857142857,
+     "teamPurity": 0.8232558139534883
+    },
+    "checker": {
+     "frames": 25,
+     "targets": 448,
+     "recall": 0.37276785714285715,
+     "precision": 0.680161943319838,
+     "f1": 0.4815943285298636,
+     "smallRecall": 0.27450980392156865,
+     "smallTargets": 357,
+     "ballRecall": 0.2,
+     "teamPurity": 0.7346938775510204
+    }
+   },
+   "grass": {
+    "lush": {
+     "frames": 50,
+     "targets": 833,
+     "recall": 0.4417767106842737,
+     "precision": 0.7703549060542797,
+     "f1": 0.5615311930759704,
+     "smallRecall": 0.31464737793851716,
+     "smallTargets": 553,
+     "ballRecall": 0.24,
+     "teamPurity": 0.8275862068965517
+    },
+    "yellow": {
+     "frames": 21,
+     "targets": 394,
+     "recall": 0.4035532994923858,
+     "precision": 0.6956521739130435,
+     "f1": 0.5107920891476759,
+     "smallRecall": 0.31353135313531355,
+     "smallTargets": 303,
+     "ballRecall": 0.19047619047619047,
+     "teamPurity": 0.8467153284671532
+    },
+    "dark": {
+     "frames": 25,
+     "targets": 502,
+     "recall": 0.2948207171314741,
+     "precision": 0.6234309623430963,
+     "f1": 0.40032676772261055,
+     "smallRecall": 0.26804123711340205,
+     "smallTargets": 388,
+     "ballRecall": 0.2,
+     "teamPurity": 0.8359375
+    },
+    "blue": {
+     "frames": 34,
+     "targets": 649,
+     "recall": 0.3405238828967643,
+     "precision": 0.6646706586826348,
+     "f1": 0.4503331925908249,
+     "smallRecall": 0.24329896907216494,
+     "smallTargets": 485,
+     "ballRecall": 0.23529411764705882,
+     "teamPurity": 0.7929292929292929
+    },
+    "worn": {
+     "frames": 18,
+     "targets": 327,
+     "recall": 0.38837920489296635,
+     "precision": 0.7470588235294118,
+     "f1": 0.5110663983903421,
+     "smallRecall": 0.2857142857142857,
+     "smallTargets": 217,
+     "ballRecall": 0.2222222222222222,
+     "teamPurity": 0.8495575221238938
+    }
+   }
   }
  },
  "orig": {
@@ -1922,6 +3338,39 @@
    "smallTargets": 737,
    "ballRecall": 0.6333333333333333,
    "teamPurity": 0.9846335697399528
+  },
+  "small": {
+   "frames": 60,
+   "targets": 1133,
+   "recall": 0.8120035304501324,
+   "precision": 0.7586490939044481,
+   "f1": 0.7844200978256995,
+   "smallRecall": 0.7720488466757124,
+   "smallTargets": 737,
+   "ballRecall": 0.5333333333333333,
+   "teamPurity": 0.984009840098401
+  },
+  "small-8": {
+   "frames": 60,
+   "targets": 1133,
+   "recall": 0.7802294792586054,
+   "precision": 0.7769973661106233,
+   "f1": 0.7786100684670088,
+   "smallRecall": 0.7272727272727273,
+   "smallTargets": 737,
+   "ballRecall": 0.5333333333333333,
+   "teamPurity": 0.9807692307692307
+  },
+  "lite2-small": {
+   "frames": 60,
+   "targets": 1133,
+   "recall": 0.8993821712268314,
+   "precision": 0.9155435759209344,
+   "f1": 0.9073909171861085,
+   "smallRecall": 0.8792401628222524,
+   "smallTargets": 737,
+   "ballRecall": 0.6333333333333333,
+   "teamPurity": 0.9900771775082691
   }
  }
 }

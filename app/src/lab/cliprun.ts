@@ -116,7 +116,8 @@ export async function analyseClip(video: HTMLVideoElement, opts: { tiled: boolea
       const Hp = Hprev!; // not forced: a previous homography of this shot exists
       const preds: Pt[] = [];
       for (const tr of kt.tracks) { const q = applyH(Hp, trackPos(tr)); if (q) preds.push({ x: q.x, y: q.y - 0.02 * size.h }); }
-      run = await detectVideoFrameFocus(work, (plan, persons) => focusTiles(plan, uncovered(preds, persons.map((p) => p.box))), undefined, pool);
+      run = await detectVideoFrameFocus(work, (plan, persons) => focusTiles(plan, uncovered(preds, persons.map((p) => p.box))), undefined, pool,
+        (persons) => uncovered(preds, persons.map((p) => p.box)));
       sinceFull++;
     }
     addTime(labProf, "detect(total)", performance.now() - d0);

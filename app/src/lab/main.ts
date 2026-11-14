@@ -1,6 +1,7 @@
 // Lab page: picture -> people detection -> team colours -> 4-point pitch calibration -> top-down map -> AI coach.
-// Live mode: the same pipeline on camera frames (VIDEO-mode detector, throttled), with tracking (live.ts).
-import { applyH, computeHomography, hasCollinearTriple, orientH, wOf, type Mat3, type Pt } from "./homography.ts";
+// Live mode: the clip pipeline on camera frames (VIDEO-mode detector, throttled; tiles in the worker pool): Kalman tracking
+// at each frame's timestamp (ktrack.ts), fixed team model refitted after a cut, homography propagated between refinements (live.ts).
+import { applyH, computeHomography, hasCollinearTriple, mul3, orientH, wOf, type Mat3, type Pt } from "./homography.ts";
 import { DEFAULT_LANDMARKS, LANDMARKS, PITCH, landmark, pitchLines } from "./landmarks.ts";
 import { feet, toPitch, type Person } from "./players.ts";
 import type { Advice, LoadedCoach } from "../coach/picture.ts"; // types only: the engine is loaded lazily
@@ -9,10 +10,15 @@ import { detectPeople, detectVideoFrame, loadDetector, loadVideoDetector } from 
 import { getSettings, MODELS, setSettings, type ModelId } from "./settings.ts";
 import { CAMERA_MESSAGES, cameraProblem, openCamera, stopStream } from "./camera.ts";
 import {
-  assignTeam, blendPoints, CAL_WATCH, delayUntilNext, fixCentroids, nextFps, nextThrottle, START_THROTTLE, START_WATCH, stepTracks,
-  trackVelocity, watchResidual, type CalWatch, type Centroids, type Throttle, type Track,
+  blendPoints, CAL_WATCH, delayUntilNext, ema, imageMotion, LIVE_MOTION, motionSearch, nextPan, panShift, POOL_THROTTLE, remapTracks, shiftH, START_PAN, THROTTLE, upkeepDue, type Pan, liveTeamsStep, nextFps, nextThrottle, predictAt, START_STATS, START_TEAMS, START_THROTTLE, START_WATCH,
+  watchResidual, type CalWatch, type LiveStats, type LiveTeams, type Throttle,
 } from "./live.ts";
-import { autoCalibrate, pickFour, refineCalibration, residualOf, type AutoCal, type AutoCalResult } from "./autocal.ts";
+import { focusTiles, fullScanDue, kStep, newTracker, suspend, trackPos, uncovered, velOf as kVelOf, type KTrack, type KTracker } from "./ktrack.ts";
+import { classifyFeat, grassModel, labToRgb, torsoFeature, type ColourFeat } from "./teams.ts";
+import { classifyFrame, signature, type Signature } from "./clip.ts";
+import { detectVideoFrameFocus, loadTilePool, type DetectRun } from "./detector.ts";
+import type { TilePool } from "./tilepool.ts";
+import { autoCalibrate, centreCircleCalibrate, pickFour, polishCalibration, propagateCalibration, refineCalibration, residualOf, type AutoCal, type AutoCalResult } from "./autocal.ts";
 import type { State } from "../coach/features.ts";
 import { drawScene, SCENE_H, SCENE_W } from "./scene.ts";
 import { attackDirection, ballGround, pickBall, pickCarrier, stepBall, trackBox, type Ball, type BallTrack } from "./ball.ts";
@@ -895,12 +901,21 @@ const live = {
   throttle: START_THROTTLE as Throttle,
   fps: null as number | null,
   lastStart: 0,
-  lastT: 0,
-  tracks: [] as Track[],
-  nextId: 1,
-  pos: [] as (Pt | null)[], // smoothed pitch position per st.persons index
+  lastT: 0,         // time (s) of the last tracked frame
+  kt: newTracker() as KTracker, // Kalman + Hungarian tracker of the clip mode (ktrack.ts), stepped at each frame's timestamp
+  pos: [] as (Pt | null)[], // filtered pitch position per st.persons index (missed players: predicted to the frame time)
   vel: [] as (Pt | null)[], // m/s, null until a track has a few hits
-  cents: null as Centroids | null,
+  teams: START_TEAMS as LiveTeams, // fixed team model (fitted once calibrated, refitted after a camera cut)
+  sig: null as Signature | null,   // colour signature of the previous frame (camera-cut check, clip.ts)
+  stats: START_STATS as LiveStats, // latency (detection, whole frame, calibration upkeep)
+  sinceFull: Infinity,              // frames since the last full tiled scan (adaptive tiling)
+  propFails: 0,                     // consecutive frames where the propagated homography was really wrong (residual)
+  pan: START_PAN as Pan,            // estimated camera pan (image motion speed) for the motion prediction
+  pendingCut: false,                // a cut flagged by the colour signature, confirmed or not by the next upkeep
+  usedShift: { x: 0, y: 0 } as Pt,  // predicted pan shift (source px) the last frame was mapped with
+  frameT: 0,                        // timestamp (s) of the last processed frame (the upkeep works on it)
+  upkeepSkipped: 0,                 // frames since the last upkeep (it runs in the idle gap, else every other frame)
+  upkeepTimer: 0 as ReturnType<typeof setTimeout> | 0,
   ball: null as BallTrack | null,   // smoothed ball, image pixels
   ballT: 0,
   moved: false,
@@ -920,16 +935,18 @@ function camStatus(text: string, bad = false, busy = false) {
   camMsg.classList.toggle("bad", bad);
 }
 
-function resetTracking() {
+/** Tracks restart; soft (a pause, a cut, a recalibration): the identities wait for re-identification (ktrack.ts suspend). */
+function resetTracking(hard = false) {
   lastBox.clear();
-  Object.assign(live, { tracks: [], pos: [], vel: [], lastT: 0, moved: false, ball: null, ballT: 0 });
+  Object.assign(live, { kt: hard ? newTracker() : suspend(live.kt), pos: [], vel: [], lastT: 0, ball: null, ballT: 0, sinceFull: Infinity, propFails: 0 });
+  if (hard) live.moved = false;
 }
 
 /** Called whenever the calibration points or landmarks change: tracks and the camera reference restart. */
 function calibChanged() {
   if (!live.on) return;
   resetTracking();
-  live.watch = START_WATCH;
+  live.watch = START_WATCH; live.moved = false;
 }
 
 type Mode = "picture" | "live" | "clip";
@@ -952,7 +969,7 @@ function setMode(m: Mode) {
   Object.assign(st, { loaded: false, persons: [], colours: [], labels: [], ms: null, carrier: null, pts: [null, null, null, null], active: 0,
     snaps: [null, null, null, null], balls: [], carrierManual: false, dirManual: false, autoNote: "" });
   scan = null;
-  live.cents = null; live.watch = START_WATCH; resetTracking(); setFrozen(false);
+  live.teams = START_TEAMS; live.sig = null; live.watch = START_WATCH; resetTracking(true); setFrozen(false);
   $("work").hidden = true;
   status.textContent = "";
   camStatus(on ? tl("lab.cam.private") : "");
@@ -991,7 +1008,8 @@ async function startCamera() {
   Object.assign(st, { loaded: true, persons: [], colours: [], labels: [], ms: null, carrier: null, separation: 99, carrierManual: false, autoNote: "" });
   scan = null;
   live.throttle = START_THROTTLE; live.fps = null; live.lastStart = 0; live.err = "";
-  resetTracking(); setFrozen(false);
+  live.teams = START_TEAMS; live.sig = null; live.stats = START_STATS;
+  resetTracking(true); setFrozen(false);
   $("work").hidden = false;
   btn.hidden = true; btn.disabled = false;
   $("cam-stop").hidden = false;
@@ -1043,8 +1061,44 @@ function schedule(ms: number) {
   live.timer = setTimeout(() => void tick(), ms);
 }
 
+/** Adaptive tiling, live: the full tiled scan every LIVE_FULL_EVERY frames, the tiles around predicted players in between. */
+const LIVE_FULL_EVERY = 3;
+/** A gap longer than this (s) between tracked frames: velocities are stale, identities wait for re-identification. */
+const LIVE_MAX_GAP = 1;
+/** Camera motion searched between two live frames (working px of the line scan; the clip mode searches 48 px). */
+const LIVE_SHIFT = 24;
+/** While the calibration is lost, the full automatic search is retried this often (ms; it is bounded to ~300 ms). */
+const LIVE_RETRY_MS = 2000;
+let livePool: Promise<TilePool | null> | null = null, livePoolModel = "";
+
+/**
+ * Detection of the current `work` frame: the VIDEO-mode pass; with tiling, the tiles go to the worker pool (tilepool.ts,
+ * in parallel with the full-frame pass) and only every LIVE_FULL_EVERY frames is the full tiled plan run, the frames in
+ * between running just the tiles around the players predicted (at `now`, s) that the full-frame pass missed.
+ */
+async function detectLive(now: number): Promise<DetectRun> {
+  const tiled = $<HTMLInputElement>("live-tiled").checked;
+  if (!tiled) return detectVideoFrame(work, false);
+  const model = getSettings().model;
+  if (!livePool || livePoolModel !== model) { livePoolModel = model; livePool = loadTilePool(model).catch(() => null); }
+  const pool = await livePool;
+  const cal = calibration();
+  const ok = !!cal && !("error" in cal) && !live.moved;
+  if (!ok || fullScanDue(live.sinceFull, LIVE_FULL_EVERY, live.kt.tracks.length === 0)) {
+    live.sinceFull = 1;
+    return detectVideoFrame(work, true, undefined, pool);
+  }
+  live.sinceFull++;
+  const preds: Pt[] = [];
+  const p2iNow = shiftH(cal.p2i, panShift(live.pan, now)); // the homography moved by the predicted pan
+  for (const tr of live.kt.tracks) { const q = applyH(p2iNow, predictAt(tr, now)); if (q) preds.push({ x: q.x, y: q.y - 0.02 * work.height }); }
+  const missed = (persons: Person[]) => uncovered(preds, persons.map((p) => p.box));
+  return detectVideoFrameFocus(work, (plan, persons) => focusTiles(plan, missed(persons)), undefined, pool, missed);
+}
+
 async function tick() {
   live.timer = 0;
+  if (live.inTick) return; // one detection at a time (startCamera and setFrozen can both schedule one while the detector loads)
   if (!live.stream || live.frozen || document.hidden || video.readyState < 2) { if (live.stream && !live.frozen) schedule(200); return; }
   const t0 = performance.now();
   if (live.lastStart && t0 - live.lastStart < 3000) live.fps = nextFps(live.fps, t0 - live.lastStart); // skip the detector warm-up
@@ -1053,8 +1107,9 @@ async function tick() {
     if (work.width !== src.width || work.height !== src.height) { work.width = src.width; work.height = src.height; }
     wctx().drawImage(video, 0, 0, work.width, work.height);
     live.inTick = true;
-    const run = await detectVideoFrame(work, $<HTMLInputElement>("live-tiled").checked);
+    const run = await detectLive(t0 / 1000);
     if (!live.stream || live.frozen) return; // stopped or frozen while detecting
+    live.stats = { ...live.stats, detectMs: ema(live.stats.detectMs, run.ms) };
     processFrame(run.persons, run.balls, run.ms, t0);
   } catch (e) {
     console.error(e);
@@ -1064,79 +1119,207 @@ async function tick() {
     live.inTick = false;
   }
   const spent = performance.now() - t0;
-  live.throttle = nextThrottle(live.throttle, spent);
-  schedule(delayUntilNext(live.throttle.interval, spent));
+  live.stats = { ...live.stats, frameMs: ema(live.stats.frameMs, spent), frames: live.stats.frames + 1 };
+  live.throttle = nextThrottle(live.throttle, spent, livePool && $<HTMLInputElement>("live-tiled").checked ? POOL_THROTTLE : THROTTLE);
+  const gap = delayUntilNext(live.throttle.interval, spent);
+  // calibration upkeep off the throttle: in the idle gap when it fits, else every other frame (a flagged cut: at once)
+  if ($<HTMLInputElement>("live-tiled").checked) { /* inline in processFrame */ }
+  else if (live.pendingCut || upkeepDue(0, live.stats.calMs, live.upkeepSkipped)) { if (live.upkeepTimer) clearTimeout(live.upkeepTimer); live.upkeepTimer = setTimeout(() => { live.upkeepTimer = 0; runUpkeep(); }, 0); }
+  else live.upkeepSkipped++;
+  schedule(gap);
   render();
 }
 
-/** One detection result: team colours, camera-move check, mapping through the homography and tracking. */
-function processFrame(found: Person[], balls: Ball[], ms: number, now: number) {
+/**
+ * Calibration upkeep of the last detected frame (on its painted lines), run OFF the detection throttle (runUpkeep, in the
+ * idle gap before the next detection): the homography moved by the predicted camera pan, then the motion search (its
+ * range grows with the time since the last homography and the pan speed, live.ts motionSearch) refined on the paint
+ * (autocal.ts propagateCalibration). When that fails, the predicted homography is kept unless the reprojection residual
+ * says it is really wrong (jump over the calm reference); only then the full automatic search (a flagged cut: at once;
+ * otherwise after two wrong frames). While lost, the full search is retried every LIVE_RETRY_MS.
+ * ok: usable calibration; cut: a real camera cut (no continuity: the tracks wait for re-identification).
+ */
+function liveUpkeep(sigCut: boolean, now: number): { ok: boolean; cut: boolean } {
+  const cal = calibration();
+  if (!cal || "error" in cal) { live.moved = false; return { ok: false, cut: sigCut }; }
+  const s = getScan();
+  if (!s) return { ok: !live.moved, cut: false };
+  if (live.moved) return { ok: performance.now() >= live.nextFull && liveFullSearch(s, now, false), cut: false };
+  const pred = shiftH(cal.p2i, panShift(live.pan, now));
+  const range = Math.min(LIVE_MOTION.max, Math.round(motionSearch(live.pan, now, s.scale) * (sigCut ? 1.5 : 1)));
+  const c = propagateCalibration(s, pred, range);
+  const centre = { x: work.width / 2, y: work.height / 2 };
+  if (c && c.rating !== "poor" && applySolution(c)) {
+    live.pan = nextPan(live.pan, imageMotion(cal.p2i, c.H, centre), now);
+    live.watch = watchResidual(live.watch, residualOf(s, c.H));
+    live.propFails = 0; live.stats = { ...live.stats, propagated: live.stats.propagated + 1 };
+    return { ok: true, cut: false };
+  }
+  // propagation failed: is the predicted homography really wrong?
+  const r = residualOf(s, pred), ref = live.watch.ref;
+  const wrong = r === null || (ref !== null && r > Math.max(CAL_WATCH.ratio * ref, ref + CAL_WATCH.jumpPx));
+  live.propFails = wrong ? live.propFails + 1 : 0;
+  if (wrong && (sigCut || live.propFails >= 2)) {
+    const ok = liveFullSearch(s, now, sigCut);
+    return { ok, cut: sigCut && ok };
+  }
+  if (!wrong) setFromH(pred);
+  live.pan = { ...live.pan, t: now };
+  return { ok: true, cut: false };
+}
+
+/** The 4 calibration points (same landmarks) moved to a homography; unchanged when one would fall behind the camera. */
+function setFromH(H: Mat3) {
+  const next = st.ids.map((id) => { const m = landmark(id)!; return wOf(H, m) > 0 ? applyH(H, m) : null; });
+  if (next.every(Boolean)) st.pts = next;
+}
+
+/** Full automatic search on this frame (bounded by autocal.ts), the centre circle as a fallback; false: tracking pauses. */
+function liveFullSearch(s: LineScan, now: number, cut: boolean): boolean {
+  live.stats = { ...live.stats, fullSearches: live.stats.fullSearches + 1 };
+  live.propFails = 0;
+  const res = autoCalibrate(s);
+  const best = res.best && res.best.rating !== "poor" ? polishCalibration(s, res.best) : centreCircleCalibrate(s);
+  if (best && best.rating !== "poor" && applySolution(best)) {
+    live.watch = watchResidual(START_WATCH, residualOf(s, best.H));
+    live.moved = false; live.nextFull = 0;
+    live.pan = cut ? { v: { x: 0, y: 0 }, t: now } : { ...live.pan, t: now };
+    return true;
+  }
+  live.moved = true; live.nextFull = performance.now() + LIVE_RETRY_MS;
+  return false;
+}
+
+/**
+ * The upkeep of the frame just processed, in its own task (not counted by the detection throttle; skipped while a
+ * detection or another upkeep runs). The frame's tracks were computed with the previous homography: when it changed,
+ * they are remapped through the new one (the same image positions), or set aside for re-identification after a cut.
+ * inFrame (tiled mode, before tracking): the tracks already match the previous frame, only a recalibration remaps them.
+ */
+function runUpkeep(inFrame = false) {
+  if (!live.on || !live.stream || live.frozen || (live.inTick && !inFrame) || live.calBusy || st.drag !== null) return;
+  const sigCut = live.pendingCut, t0 = performance.now();
+  live.pendingCut = false; live.upkeepSkipped = 0;
+  live.calBusy = true;
+  try {
+    const before = calibration(), used = live.usedShift, searches = live.stats.fullSearches;
+    live.usedShift = { x: 0, y: 0 };
+    const up = liveUpkeep(sigCut, live.frameT);
+    const after = calibration();
+    if (up.cut) {
+      live.stats = { ...live.stats, cuts: live.stats.cuts + 1 };
+      resetTracking();
+      live.teams = liveTeamsStep(live.teams, { cut: true, calibrated: false, feats: [] });
+    } else if ((!inFrame || live.stats.fullSearches > searches) && up.ok && before && after && !("error" in before) && !("error" in after) && (used.x !== 0 || used.y !== 0 || before.p2i.some((v, i) => v !== after.p2i[i]))) {
+      const old = shiftH(before.p2i, used);
+      live.kt = remapTracks(live.kt, old, after.i2p);
+      live.pos = live.pos.map((p) => { const q = p && applyH(old, p); return q ? applyH(after.i2p, q) : p; });
+    }
+  } finally {
+    live.calBusy = false;
+    live.stats = { ...live.stats, calMs: ema(live.stats.calMs, performance.now() - t0) };
+  }
+}
+
+/** One detection result: camera-cut check, fixed team model, Kalman tracking at the frame's time (calibration: runUpkeep). */
+function processFrame(found: Person[], balls: Ball[], ms: number, nowMs: number) {
   sctx().drawImage(work, 0, 0);
   scan = null; // a new frame
   const data = wctx().getImageData(0, 0, work.width, work.height);
+  const now = nowMs / 1000;
+  // camera cut / no pitch: colour signature against the previous frame (clip.ts), confirmed by the upkeep that follows
+  const sig = signature(data, 6), kind = classifyFrame(live.sig, sig);
+  const sigCut = kind === "cut" && live.sig !== null;
+  live.sig = sig;
+  live.pendingCut = live.pendingCut || sigCut; live.frameT = now;
+  st.persons = found; // the line scan masks this frame's players
+  // tiles in the worker pool: the detector dominates the frame time, so the upkeep runs inline, before tracking (exact
+  // homography for this frame); plain mode: after the frame, off the throttle (tick)
+  const inline = $<HTMLInputElement>("live-tiled").checked;
+  if (inline && kind !== "noPitch") runUpkeep(true);
   const cal = calibration();
-  const ok = !!cal && !("error" in cal);
+  const calibrated = !!cal && !("error" in cal);
+  if (!calibrated) live.moved = false;
+  // a flagged cut is not tracked with the previous shot's homography
+  const ok = kind !== "noPitch" && calibrated && !live.moved && (inline || !sigCut);
+  const cut = false;
   let persons = found;
   let colours = persons.map((p) => meanColour(data, torsoBox(p.box)));
-  if (!ok) live.moved = false; // else: calTick() keeps live.moved from the reprojection residual
-  // teams: per-frame split until calibrated, then fixed centroids so the labels do not flip between frames
-  if (ok && !live.cents) {
-    live.cents = fixCentroids(colours.filter((c): c is RGB => !!c));
-    if (live.cents) st.teamRgb = live.cents.rgb.slice(0, 2);
-  }
+  // teams: grass-masked torso features; a model fitted once calibrated, then fixed (refitted after a cut: live.ts)
+  const grass = grassModel(data);
+  const feats = found.map((p) => torsoFeature(data, p.box, grass));
+  live.teams = liveTeamsStep(live.teams, { cut, calibrated: ok, feats: feats.filter((f): f is ColourFeat => !!f) });
+  const model = live.teams.model;
   let labels: TeamLabel[], separation: number;
-  if (live.cents) {
-    labels = colours.map((c) => (c ? assignTeam(c, live.cents!) : "other"));
-    separation = live.cents.separation;
+  if (model) {
+    labels = feats.map((f) => (f ? classifyFeat(f, model).team : "other"));
+    separation = model.separation; st.teamRgb = model.centres.map(labToRgb);
   } else {
     const lt = labelTeams(colours);
     labels = lt.labels; separation = lt.separation; st.teamRgb = lt.teamRgb;
   }
   let pos: (Pt | null)[] = [], vel: (Pt | null)[] = [];
-  if (ok) {
-    const raw = persons.map((p) => toPitch(cal.i2p, feet(p.box)));
+  let out: LiveOut[] = [];
+  if (ok && cal && !("error" in cal)) {
+    // mapped through the homography moved by the predicted pan (runUpkeep corrects it and remaps these tracks)
+    const d = panShift(live.pan, now);
+    live.usedShift = d;
+    const i2pNow = mul3(cal.i2p, [1, 0, -d.x, 0, 1, -d.y, 0, 0, 1]);
+    const raw = persons.map((p) => toPitch(i2pNow, feet(p.box)));
     const idx = raw.map((p, i) => (p ? i : -1)).filter((i) => i >= 0);
-    const dt = live.lastT ? (now - live.lastT) / 1000 : live.throttle.interval / 1000;
+    if (live.lastT && now - live.lastT > LIVE_MAX_GAP) resetTracking();
     live.lastT = now;
-    const res = stepTracks(live.tracks, idx.map((i) => ({ p: raw[i]!, team: labels[i]! })), dt, live.nextId);
-    live.tracks = res.tracks; live.nextId = res.nextId;
-    const trackOf: (Track | null)[] = persons.map(() => null);
+    // Kalman + Hungarian with the torso colour (ktrack.ts), predicted to this frame's timestamp (irregular intervals)
+    const res = kStep(live.kt, idx.map((i) => ({ p: raw[i]!, team: labels[i]!, lab: feats[i]?.lab ?? null })), now);
+    live.kt = res.tracker;
+    const trackOf: (KTrack | null)[] = persons.map(() => null);
     idx.forEach((i, k) => { trackOf[i] = res.byDet[k]!; lastBox.set(res.byDet[k]!.id, persons[i]!); });
-    type Row = { person: Person; colour: RGB | null; label: TeamLabel; track: Track | null };
-    const rows: Row[] = persons.map((person, i) => ({ person, colour: colours[i]!, label: trackOf[i]?.team ?? labels[i]!, track: trackOf[i]! }));
-    // a player missed for a frame or two stays on the map at his predicted position (last box on the picture)
-    for (const t of live.tracks) {
+    type Row = { person: Person; colour: RGB | null; label: TeamLabel; track: KTrack | null; p: Pt | null; seen: boolean };
+    const rows: Row[] = persons.map((person, i) => {
+      const tr = trackOf[i] ?? null;
+      return { person, colour: colours[i]!, label: tr?.team ?? labels[i]!, track: tr, p: tr ? trackPos(tr) : null, seen: true };
+    });
+    // a player missed for a moment stays on the map where he should be now (last box on the picture)
+    for (const t of live.kt.tracks) {
       const box = lastBox.get(t.id);
-      if (t.misses > 0 && box) rows.push({ person: box, colour: null, label: t.team, track: t });
+      if (t.misses > 0 && box) rows.push({ person: box, colour: null, label: t.team, track: t, p: predictAt(t, now), seen: false });
     }
-    const alive = new Set(live.tracks.map((t) => t.id));
+    const alive = new Set(live.kt.tracks.map((t) => t.id));
     for (const id of lastBox.keys()) if (!alive.has(id)) lastBox.delete(id);
     // order players by track id: their numbers stay the same from frame to frame while they are tracked
     rows.sort((a, b) => (a.track?.id ?? 1e9) - (b.track?.id ?? 1e9));
     persons = rows.map((r) => r.person);
     colours = rows.map((r) => r.colour);
     labels = rows.map((r) => r.label);
-    pos = rows.map((r) => r.track?.p ?? null);
-    vel = rows.map((r) => (r.track ? trackVelocity(r.track) : null));
+    pos = rows.map((r) => r.p);
+    vel = rows.map((r) => (r.track ? kVelOf(r.track) : null));
+    out = rows.map((r) => ({ id: r.track?.id ?? 0, team: r.label, p: r.p, box: r.seen ? r.person.box : null }));
   }
   live.pos = pos; live.vel = vel;
   // the ball: best candidate of this frame (crowd filter once calibrated), smoothed by its own tracker
-  const meas = pickBall(balls, found, ok ? cal.i2p : null, work.width);
-  const bdt = live.ballT ? (now - live.ballT) / 1000 : live.throttle.interval / 1000;
-  live.ballT = now;
+  const meas = pickBall(balls, found, ok && cal && !("error" in cal) ? cal.i2p : null, work.width);
+  const bdt = live.ballT ? (nowMs - live.ballT) / 1000 : live.throttle.interval / 1000;
+  live.ballT = nowMs;
   live.ball = stepBall(live.ball, meas, bdt, work.width);
   Object.assign(st, { persons, colours, labels, separation, ms, carrier: null, carrierManual: false, autoNote: "" });
   const fps = live.fps === null ? "–" : num(live.fps, 1);
   if (live.moved) {
     status.textContent = tl(performance.now() < live.nextFull ? "lab.st.movedAuto" : "lab.st.moved");
-  } else if (live.autoText && now < live.autoUntil) {
+  } else if (live.autoText && nowMs < live.autoUntil) {
     status.textContent = live.autoText;
   } else {
     status.textContent = tl("lab.live.status", { fps, ms: Math.round(ms), people: tln("lab.people", persons.length) }) +
-      (ok ? (live.cents ? tl("lab.live.fixed") : "") : tl("lab.live.uncal")) + (live.ball ? tl("lab.live.ball") : "");
+      (ok ? (live.teams.model ? tl("lab.live.fixed") : "") : tl("lab.live.uncal")) + (live.ball ? tl("lab.live.ball") : "");
   }
   status.classList.toggle("bad", live.moved);
+  liveHook?.(work, { now, ms, calibrated: ok, players: out });
 }
+
+/** Debug (?debug): every processed live frame goes to window.__labLiveHook (scripts/cv-bench/live-run.mjs). */
+type LiveOut = { id: number; team: TeamLabel; p: Pt | null; box: Person["box"] | null };
+const liveHook = new URLSearchParams(location.search).has("debug")
+  ? (c: HTMLCanvasElement, f: { now: number; ms: number; calibrated: boolean; players: LiveOut[] }) => (window as { __labLiveHook?: (c: HTMLCanvasElement, f: unknown) => void }).__labLiveHook?.(c, f)
+  : null;
 
 /**
  * Calibration upkeep, every CAL_WATCH.periodMs on its own timer (skipped while a detection, a drag or another upkeep is in
@@ -1159,7 +1342,8 @@ function calTick() {
         live.nextFull = t + CAL_WATCH.retryMs;
         const res = autoCalibrate(s);
         if (res.best && res.best.rating !== "poor" && applySolution(res.best)) {
-          resetTracking();
+          const now2 = calibration(); // same frame, new homography: the tracks carry on, remapped
+          if (now2 && !("error" in now2)) live.kt = remapTracks(live.kt, cal.p2i, now2.i2p);
           live.watch = watchResidual(START_WATCH, residualOf(s, res.best.H));
           live.moved = false; live.nextFull = 0;
           live.autoText = tl("lab.st.autoRecal", { d: num(res.best.fitMean ?? 0, 1) }); live.autoUntil = t + 4000;
@@ -1194,7 +1378,7 @@ function setFrozen(f: boolean) {
     live.timer = 0;
   } else {
     // a resumed stream: the old tracks are stale (the time gap breaks the velocities)
-    st.carrier = null; resetTracking(); live.lastStart = 0;
+    st.carrier = null; resetTracking(); live.moved = false; live.lastStart = 0;
     schedule(0);
   }
   render();
@@ -1216,7 +1400,7 @@ $("ask-coach").addEventListener("click", () => {
 $("recal").addEventListener("click", () => {
   setFrozen(true);
   st.pts = [null, null, null, null]; st.snaps = [null, null, null, null]; st.active = 0;
-  live.cents = null; live.watch = START_WATCH; live.moved = false; resetTracking();
+  live.teams = START_TEAMS; live.watch = START_WATCH; live.moved = false; resetTracking(true);
   status.textContent = tl("lab.st.recal");
   status.classList.remove("bad");
   buildCalib(); render();
@@ -1489,6 +1673,6 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 addEventListener("pagehide", () => stopCamera());
-if (new URLSearchParams(location.search).has("debug")) Object.assign(window, { __labClip: () => clip.run, __labLive: live, __labState: st, __labScan: () => getScan(), __labFit: () => fitReport(calibration()), __labBall: () => currentBall(calibration()), __labAutoCal: () => runAutoCal(), __labCalTick: () => calTick() }); // headless checks
+if (new URLSearchParams(location.search).has("debug")) Object.assign(window, { __labClip: () => clip.run, __labLive: live, __labLiveStats: () => ({ ...live.stats, fps: live.fps, teamRefits: live.teams.refits, teamModel: !!live.teams.model }), __labState: st, __labScan: () => getScan(), __labFit: () => fitReport(calibration()), __labBall: () => currentBall(calibration()), __labAutoCal: () => runAutoCal(), __labCalTick: () => calTick() }); // headless checks
 
 buildCalib();

@@ -1,7 +1,8 @@
 // Live camera mode, pure logic (no DOM): detection throttle, fixed team colour centroids, player tracking with
 // smoothed positions and velocities, and a cheap "camera moved" check. Unit-tested in app/test/lab-live.test.ts.
-import type { Pt } from "./homography.ts";
-import { dist, rgbToLab, splitTeams, type ImageLike, type Lab, type RGB, type TeamLabel } from "./teams.ts";
+import { applyH, invert3, mul3, type Mat3, type Pt } from "./homography.ts";
+import { dist, fitTeamModel, rgbToLab, splitTeams, type ColourFeat, type ImageLike, type Lab, type RGB, type TeamLabel, type TeamModel } from "./teams.ts";
+import { KTRACK, trackPos, velOf, type KTrack, type KTracker } from "./ktrack.ts";
 
 // ---------- throttle: adapt the detection interval to the measured processing time ----------
 
@@ -10,8 +11,13 @@ export type Throttle = { avgMs: number | null; interval: number };
 export const THROTTLE = { minInterval: 100, maxInterval: 1000, duty: 0.5, ema: 0.3 } as const;
 export const START_THROTTLE: Throttle = { avgMs: null, interval: 150 };
 
+/** Throttle settings (THROTTLE, POOL_THROTTLE). */
+export type ThrottleOpts = { minInterval: number; maxInterval: number; duty: number; ema: number };
+/** With the tiles in the worker pool (tilepool.ts) the main thread mostly waits during a detection: a higher duty. */
+export const POOL_THROTTLE: ThrottleOpts = { ...THROTTLE, duty: 0.8 };
+
 /** Updates the moving average of the processing time and derives the interval between two detection starts. */
-export function nextThrottle(t: Throttle, spentMs: number, o: typeof THROTTLE = THROTTLE): Throttle {
+export function nextThrottle(t: Throttle, spentMs: number, o: ThrottleOpts = THROTTLE): Throttle {
   const avgMs = t.avgMs === null ? spentMs : t.avgMs + o.ema * (spentMs - t.avgMs);
   return { avgMs, interval: Math.min(o.maxInterval, Math.max(o.minInterval, avgMs / o.duty)) };
 }
@@ -200,4 +206,129 @@ export function watchResidual(w: CalWatch, residual: number | null, o: typeof CA
   // the reference only follows calm frames, so a slow drift is not learnt as the new normal while it is being checked
   const ref = jumped ? w.ref : w.ref + o.ema * (residual - w.ref);
   return { ref, streak, moved: streak >= o.need, last: residual };
+}
+
+// ---------- the clip pipeline on a live stream: variable frame intervals, fixed team model, cut handling ----------
+
+/**
+ * Where a Kalman track (ktrack.ts) should be at `now` (s): its last updated position moved by its reported velocity over
+ * the time since that update (clamped to [0, maxDt]; no velocity before minHits detections). Live frames come at
+ * irregular intervals (the detector's speed varies), so a missed player is drawn where he is now, not where he was.
+ */
+export function predictAt(t: KTrack, now: number, o: typeof KTRACK = KTRACK): Pt {
+  const p = trackPos(t), v = velOf(t, o);
+  const dt = Math.min(o.maxDt, Math.max(0, now - t.lastT));
+  return v ? { x: p.x + v.x * dt, y: p.y + v.y * dt } : p;
+}
+
+/**
+ * Live team model: fitted (teams.ts fitTeamModel) on the pooled grass-masked torso features of the first `minFrames`
+ * calibrated frames, then FIXED (labels do not flip from frame to frame); a detected camera cut marks it stale and the
+ * next calibrated frames refit it (the old model keeps labelling until the refit succeeds, aligned to it so team A stays A).
+ */
+export type LiveTeams = { model: TeamModel | null; stale: boolean; pool: ColourFeat[][]; refits: number };
+export const LIVE_TEAMS = { minFrames: 2, poolFrames: 3 } as const;
+export const START_TEAMS: LiveTeams = { model: null, stale: false, pool: [], refits: 0 };
+
+/** True when this frame's features should be used for a (re)fit: no model yet, or a cut since the last fit. */
+export function teamFitDue(s: LiveTeams, cut: boolean): boolean {
+  return !s.model || s.stale || cut;
+}
+
+/** Swaps the teams of `m` when that matches `prev` better (a refit must not exchange A and B). */
+export function alignModel(m: TeamModel, prev: TeamModel | null): TeamModel {
+  if (!prev) return m;
+  const same = dist(m.centres[0], prev.centres[0]) + dist(m.centres[1], prev.centres[1]);
+  const swap = dist(m.centres[0], prev.centres[1]) + dist(m.centres[1], prev.centres[0]);
+  if (swap >= same) return m;
+  return { ...m, centres: [m.centres[1], m.centres[0]], hists: [m.hists[1], m.hists[0]], spread: [m.spread[1], m.spread[0]], cut: [m.cut[1], m.cut[0]] };
+}
+
+/** One frame of the live team upkeep: cut = a camera cut was detected on this frame; calibrated = usable homography. */
+export function liveTeamsStep(s: LiveTeams, ev: { cut: boolean; calibrated: boolean; feats: ColourFeat[] }, o: typeof LIVE_TEAMS = LIVE_TEAMS,
+  fit: (f: ColourFeat[]) => TeamModel | null = fitTeamModel): LiveTeams {
+  const stale = s.stale || (ev.cut && !!s.model);
+  const base: LiveTeams = { ...s, stale, pool: ev.cut ? [] : s.pool };
+  if (!teamFitDue(base, false) || !ev.calibrated) return base;
+  const pool = [...base.pool, ev.feats].slice(-o.poolFrames);
+  if (pool.length < o.minFrames) return { ...base, pool };
+  const m = fit(pool.flat());
+  if (!m) return { ...base, pool };
+  return { model: alignModel(m, s.model), stale: false, pool: [], refits: s.refits + (s.model ? 1 : 0) };
+}
+
+/** Live latency: moving averages (ms) of the detector call and of the whole frame (detection + calibration + tracking). */
+export type LiveStats = { detectMs: number | null; frameMs: number | null; calMs: number | null; frames: number; cuts: number; propagated: number; fullSearches: number };
+export const START_STATS: LiveStats = { detectMs: null, frameMs: null, calMs: null, frames: 0, cuts: 0, propagated: 0, fullSearches: 0 };
+export function ema(prev: number | null, x: number, a = 0.2): number {
+  return prev === null ? x : prev + a * (x - prev);
+}
+
+// ---------- camera motion between live frames: pan prediction, adaptive search range, track remapping ----------
+
+/**
+ * base / perSec / speedK: motion search range (working px of the line scan) = base + (perSec + speedK x pan speed) x the
+ * time since the last homography, capped at max; ema: pan speed smoothing; maxDt: longest prediction (s).
+ */
+export const LIVE_MOTION = { base: 12, perSec: 30, speedK: 0.5, max: 64, ema: 0.5, maxDt: 1.5 } as const;
+/** Estimated camera pan: image motion speed (source px/s) and the time (s) of the homography it applies to. */
+export type Pan = { v: Pt; t: number | null };
+export const START_PAN: Pan = { v: { x: 0, y: 0 }, t: null };
+
+const since = (pan: Pan, now: number, o: typeof LIVE_MOTION) => (pan.t === null ? o.maxDt : Math.min(o.maxDt, Math.max(0, now - pan.t)));
+
+/** Image shift (source px) the camera pan should have produced between the last homography and `now`. */
+export function panShift(pan: Pan, now: number, o: typeof LIVE_MOTION = LIVE_MOTION): Pt {
+  if (pan.t === null) return { x: 0, y: 0 };
+  const dt = since(pan, now, o);
+  return { x: pan.v.x * dt, y: pan.v.y * dt };
+}
+
+/** Motion search range (working px, scale = working / source px): wider after a long gap or with a fast pan. */
+export function motionSearch(pan: Pan, now: number, scale: number, o: typeof LIVE_MOTION = LIVE_MOTION): number {
+  const dt = since(pan, now, o), speed = Math.hypot(pan.v.x, pan.v.y) * scale;
+  return Math.min(o.max, Math.round(o.base + (o.perSec + o.speedK * speed) * dt));
+}
+
+/** Pan speed update from the image displacement (source px) between the homography at pan.t and the one at `now`. */
+export function nextPan(pan: Pan, disp: Pt | null, now: number, o: typeof LIVE_MOTION = LIVE_MOTION): Pan {
+  if (pan.t === null || !disp) return { v: pan.v, t: now };
+  const dt = now - pan.t;
+  if (!(dt > 0.01)) return { v: pan.v, t: now };
+  const v = { x: disp.x / Math.min(dt, o.maxDt), y: disp.y / Math.min(dt, o.maxDt) };
+  return { v: { x: pan.v.x + o.ema * (v.x - pan.v.x), y: pan.v.y + o.ema * (v.y - pan.v.y) }, t: now };
+}
+
+/** H moved by an image translation d (source px): pitch -> image, then shifted. */
+export function shiftH(H: Mat3, d: Pt): Mat3 {
+  return d.x === 0 && d.y === 0 ? H : mul3([1, 0, d.x, 0, 1, d.y, 0, 0, 1], H);
+}
+
+/** Image displacement (source px) of the scene point seen at `at` under Hold, under Hnew (both pitch -> image). */
+export function imageMotion(Hold: Mat3, Hnew: Mat3, at: Pt): Pt | null {
+  const inv = invert3(Hold);
+  const q = inv ? applyH(inv, at) : null, r = q ? applyH(Hnew, q) : null;
+  return r && Number.isFinite(r.x) && Number.isFinite(r.y) ? { x: r.x - at.x, y: r.y - at.y } : null;
+}
+
+/**
+ * After the homography of a frame changed (propagation, recalibration of the same shot): every track's position (and
+ * velocity) goes back to the image through the homography it was computed with and onto the pitch through the new one,
+ * so identities carry on instead of being dropped. Tracks that do not map stay as they are.
+ */
+export function remapTracks(kt: KTracker, oldP2i: Mat3, newI2p: Mat3): KTracker {
+  const map = (p: Pt): Pt | null => { const q = applyH(oldP2i, p), r = q ? applyH(newI2p, q) : null; return r && Number.isFinite(r.x) && Number.isFinite(r.y) ? r : null; };
+  const one = (t: KTrack): KTrack => {
+    const x = t.k.x, p = map({ x: x[0]!, y: x[1]! });
+    if (!p) return t;
+    const ahead = map({ x: x[0]! + x[2]!, y: x[1]! + x[3]! });
+    const v = ahead ? { x: ahead.x - p.x, y: ahead.y - p.y } : { x: x[2]!, y: x[3]! };
+    return { ...t, k: { x: [p.x, p.y, v.x, v.y], P: t.k.P } };
+  };
+  return { tracks: kt.tracks.map(one), lost: kt.lost.map(one), nextId: kt.nextId };
+}
+
+/** Upkeep scheduling, off the detection throttle: after every frame when the idle gap before the next detection holds it, else every `every` frames. */
+export function upkeepDue(gapMs: number, upkeepMs: number | null, skipped: number, every = 2): boolean {
+  return upkeepMs === null || gapMs >= upkeepMs || skipped + 1 >= every;
 }

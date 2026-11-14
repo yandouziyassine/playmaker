@@ -32,8 +32,20 @@ export type DetectorSettings = {
   tileMinScore: number;
 };
 
-// tileMinScore 0.25 vs 0.3 on the benchmark (Lite0): recall 69.9 % vs 63.3 %, precision 85.9 % vs 88.3 % (F1 0.77 vs 0.74)
-export const DEFAULT_SETTINGS: DetectorSettings = { model: "lite0", tile: 384, overlap: 0.25, tileMinScore: 0.25 };
+/**
+ * Tiling tuned per model: a tile close to the model input (320 / 448 px). Applied by setSettings when the model changes, so
+ * switching to Lite2 in the UI no longer keeps Lite0's 384 px tiles and threshold.
+ * Lite0, tileMinScore 0.25 vs 0.3 on the benchmark: recall 69.9 % vs 63.3 %, precision 85.9 % vs 88.3 % (F1 0.77 vs 0.74).
+ * Lite2, tileMinScore 0.25 vs 0.3 (docs/cv-robustness.md): randomised set (148 frames) recall 35.4 % vs 32.6 %, precision
+ * 79.4 % vs 82.1 % (F1 0.489 vs 0.467); original 60 frames recall 83.8 % vs 80.1 %, precision 91.0 % vs 94.0 % (F1 0.873 vs 0.865).
+ */
+export const MODEL_PRESETS: Record<ModelId, Omit<DetectorSettings, "model">> = {
+  lite0: { tile: 384, overlap: 0.25, tileMinScore: 0.25 },
+  lite2: { tile: 448, overlap: 0.25, tileMinScore: 0.25 },
+};
+export const presetFor = (model: ModelId): DetectorSettings => ({ model, ...MODEL_PRESETS[model] });
+
+export const DEFAULT_SETTINGS: DetectorSettings = presetFor("lite0");
 /** The pipeline as it was before the benchmark (full frame + 3 x 2 grid). */
 export const LEGACY_SETTINGS: DetectorSettings = { model: "lite0", tile: 0, overlap: 0.2, tileMinScore: 0.3 };
 
@@ -50,8 +62,11 @@ export function getSettings(): DetectorSettings {
   return current;
 }
 
+/** A model change without explicit tiling values takes that model's preset (MODEL_PRESETS); explicit values win. */
 export function setSettings(patch: Partial<DetectorSettings>): DetectorSettings {
-  current = sanitise({ ...getSettings(), ...patch });
+  const prev = getSettings();
+  const base = patch.model && patch.model !== prev.model && patch.model in MODELS ? presetFor(patch.model) : prev;
+  current = sanitise({ ...base, ...patch });
   try { localStorage.setItem(KEY, JSON.stringify(current)); } catch { /* ignore */ }
   return current;
 }

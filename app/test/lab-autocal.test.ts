@@ -76,7 +76,7 @@ describe("line families by vanishing point", () => {
 describe("automatic calibration on synthetic views", () => {
   it("one penalty box (the Lab's scene): the box corners land within 2 px, in good time", () => {
     const scan = scanLines(draw(Hscene, W, Hh), 1);
-    const r = autoCalibrate(scan);
+    const r = autoCalibrate(scan, {}, () => 0); // fixed clock: never truncated by machine load
     expect(r.best, JSON.stringify({ reason: r.reason, tried: r.tried })).toBeTruthy();
     expect(maxErr(r.best!.H, Hscene, RIGHT_BOX)).toBeLessThan(2);
     expect(r.best!.rating).toBe("good");
@@ -99,7 +99,7 @@ describe("automatic calibration on synthetic views", () => {
       [{ x: 150, y: 70 }, { x: 500, y: 75 }, { x: 625, y: 330 }, { x: 15, y: 320 }],
     )!;
     const scan = scanLines(draw(Hfull, 640, 360), 1);
-    const r = autoCalibrate(scan);
+    const r = autoCalibrate(scan, {}, () => 0); // fixed clock: never truncated by machine load
     expect(r.best).toBeTruthy();
     expect(maxErr(r.best!.H, Hfull, ["L-corner-far", "R-corner-far", "R-corner-near", "L-corner-near"])).toBeLessThan(2);
     expect(r.best!.side).toBe("both");
@@ -119,7 +119,7 @@ describe("automatic calibration on synthetic views", () => {
       for (let k = 0; k < 4; k++) img.data[4 * (y * W + x) + k] = grass.data[4 * (y * W + x) + k]!;
     }
     const scan = scanLines(img, 1);
-    const r = autoCalibrate(scan);
+    const r = autoCalibrate(scan, {}, () => 0); // fixed clock: never truncated by machine load
     expect(r.best).toBeTruthy();
     expect(maxErr(r.best!.H, Hscene, RIGHT_BOX)).toBeLessThan(2);
   });
@@ -128,7 +128,7 @@ describe("automatic calibration on synthetic views", () => {
     // mirror the pitch (left box <-> right box) and the picture: the camera stays on the near side
     const Hleft = mul3([-1, 0, W, 0, 1, 0, 0, 0, 1], mul3(Hscene, [-1, 0, 0, 0, 1, 0, 0, 0, 1]));
     const scan = scanLines(draw(Hleft, W, Hh), 1);
-    const r = autoCalibrate(scan);
+    const r = autoCalibrate(scan, {}, () => 0); // fixed clock: never truncated by machine load
     expect(r.best).toBeTruthy();
     expect(r.best!.side).toBe("L");
     expect(maxErr(r.best!.H, Hleft, ["L-box-goal-far", "L-box-edge-far", "L-box-edge-near", "L-box-goal-near"])).toBeLessThan(2);
@@ -139,7 +139,7 @@ describe("automatic calibration on synthetic views", () => {
     const box = [{ x: 52.5, y: -BOX.halfW }, { x: 36, y: -BOX.halfW }, { x: 36, y: BOX.halfW }, { x: 52.5, y: BOX.halfW }, { x: 52.5, y: -BOX.halfW }];
     for (let i = 0; i < 4; i++) paint(img, applyH(Hscene, box[i]!)!, applyH(Hscene, box[i + 1]!)!);
     const scan = scanLines(img, 1);
-    const r = autoCalibrate(scan);
+    const r = autoCalibrate(scan, {}, () => 0); // fixed clock: never truncated by machine load
     expect(r.best, JSON.stringify({ reason: r.reason, tried: r.tried, lines: scan.lines.length })).toBeTruthy();
     expect(r.alternatives.length).toBeGreaterThan(0);
     expect(r.best!.rating).not.toBe("good");
@@ -148,7 +148,7 @@ describe("automatic calibration on synthetic views", () => {
 
   it("gives up cleanly without lines and respects the time cap", () => {
     const empty = scanLines(image(200, 120), 1);
-    expect(autoCalibrate(empty).reason).toBe("lines");
+    expect(autoCalibrate(empty, {}, () => 0).reason).toBe("lines");
     const scan = scanLines(draw(Hscene, W, Hh), 1);
     let t = 0;
     const r = autoCalibrate(scan, { budgetMs: 1 }, () => (t += 0.5));

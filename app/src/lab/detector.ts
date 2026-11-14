@@ -5,6 +5,8 @@ import { keepPersons, type Person, type RawDetection } from "./players.ts";
 import { BALL_CLASS, BALL_MIN_SCORE, keepBalls, type Ball } from "./ball.ts";
 import { isGrass, type Box } from "./teams.ts";
 import { getSettings, MODELS, type DetectorSettings, type ModelId } from "./settings.ts";
+import { addTime, labProf, timed } from "./prof.ts";
+import { getTilePool, poolSize, type TilePool } from "./tilepool.ts";
 
 /** Pinned to the installed npm version (checked by a unit test). The wasm (~15 MB per build) is loaded from the CDN. */
 export const MEDIAPIPE_VERSION = "1.2.2";
@@ -125,9 +127,8 @@ async function tiledPass(src: HTMLCanvasElement, s: DetectorSettings, only?: Box
   const cx = crop.getContext("2d")!;
   const all = { persons: [] as Person[], balls: [] as Ball[], passes: 0 };
   for (const t of only ?? peopleTiles(src.width, src.height, s)) {
-    crop.width = t.w; crop.height = t.h;
-    cx.drawImage(src, t.x, t.y, t.w, t.h, 0, 0, t.w, t.h);
-    const f = split(det.detect(crop).detections, s.tileMinScore);
+    timed("det.tileCrop", () => { crop.width = t.w; crop.height = t.h; cx.drawImage(src, t.x, t.y, t.w, t.h, 0, 0, t.w, t.h); });
+    const f = split(timed("det.tilePass", () => det.detect(crop).detections), s.tileMinScore);
     all.persons.push(...shift(f.persons, t.x, t.y));
     all.balls.push(...shift(f.balls, t.x, t.y));
     all.passes++;
@@ -154,24 +155,23 @@ export const BALL_TILES = { cols: 6, rows: 4, minGrass: 0.15 } as const;
  */
 async function ballPass(src: HTMLCanvasElement, model: ModelId): Promise<{ balls: Ball[]; passes: number }> {
   const det = await loadDetector(model);
-  const data = src.getContext("2d", { willReadFrequently: true })!.getImageData(0, 0, src.width, src.height);
+  const data = timed("det.ballReadback", () => src.getContext("2d", { willReadFrequently: true })!.getImageData(0, 0, src.width, src.height));
   const crop = document.createElement("canvas");
   const cx = crop.getContext("2d")!;
   const balls: Ball[] = [];
   let passes = 0;
   for (const t of tiles(src.width, src.height, BALL_TILES.cols, BALL_TILES.rows)) {
     if (grassShare(data, t) < BALL_TILES.minGrass) continue;
-    crop.width = t.w; crop.height = t.h;
-    cx.drawImage(src, t.x, t.y, t.w, t.h, 0, 0, t.w, t.h);
-    balls.push(...shift(keepBalls(det.detect(crop).detections), t.x, t.y));
+    timed("det.tileCrop", () => { crop.width = t.w; crop.height = t.h; cx.drawImage(src, t.x, t.y, t.w, t.h, 0, 0, t.w, t.h); });
+    balls.push(...shift(keepBalls(timed("det.ballPass", () => det.detect(crop).detections)), t.x, t.y));
     passes++;
   }
   return { balls, passes };
 }
 
 function finish(full: Found, tiledRes: Found | null, t0: number, passes: number): DetectRun {
-  const persons = nms(tiledRes ? full.persons.concat(tiledRes.persons) : full.persons);
-  const balls = nms(tiledRes ? full.balls.concat(tiledRes.balls) : full.balls, 0.3);
+  const persons = timed("det.nms", () => nms(tiledRes ? full.persons.concat(tiledRes.persons) : full.persons));
+  const balls = timed("det.nms", () => nms(tiledRes ? full.balls.concat(tiledRes.balls) : full.balls, 0.3));
   return { persons, balls, ms: performance.now() - t0, passes };
 }
 
@@ -186,14 +186,45 @@ export async function detectPeople(src: HTMLCanvasElement, tiled: boolean, s: De
   return finish(full, { persons: tl.persons, balls: tl.balls.concat(bp.balls) }, t0, 1 + tl.passes + bp.passes);
 }
 
+/**
+ * The worker pool of the clip mode's tiled pass (tilepool.ts), started on demand; null when workers are unavailable
+ * (the tiles then run on the main thread). `size` 0 = no pool, undefined = from the core count.
+ */
+export async function loadTilePool(model: ModelId = getSettings().model, size?: number): Promise<TilePool | null> {
+  const n = size ?? poolSize(typeof navigator !== "undefined" ? navigator.hardwareConcurrency : undefined);
+  if (n < 1) return null;
+  return getTilePool({ wasm: WASM_BASE, model: new URL(MODELS[model].path, document.baseURI).href, scoreThreshold: BALL_MIN_SCORE, allow: ["person", BALL_CLASS] }, n);
+}
+
+/** Tiles through the pool: started before `meanwhile` (the full-frame pass) runs on the main thread. */
+async function pooledPass<T>(pool: TilePool, src: HTMLCanvasElement, tilesToRun: Box[], s: DetectorSettings, meanwhile: () => T): Promise<{ tl: Found & { passes: number }; other: T }> {
+  const t0 = performance.now();
+  const job = await pool.start(src, tilesToRun);
+  const other = meanwhile();
+  const res = await job.done;
+  addTime(labProf, "det.tilePool", performance.now() - t0, tilesToRun.length);
+  const tl = { persons: [] as Person[], balls: [] as Ball[], passes: tilesToRun.length };
+  tilesToRun.forEach((t, k) => {
+    const f = split(res[k]!, s.tileMinScore);
+    tl.persons.push(...shift(f.persons, t.x, t.y));
+    tl.balls.push(...shift(f.balls, t.x, t.y));
+  });
+  return { tl, other };
+}
+
 let lastTs = 0;
-/** Live: one VIDEO-mode pass on the current frame (+ the tiled IMAGE pass when asked). */
-export async function detectVideoFrame(src: HTMLCanvasElement, tiled: boolean, s: DetectorSettings = getSettings()): Promise<DetectRun> {
+/** Live: one VIDEO-mode pass on the current frame (+ the tiled IMAGE pass when asked; in the worker pool when given). */
+export async function detectVideoFrame(src: HTMLCanvasElement, tiled: boolean, s: DetectorSettings = getSettings(), pool: TilePool | null = null): Promise<DetectRun> {
   const det = await loadVideoDetector(s.model);
   if (tiled) await loadDetector(s.model);
   const t0 = performance.now();
   lastTs = Math.max(lastTs + 1, Math.round(t0));
-  const full = split(det.detectForVideo(src, lastTs).detections);
+  if (tiled && pool) {
+    const { tl, other: full } = await pooledPass(pool, src, peopleTiles(src.width, src.height, s), s,
+      () => split(timed("det.fullPass", () => det.detectForVideo(src, lastTs).detections)));
+    return finish(full, tl, t0, 1 + tl.passes);
+  }
+  const full = split(timed("det.fullPass", () => det.detectForVideo(src, lastTs).detections));
   // live: no ball-only pass (too slow for several frames a second); the ball comes from the regular passes
   if (!tiled) return finish(full, null, t0, 1);
   const tl = await tiledPass(src, s);
@@ -204,14 +235,14 @@ export async function detectVideoFrame(src: HTMLCanvasElement, tiled: boolean, s
  * Clip mode, cheap frame of the adaptive tiling: the VIDEO pass, then the tiled IMAGE pass only on the tiles that `focus`
  * picks from the full plan (given the persons of the full-frame pass), e.g. around predicted players it did not find.
  */
-export async function detectVideoFrameFocus(src: HTMLCanvasElement, focus: (plan: Box[], persons: Person[]) => Box[], s: DetectorSettings = getSettings()): Promise<DetectRun> {
+export async function detectVideoFrameFocus(src: HTMLCanvasElement, focus: (plan: Box[], persons: Person[]) => Box[], s: DetectorSettings = getSettings(), pool: TilePool | null = null): Promise<DetectRun> {
   const det = await loadVideoDetector(s.model);
   await loadDetector(s.model);
   const t0 = performance.now();
   lastTs = Math.max(lastTs + 1, Math.round(t0));
-  const full = split(det.detectForVideo(src, lastTs).detections);
+  const full = split(timed("det.fullPass", () => det.detectForVideo(src, lastTs).detections));
   const only = focus(peopleTiles(src.width, src.height, s), full.persons);
   if (!only.length) return finish(full, null, t0, 1);
-  const tl = await tiledPass(src, s, only);
+  const tl = pool ? (await pooledPass(pool, src, only, s, () => null)).tl : await tiledPass(src, s, only);
   return finish(full, tl, t0, 1 + tl.passes);
 }

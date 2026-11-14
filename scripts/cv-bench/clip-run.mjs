@@ -4,7 +4,8 @@
 // the team numbers (clip.ts) computed from the tracked players vs from the true positions of the players in view.
 //   node scripts/cv-bench/clip-run.mjs [--data scripts/cv-bench/clip-data] [--port 5191] [--notiled] [--shot out.png]
 //     [--loop '{"tracker":"nn","fullScanEvery":3,"motion":false,"circle":false,"polish":false}'] (cliprun.ts CLIP_LOOP switches)
-//     [--out report.json]
+//     [--out report.json] [--gpu] (lab.html?gpu: the WebGL delegate)
+//   prints the per-stage timings of cliprun.ts (prof.ts, window.__clipProf) after the accuracy report
 import { chromium } from "@playwright/test";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -22,14 +23,14 @@ const clipTs = await import(new URL("../../app/src/lab/clip.ts", import.meta.url
 const { createServer } = await import("vite");
 const server = await createServer({ configFile: join(root, "vite.config.ts"), logLevel: "error", server: { port: PORT, strictPort: true, hmr: false, watch: null } });
 await server.listen();
-let run, wall;
+let run, wall, prof;
 try {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   const loop = opt("loop", null);
   if (loop) await page.addInitScript((o) => { window.__clipLoop = JSON.parse(o); }, loop);
   page.on("console", (m) => { if (m.type() === "error") console.error("[page]", m.text()); });
-  await page.goto(`http://localhost:${PORT}/lab.html?debug`);
+  await page.goto(`http://localhost:${PORT}/lab.html?debug${args.includes("--gpu") ? "&gpu" : ""}`);
   await page.click("#mode-clip");
   if (args.includes("--notiled")) await page.uncheck("#clip-tiled");
   const t0 = Date.now();
@@ -45,6 +46,7 @@ try {
     await page.waitForTimeout(500);
   }
   wall = (Date.now() - t0) / 1000;
+  prof = await page.evaluate(() => window.__clipProf ?? null); // cliprun.ts stage timings (prof.ts)
   await page.waitForTimeout(800);
   const shot = opt("shot", null);
   if (shot) await page.screenshot({ path: shot, fullPage: true });
@@ -116,4 +118,12 @@ const report = {
   possession: { tracked: possOurs, truth: possGt },
 };
 console.log(JSON.stringify(report, null, 1));
+if (prof) {
+  // per-stage breakdown (ms per analysed frame, calls per frame), slowest first
+  const n = run.frames.length;
+  const rows = Object.entries(prof).map(([stage, s]) => ({ stage, msPerFrame: s.ms / n, perFrame: s.n / n, msPerCall: s.n ? s.ms / s.n : 0 })).sort((a, b) => b.msPerFrame - a.msPerFrame);
+  console.log(`stage timings over ${n} frames (ms/frame | calls/frame | ms/call):`);
+  for (const r of rows) console.log(`  ${r.stage.padEnd(18)} ${r.msPerFrame.toFixed(1).padStart(8)} ${r.perFrame.toFixed(2).padStart(6)} ${r.msPerCall.toFixed(1).padStart(8)}`);
+  report.stages = Object.fromEntries(rows.map((r) => [r.stage, +r.msPerFrame.toFixed(1)]));
+}
 writeFileSync(opt("out", join(DATA, "report.json")), JSON.stringify({ report, run }, null, 1));

@@ -6,7 +6,7 @@
 // or a cut) and the ball with ball.ts. Nothing leaves the device: the file is read through an object URL. Pure parts:
 // clip.ts, ktrack.ts.
 import { applyH, invert3, orientH, type Mat3, type Pt } from "./homography.ts";
-import { detectVideoFrame, detectVideoFrameFocus, loadDetector, loadVideoDetector, type DetectRun } from "./detector.ts";
+import { detectVideoFrame, detectVideoFrameFocus, loadDetector, loadTilePool, loadVideoDetector, type DetectRun } from "./detector.ts";
 import { feet, toPitch } from "./players.ts";
 import { classifyFeat, fitTeamModel, grassModel, labelClip, labToRgb, torsoFeature, type ClipDet, type ColourFeat, type RGB, type TeamLabel, type TeamModel } from "./teams.ts";
 import { stepTracks, trackVelocity, watchResidual, START_WATCH, type CalWatch, type Track } from "./live.ts";
@@ -15,6 +15,7 @@ import { ballGround, pickBall, stepBall, trackBox, type BallTrack } from "./ball
 import { fitQuality, LINE_SIDE, scanLines } from "./lines.ts";
 import { pitchLines } from "./landmarks.ts";
 import { autoCalibrate, centreCircleCalibrate, pickFour, polishCalibration, propagateCalibration, refineCalibration, residualOf, type AutoCal } from "./autocal.ts";
+import { addTime, labProf, resetProf, timed } from "./prof.ts";
 import { CLIP, classifyFrame, frameTimes, processingSize, type ClipFrame, type ClipPlayer, type Signature, signature } from "./clip.ts";
 
 export type ClipRun = {
@@ -28,10 +29,12 @@ export type ClipProgress = { done: number; total: number; frame: ClipFrame | nul
 /**
  * Switches of the loop (the benchmark compares them; the app uses the defaults): tracker "kalman" (ktrack.ts) or "nn"
  * (the live mode's nearest neighbour); fullScanEvery: adaptive tiling period (1 = the full tiled scan on every frame);
- * motion / circle / polish: the calibration additions; dump: keep each frame's raw detections (benchmark replay).
+ * motion / circle / polish: the calibration additions; dump: keep each frame's raw detections (benchmark replay);
+ * workers: detector Web Workers for the tiles (tilepool.ts; -1 = from the core count, 0 = main thread only); prefetch:
+ * seek the next frame while the current one is analysed (the decode overlaps the detection).
  */
-export type ClipLoopOpts = { tracker: "kalman" | "nn"; fullScanEvery: number; motion: boolean; circle: boolean; polish: boolean; dump?: boolean };
-export const CLIP_LOOP: ClipLoopOpts = { tracker: "kalman", fullScanEvery: CLIP.fullScanEvery, motion: true, circle: true, polish: true };
+export type ClipLoopOpts = { tracker: "kalman" | "nn"; fullScanEvery: number; motion: boolean; circle: boolean; polish: boolean; dump?: boolean; workers?: number; prefetch?: boolean };
+export const CLIP_LOOP: ClipLoopOpts = { tracker: "kalman", fullScanEvery: CLIP.fullScanEvery, motion: true, circle: true, polish: true, workers: -1, prefetch: true };
 
 /** Seeks the video and waits for the frame (seeked event; a stuck seek gives up after 4 s). */
 export function seekTo(video: HTMLVideoElement, t: number): Promise<void> {
@@ -52,6 +55,7 @@ export async function analyseClip(video: HTMLVideoElement, opts: { tiled: boolea
   const lo: ClipLoopOpts = { ...CLIP_LOOP, ...((globalThis as { __clipLoop?: Partial<ClipLoopOpts> }).__clipLoop ?? {}), ...(opts.loop ?? {}) };
   await loadVideoDetector();
   if (opts.tiled) await loadDetector();
+  const pool = opts.tiled && lo.workers !== 0 ? await loadTilePool(undefined, lo.workers !== undefined && lo.workers > 0 ? lo.workers : undefined) : null;
   const size = processingSize(video.videoWidth, video.videoHeight);
   const work = document.createElement("canvas");
   work.width = size.w; work.height = size.h;
@@ -63,6 +67,7 @@ export async function analyseClip(video: HTMLVideoElement, opts: { tiled: boolea
   const times = frameTimes(video.duration, fps);
   const frames: ClipFrame[] = [];
   const t00 = performance.now();
+  resetProf();
 
   let prevSig: Signature | null = null;
   let H: Mat3 | null = null, sol: AutoCal | null = null, cal4: ClipFrame["cal"] = null;
@@ -78,15 +83,20 @@ export async function analyseClip(video: HTMLVideoElement, opts: { tiled: boolea
   // a cut or a pause: motion is stale; the Kalman tracker keeps the identities aside for re-identification
   const resetTracks = () => { tracks = []; ball = null; kt = suspend(kt); sinceFull = Infinity; };
 
+  // prefetch: the seek of frame i + 1 starts once frame i is copied to the work canvas
+  let pending: Promise<void> | null = null;
   for (let i = 0; i < times.length; i++) {
     if (opts.signal?.aborted) break;
     const t = times[i]!;
-    await seekTo(video, t);
+    const s0 = performance.now();
+    await (pending ?? seekTo(video, t));
+    pending = null;
+    addTime(labProf, "seek", performance.now() - s0);
     if (opts.signal?.aborted) break;
     const f0 = performance.now();
-    wctx.drawImage(video, 0, 0, size.w, size.h);
-    const data = wctx.getImageData(0, 0, size.w, size.h);
-    const sig = signature(data, 6);
+    const data = timed("frame.readback", () => { wctx.drawImage(video, 0, 0, size.w, size.h); return wctx.getImageData(0, 0, size.w, size.h); });
+    if (lo.prefetch && i + 1 < times.length) pending = seekTo(video, times[i + 1]!);
+    const sig = timed("frame.signature", () => signature(data, 6));
     const kind = classifyFrame(prevSig, sig);
     prevSig = sig;
     const frame: ClipFrame = { t, status: "ok", cut: kind === "cut", rating: null, fit: null, players: [], ball: null, ballBox: null, ballScore: 0, cal: null, ms: 0 };
@@ -100,25 +110,28 @@ export async function analyseClip(video: HTMLVideoElement, opts: { tiled: boolea
     }
     // detection: the full tiled scan, or (adaptive tiling) the full-frame pass + the tiles around predicted players it missed
     let run: DetectRun;
+    const d0 = performance.now();
     const full = !opts.tiled || fullScanDue(sinceFull, lo.fullScanEvery, !Hprev || kt.tracks.length === 0);
-    if (full) { run = await detectVideoFrame(work, opts.tiled); sinceFull = 1; } else {
+    if (full) { run = await detectVideoFrame(work, opts.tiled, undefined, pool); sinceFull = 1; } else {
       const Hp = Hprev!; // not forced: a previous homography of this shot exists
       const preds: Pt[] = [];
       for (const tr of kt.tracks) { const q = applyH(Hp, trackPos(tr)); if (q) preds.push({ x: q.x, y: q.y - 0.02 * size.h }); }
-      run = await detectVideoFrameFocus(work, (plan, persons) => focusTiles(plan, uncovered(preds, persons.map((p) => p.box))));
+      run = await detectVideoFrameFocus(work, (plan, persons) => focusTiles(plan, uncovered(preds, persons.map((p) => p.box))), undefined, pool);
       sinceFull++;
     }
+    addTime(labProf, "detect(total)", performance.now() - d0);
     // painted lines (players masked out) on a <= 640 px copy
-    lctx.drawImage(work, 0, 0, lineCanvas.width, lineCanvas.height);
-    const scan = scanLines(lctx.getImageData(0, 0, lineCanvas.width, lineCanvas.height), lk,
-      run.persons.map((p) => ({ x: p.box.x * lk, y: p.box.y * lk, w: p.box.w * lk, h: p.box.h * lk })));
+    const limg = timed("lines.readback", () => { lctx.drawImage(work, 0, 0, lineCanvas.width, lineCanvas.height); return lctx.getImageData(0, 0, lineCanvas.width, lineCanvas.height); });
+    const scan = timed("lines.scan", () => scanLines(limg, lk,
+      run.persons.map((p) => ({ x: p.box.x * lk, y: p.box.y * lk, w: p.box.w * lk, h: p.box.h * lk }))));
+    const c0 = performance.now();
     // calibration upkeep: residual watch on the current homography; full search when needed, else a periodic refinement
     if (H && !needFull) {
-      watch = watchResidual(watch, residualOf(scan, H));
+      watch = watchResidual(watch, timed("cal.residual", () => residualOf(scan, H!)));
       if (watch.moved) needFull = true;
       else if (++sinceRefine >= CLIP.refineEvery) {
         sinceRefine = 0;
-        const r = refineCalibration(scan, H);
+        const r = timed("cal.refine", () => refineCalibration(scan, H!));
         if (r && r.rating !== "poor") { H = r.H; sol = r; cal4 = pickFour(r, size.w, size.h) ?? cal4; }
       }
     }
@@ -127,16 +140,17 @@ export async function analyseClip(video: HTMLVideoElement, opts: { tiled: boolea
       watch = watchResidual(START_WATCH, residualOf(scan, c.H)); // same shot: the tracks carry on (pitch coordinates)
     };
     if (needFull) {
-      const res = autoCalibrate(scan);
-      if (res.best && res.best.rating !== "poor") adopt(lo.polish ? polishCalibration(scan, res.best) : res.best);
+      const res = timed("cal.fullSearch", () => autoCalibrate(scan));
+      if (res.best && res.best.rating !== "poor") adopt(lo.polish ? timed("cal.polish", () => polishCalibration(scan, res.best!)) : res.best);
       else { H = null; sol = null; cal4 = null; }
     }
-    let q = H ? fitQuality(scan, H, POLY) : null;
+    let q = H ? timed("cal.fit", () => fitQuality(scan, H!, POLY)) : null;
     if (!H || !q || q.rating === "poor") {
       // midfield view: the centre circle; else the previous homography moved by the camera motion (same shot)
-      const c = (lo.circle ? centreCircleCalibrate(scan) : null) ?? (lo.motion && Hprev ? propagateCalibration(scan, Hprev) : null);
+      const c = (lo.circle ? timed("cal.circle", () => centreCircleCalibrate(scan)) : null) ?? (lo.motion && Hprev ? timed("cal.propagate", () => propagateCalibration(scan, Hprev)) : null);
       if (c) { adopt(c); q = fitQuality(scan, c.H, POLY); }
     }
+    addTime(labProf, "cal(total)", performance.now() - c0);
     frame.rating = q?.rating ?? (H ? sol?.rating ?? null : null);
     frame.fit = q?.mean ?? null;
     const i2pRaw = H ? invert3(H) : null;
@@ -153,8 +167,8 @@ export async function analyseClip(video: HTMLVideoElement, opts: { tiled: boolea
     frame.cal = cal4;
     // teams: grass-masked torso features (grass range of this frame); provisional labels for the tracker from a model
     // fitted on the first calibrated frame with enough players; the final labels come from labelClip after the loop
-    const grass = grassModel(data);
-    const feats: (ColourFeat | null)[] = run.persons.map((p) => torsoFeature(data, p.box, grass));
+    const grass = timed("teams.grass", () => grassModel(data));
+    const feats: (ColourFeat | null)[] = timed("teams.feat", () => run.persons.map((p) => torsoFeature(data, p.box, grass)));
     if (!prov) {
       prov = fitTeamModel(feats.filter((c): c is ColourFeat => !!c));
       if (prov) { teamRgb = prov.centres.map(labToRgb); separation = prov.separation; }
@@ -168,6 +182,7 @@ export async function analyseClip(video: HTMLVideoElement, opts: { tiled: boolea
     const dumped = lo.dump ? idx.map((k) => ({ p: raw[k], team: labels[k], lab: feats[k]?.lab ?? null, feat: feats[k], box: run.persons[k]!.box, id: 0 })) : null;
     if (dumped) (frame as ClipFrame & { dets?: unknown }).dets = dumped;
     let players: ClipPlayer[];
+    const k0 = performance.now();
     if (lo.tracker === "kalman") {
       const res = kStep(kt, idx.map((k) => ({ p: raw[k]!, team: labels[k]!, lab: feats[k]?.lab ?? null })), t);
       kt = res.tracker;
@@ -185,20 +200,22 @@ export async function analyseClip(video: HTMLVideoElement, opts: { tiled: boolea
       if (feat) { cdets.push({ id, seg, frame: i, feat, x: raw[k]!.x, good: frame.rating === "good" }); cplayers.push(players[j]!); }
     });
     frame.players = players.sort((a, b) => a.id - b.id);
+    addTime(labProf, "track", performance.now() - k0);
     // the ball: best candidate (crowd filter), smoothed in image px, mapped to the ground under it
-    ball = stepBall(ball, pickBall(run.balls, run.persons, i2p, size.w), dt, size.w);
+    ball = timed("ball", () => stepBall(ball, pickBall(run.balls, run.persons, i2p, size.w), dt, size.w));
     if (ball && (ball.hits >= 2 || ball.misses === 0)) {
       const box = trackBox(ball);
       frame.ballBox = box; frame.ballScore = ball.score;
       frame.ball = toPitch(i2p, ballGround(box));
     }
     frame.ms = performance.now() - f0;
+    addTime(labProf, "frame(total)", frame.ms);
     frames.push(frame);
     opts.onProgress?.({ done: i + 1, total: times.length, frame });
   }
   // final team labels: one model for the clip (best frames), nearest centroid per detection, weighted vote per track (a
   // detection that is clearly something else than its track keeps its own label)
-  const lab = labelClip(cdets);
+  const lab = timed("teams.labelClip", () => labelClip(cdets));
   if (lab.model) {
     teamRgb = lab.model.centres.map(labToRgb); separation = lab.model.separation;
     for (const f of frames) for (const p of f.players) p.team = lab.byTrack.get(p.id) ?? p.team;

@@ -1,13 +1,14 @@
 // The 3D view: three.js scene + renderer, loaded with import() (see toggle.ts) so three.js is a separate chunk and
 // never weighs on the 2D game. Adapted from the portfolio site's football3d scene.ts / view3d.ts / camera.ts (same
-// author, MIT): instanced capsule players with team colours and a dark outline, billboard shirt numbers from a drawn
-// 10 x 10 atlas, soft contact shadows, a textured pitch with mowing stripes, a cheap stadium surround (one textured
-// cylinder), goals, ball, arrows as flat ribbons on the grass.
+// author, MIT): low-poly footballers (one InstancedMesh per body part, see gait.ts) in their team's kit with a dark rim,
+// billboard shirt numbers from a drawn 10 x 10 atlas, soft contact shadows, a textured pitch with mowing stripes, a cheap
+// stadium surround (one textured cylinder), goals, ball, arrows as flat ribbons on the grass.
 // Three cameras: the ball carrier's eyes (drag to look around), the stadium (TV side view following the ball, drag to
 // orbit) and tactical (high and tilted, drag to orbit); double-tap re-centres. The mode is remembered (localStorage).
 // Tracking frames arrive at 10-12.5 fps: the loop interpolates positions between the last two frames at the screen's
-// rate, turns each figure towards its direction of motion and bobs it when it runs (not with reduced motion). Renders
-// only while something moves (a frame transition, a drag, the camera settling).
+// rate, turns each figure towards its direction of motion and animates a procedural walk / run / sprint cycle from its
+// smoothed speed, leaning into accelerations (with reduced motion: a still standing pose). Renders only while something
+// moves (a frame transition, a drag, the camera settling).
 // Free play passes the ball's real height (overlay.ballH): the ball flies, its shadow stays on the grass under it, a faint
 // line joins them. During the daily reveal's replay (overlay.replay) the stadium camera follows the ball like a
 // broadcast (damped, leading along its velocity), the eyes turn towards it, tactical holds still, the arrows fade out;
@@ -25,9 +26,10 @@ import {
   CAMERA_MODES, COLORS, EYES_ARROW, EYES_FOV, FAR_ARROW, GOAL_H, GOAL_HALF_WIDTH, HALF_LENGTH, HALF_WIDTH, LOOK_HOME, NO_FRAMING,
   ORBIT_HOME, arrowFade, arrowSpecs, atlasCell, badgeItems, ballScale, ballShadow, broadcastFollow, cameraPose, carrierAt, cmToM, damp, dragLook,
   dragOrbit, eyesArrow, eyesFollowYaw, followFocus, frameTips, goalOf, isCameraMode, isTap, labelVisible, lerpFrame, lerpPoint, motion,
-  pickTargets, pitchMarkings, rayPick, ribbon, runBob, surname, toWorld, turnTowards, zoomFov, zoomOrbit,
+  pickTargets, pitchMarkings, rayPick, ribbon, surname, toWorld, turnTowards, zoomFov, zoomOrbit,
   type CameraMode, type Follow, type Framing, type Look, type Moment3D, type Orbit, type Overlay3D, type PickTarget, type Vec,
 } from "./geom.ts";
+import { IDLE_MS, LIMBS, accelLean, advancePhase, figureMatrices, gaitParams, kitColors, poseAt, rootMatrix, skinTone } from "./gait.ts";
 
 type Cm = [number, number] | null;
 export interface View3D {
@@ -56,7 +58,28 @@ export const MODE_KEY = "playmaker.view3d.mode", NAMES_KEY = "playmaker.view3d.n
 const LABEL_FRAC = 0.034, TETHER_MIN = 0.6; // label height: 3.4 % of the canvas; the ball's line to its shadow above 0.6 m
 const MAX_CARRIES = 16, Y_AXIS = new Vector3(0, 1, 0);
 const MAX_FIGURES = 36, MAX_ARROW_VERTS = 8 * 60 * 3, MAX_TRAIL = 200, MAX_DPR = 1.5;
-const BODY_Y = 0.78, HEAD_Y = 1.7, NUMBER_Y = 2.3, BALL_R = 0.11, BALL_VIS_R = 0.16;
+const NUMBER_Y = 2.3, FIGURE_H = 1.8, BALL_R = 0.11, BALL_VIS_R = 0.16;
+/** The figures are drawn a little larger from the far cameras, where a 1.8 m player is a few pixels tall. */
+const FIGURE_SCALE: Record<CameraMode, number> = { eyes: 1, stadium: 1.15, tactical: 1.3 };
+const SPEED_TAU = 0.15, ACCEL_TAU = 0.3, RIM = 0.5; // s: smoothing of each figure's speed and acceleration; edge darkening
+
+/** Adds a dark rim (view-angle shading) to a Lambert material: the figures' outline without a second draw. */
+function withRim<T extends MeshLambertMaterial>(mat: T): T {
+  mat.onBeforeCompile = (sh) => {
+    sh.fragmentShader = sh.fragmentShader.replace("#include <tonemapping_fragment>",
+      `gl_FragColor.rgb *= 1.0 - ${RIM.toFixed(2)} * pow(1.0 - abs(dot(normalize(normal), normalize(vViewPosition))), 2.0);\n#include <tonemapping_fragment>`);
+  };
+  mat.customProgramCacheKey = () => "figure-rim";
+  return mat;
+}
+
+/** White vertex colours (the instance colour shows as is), or `paint` per vertex position. */
+function vertexColours<T extends BufferGeometry>(g: T, paint?: (x: number, y: number, z: number) => number): T {
+  const pos = g.getAttribute("position"), c = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) { const k = paint ? paint(pos.getX(i), pos.getY(i), pos.getZ(i)) : 1; c.set([k, k, k], i * 3); }
+  g.setAttribute("color", new BufferAttribute(c, 3));
+  return g;
+}
 const MAX_FRAME_MS = 200, JUMP_M = 12; // a transition never lasts longer; a player moving further between frames is a cut
 const STAND_R = 120, STAND_H = 38;
 
@@ -232,7 +255,7 @@ export function createView3D(host: HTMLElement): View3D | null {
   lineGeo.setAttribute("position", new BufferAttribute(linePos, 3));
   scene.add(new Mesh(lineGeo, new MeshBasicMaterial({ color: "#e8efe9", side: DoubleSide })));
 
-  const m = new Matrix4(), q = new Quaternion(), s = new Vector3(), p = new Vector3(), colour = new Color(), dark = new Color();
+  const m = new Matrix4(), q = new Quaternion(), s = new Vector3(), p = new Vector3(), colour = new Color();
   const goals = new InstancedMesh(new CylinderGeometry(0.06, 0.06, 1, 8), new MeshLambertMaterial({ color: "#ffffff" }), 6);
   const bar = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), Math.PI / 2);
   let gi = 0;
@@ -256,11 +279,24 @@ export function createView3D(host: HTMLElement): View3D | null {
   const blob = blobTexture();
   const shadowMat = new MeshBasicMaterial({ map: blob, transparent: true, depthWrite: false });
   const shadows = figureMesh(flat(new PlaneGeometry(1.5, 1.5)), shadowMat);
-  const capsule = new CapsuleGeometry(0.28, 1.0, 4, 10);
-  const bodies = figureMesh(capsule, new MeshLambertMaterial({ color: 0xffffff }));
-  const outlines = figureMesh(capsule, new MeshBasicMaterial({ color: 0xffffff, side: BackSide })); // inverted hull: a dark edge
-  for (let i = 0; i < MAX_FIGURES; i++) { bodies.setColorAt(i, colour.set(0xffffff)); outlines.setColorAt(i, colour.set(0x000000)); }
-  const heads = figureMesh(new SphereGeometry(0.14, 10, 8), new MeshLambertMaterial({ color: "#d8c3a5" }));
+  // the footballers: one InstancedMesh per body part (see gait.ts for the figure's frame and sizes), all sharing one
+  // material: vertex colours times the instance colour (kit, skin), a dark rim instead of an outline hull
+  const figureMat = withRim(new MeshLambertMaterial({ vertexColors: true }));
+  const torsoGeo = vertexColours(new CylinderGeometry(0.5, 0.4, 1, 8, 1).translate(0, 0.5, 0));  // shoulders wider than the waist
+  const shortsGeo = vertexColours(new CylinderGeometry(0.5, 0.56, 1, 8, 1).translate(0, -0.5, 0));
+  // the head, hair on the top and the back (the figure faces +x): the hair colour is the skin tone times 0.22
+  const headGeo = vertexColours(new SphereGeometry(1, 10, 8), (x, y) => (y > 0.25 || (x < -0.35 && y > -0.35) ? 0.22 : 1));
+  // a limb: y in [-1.15, 0.15] at unit scale (rounded ends overlap at the joints), 1 unit across
+  const limbGeo = vertexColours(new CapsuleGeometry(0.5, 1, 3, 6).scale(1, 0.65, 1).translate(0, -0.5, 0));
+  const torsos = figureMesh(torsoGeo, figureMat), shortsMesh = figureMesh(shortsGeo, figureMat), heads = figureMesh(headGeo, figureMat);
+  const limbs = new InstancedMesh(limbGeo, figureMat, MAX_FIGURES * LIMBS);
+  limbs.count = 0; limbs.frustumCulled = false;
+  for (const mesh of [torsos, shortsMesh, heads]) for (let i = 0; i < MAX_FIGURES; i++) mesh.setColorAt(i, colour.set(0xffffff));
+  for (let i = 0; i < MAX_FIGURES * LIMBS; i++) limbs.setColorAt(i, colour.set(0xffffff));
+  const figureParts = [torsos, shortsMesh, heads, limbs];
+  const colourCache = new Map<string, Color>();
+  const col = (hex: string) => { let c = colourCache.get(hex); if (!c) { c = new Color(hex); colourCache.set(hex, c); } return c; };
+  const SHOE = "#15181d";
   const cells = new InstancedBufferAttribute(new Float32Array(MAX_FIGURES * 2), 2);
   const numberGeo = new PlaneGeometry(1, 1);
   numberGeo.setAttribute("aCell", cells);
@@ -313,7 +349,7 @@ export function createView3D(host: HTMLElement): View3D | null {
   for (let i = 0; i < MAX_CARRIES; i++) chevrons.setColorAt(i, colour.set(COLORS.ball));
   chevrons.count = 0; chevrons.frustumCulled = false;
   const badges = new Group();
-  scene.add(shadows, outlines, bodies, heads, numbers, ring, carrierRing, ball, ballShadowMesh, tether, arrows, trail, chevrons, badges, labels);
+  scene.add(shadows, ...figureParts, numbers, ring, carrierRing, ball, ballShadowMesh, tether, arrows, trail, chevrons, badges, labels);
   const arrowMat = arrows.material as MeshBasicMaterial;
 
   // ---- camera, steering and the motion state ----
@@ -326,8 +362,9 @@ export function createView3D(host: HTMLElement): View3D | null {
   let lastMo: Moment3D | null = null, lastFrame: Cm[] = [], lastBall: Cm = null, lastOverlay: Overlay3D = {};
   // the transition: from `prev` (what was on screen) to `cur` (the last frame shown) over `dur` ms from `t0`
   let prev: Cm[] = [], cur: Cm[] = [], prevBall: Cm = null, curBall: Cm = null, t0 = 0, dur = 0, u = 1;
-  // per player: last drawn position, facing (radians, pitch frame), speed (m/s), distance run (for the bob phase)
-  const drawn: Cm[] = [], heading: number[] = [], speeds: number[] = [], run: number[] = [];
+  // per player: last drawn position, facing (radians, pitch frame), smoothed speed (m/s) and acceleration (m/s^2),
+  // stride phase (radians)
+  const drawn: Cm[] = [], heading: number[] = [], speeds: number[] = [], accels: number[] = [], phases: number[] = [];
   let lastTick = 0, moving = false, settled = true;
   // the reveal's replay: the broadcast follow, the eyes' turn and pull-back, the framing it started from
   let follow: Follow = { focus: [0, 0], vel: [0, 0] }, followYaw = 0, followBack = 0, inReplay = false, replayFraming: Framing = NO_FRAMING;
@@ -382,34 +419,49 @@ export function createView3D(host: HTMLElement): View3D | null {
     camera.updateProjectionMatrix();
     camera.lookAt(aim.set(...pose.target));
 
-    // figures: colour by side, facing their motion, bobbing when they run; the carrier hidden from his own eyes
+    // figures: kit by side, facing their motion, running at their speed; the carrier hidden from his own eyes
     const showCarrier = mode !== "eyes" || framing.back > 0;
     const labelH = LABEL_FRAC * 2 * Math.tan((camera.fov * Math.PI) / 360); // constant height on screen
     for (const l of labelOf.values()) l.sprite.visible = false;
     let n = 0;
     moving = false;
+    const fs = FIGURE_SCALE[mode], numberY = NUMBER_Y + FIGURE_H * (fs - 1); // the number stays over the (scaled) head
     frame.forEach((cm, i) => {
       if (!cm || n >= MAX_FIGURES) return;
       const pl = mo.players[i];
       if (!pl) return;
       const [x, y] = cmToM(cm), z = -y;
       const mv = motion(drawn[i] ?? null, [x, y], dt);
-      speeds[i] = mv.speed;
+      // speed smoothed over ~0.15 s (interpolated tracking is jerky frame to frame), its change for the lean
+      const sp0 = speeds[i] ?? mv.speed, sp = dt > 0 ? damp(sp0, mv.speed, dt, SPEED_TAU) : sp0;
+      accels[i] = dt > 0 ? damp(accels[i] ?? 0, (sp - sp0) / dt, dt, ACCEL_TAU) : accels[i] ?? 0;
+      speeds[i] = sp;
       heading[i] = mv.heading === null ? heading[i] ?? Math.atan2(goal[1] - y, goal[0] - x) : turnTowards(heading[i] ?? mv.heading, mv.heading, dt);
-      run[i] = (run[i] ?? 0) + mv.speed * dt;
+      phases[i] = advancePhase(phases[i] ?? (i * 2.39996) % (2 * Math.PI), mv.speed * dt, sp, reduced); // staggered starts
       drawn[i] = [x, y];
-      if (mv.speed >= 1.5) moving = true;
-      const bob = runBob(mv.speed, run[i]!, reduced);
+      if (mv.speed >= IDLE_MS || sp >= 0.05) moving = true; // keep drawing until the stride has eased back to standing
       const k = i === mo.carrier && !showCarrier ? 0 : 1; // the camera is inside the carrier
       q.setFromAxisAngle(Y_AXIS, heading[i]!);
-      bodies.setMatrixAt(n, m.compose(p.set(x, BODY_Y + bob, z), q, s.set(0.72 * k, k, k)));      // shoulders wider than the chest
-      outlines.setMatrixAt(n, m.compose(p.set(x, BODY_Y + bob + 0.02, z), q, s.set(0.82 * k, 1.0 * k, 1.12 * k))); // a hull round the sides, not under the feet
+      // the figure: the gait from the speed, the pose at this point of the stride, every part's matrix
+      const g = gaitParams(sp, reduced);
+      const pose = poseAt(phases[i]!, g, reduced ? 0 : accelLean(accels[i]!));
+      const fm = figureMatrices(rootMatrix(x, z, heading[i]!, k * fs), pose);
+      const bob = pose.bob * fs;
+      torsos.instanceMatrix.array.set(fm.torso, n * 16);
+      shortsMesh.instanceMatrix.array.set(fm.shorts, n * 16);
+      heads.instanceMatrix.array.set(fm.head, n * 16);
+      fm.limbs.forEach((lm, j) => limbs.instanceMatrix.array.set(lm, (n * LIMBS + j) * 16));
       const side = pl.side === 0 ? mo.colors?.[0] ?? COLORS.attack : mo.colors?.[1] ?? COLORS.defend;
-      bodies.setColorAt(n, colour.set(side));
-      outlines.setColorAt(n, dark.set(side).multiplyScalar(0.3));
-      heads.setMatrixAt(n, m.compose(p.set(x, HEAD_Y + bob, z), q, s.set(k, k, k)));
+      const kit = kitColors(side, !!(pl as { keeper?: boolean }).keeper, pl.side), skin = col(skinTone(i));
+      const shirt = col(kit.shirt);
+      torsos.setColorAt(n, shirt);
+      shortsMesh.setColorAt(n, col(kit.shorts));
+      heads.setColorAt(n, skin);
+      // LIMB_ORDER: thighs (skin), shins (socks), shoes, upper arms (sleeves), forearms (skin)
+      const limbCols = [skin, skin, col(kit.socks), col(kit.socks), col(SHOE), col(SHOE), shirt, shirt, skin, skin];
+      limbCols.forEach((c, j) => limbs.setColorAt(n * LIMBS + j, c));
       let kn = i === mo.carrier && mode === "eyes" ? 0 : 1; // seen from just behind him, his own number would fill the screen
-      if (names && kn && labelVisible(mode, Math.hypot(x - camera.position.x, NUMBER_Y - camera.position.y, z - camera.position.z))) {
+      if (names && kn && labelVisible(mode, Math.hypot(x - camera.position.x, numberY - camera.position.y, z - camera.position.z))) {
         const text = `${pl.shirt} ${surname(pl.name)}`;
         let l = labelOf.get(i);
         if (!l || l.text !== text) {
@@ -422,19 +474,19 @@ export function createView3D(host: HTMLElement): View3D | null {
           labels.add(sprite);
         }
         l.sprite.visible = true;
-        l.sprite.position.set(x, NUMBER_Y + 0.15 + bob, z);
+        l.sprite.position.set(x, numberY + 0.15 + bob, z);
         l.sprite.scale.set(labelH * l.aspect, labelH, 1);
         kn = 0; // the label carries the number
       }
-      numbers.setMatrixAt(n, m.compose(p.set(x, NUMBER_Y + bob, z), q, s.set(kn, kn, kn)));
+      numbers.setMatrixAt(n, m.compose(p.set(x, numberY + bob, z), q, s.set(kn, kn, kn)));
       const [cx, cy] = atlasCell(pl.shirt);
       cells.setXY(n, cx, cy);
-      shadows.setMatrixAt(n, m.compose(p.set(x, 0.012, z), q, s.set(0.85 * k, k, k)));
+      shadows.setMatrixAt(n, m.compose(p.set(x, 0.012, z), q, s.set(0.85 * k * fs, k * fs, k * fs)));
       n++;
     });
-    for (const mesh of [bodies, outlines, heads, numbers, shadows]) { mesh.count = n; mesh.instanceMatrix.needsUpdate = true; }
-    bodies.instanceColor!.needsUpdate = true;
-    outlines.instanceColor!.needsUpdate = true;
+    for (const mesh of [torsos, shortsMesh, heads, numbers, shadows]) { mesh.count = n; mesh.instanceMatrix.needsUpdate = true; }
+    limbs.count = n * LIMBS; limbs.instanceMatrix.needsUpdate = true;
+    for (const mesh of figureParts) mesh.instanceColor!.needsUpdate = true;
     cells.needsUpdate = true;
     q.identity();
 
@@ -615,7 +667,7 @@ export function createView3D(host: HTMLElement): View3D | null {
     if (jumped || mo.live || !cur.length) { prev = frame; prevBall = b; dur = 0; }
     else { prev = u >= 1 ? cur : lerpFrame(prev, cur, u); prevBall = u >= 1 ? curBall : lerpPoint(prevBall, curBall, u); dur = Math.min(MAX_FRAME_MS, 1000 / (mo.fps || 10)); }
     cur = frame; curBall = b; t0 = performance.now(); u = dur > 0 ? 0 : 1;
-    if (jumped) { drawn.length = 0; heading.length = 0; run.length = 0; lastTick = 0; const c = carrierAt(mo, frame); focus = b ? cmToM(b) : c ?? focus; }
+    if (jumped) { drawn.length = 0; heading.length = 0; speeds.length = 0; accels.length = 0; phases.length = 0; lastTick = 0; const c = carrierAt(mo, frame); focus = b ? cmToM(b) : c ?? focus; }
   }
 
   function show(mo: Moment3D, frame: Cm[], b: Cm, o: Overlay3D = {}) {

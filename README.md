@@ -1,6 +1,6 @@
 # Playmaker
 
-**Play the demo: https://playmaker-game.github.io/** (static build: 30 days of content, picks scored in
+**Play the demo: https://playmaker-game.github.io/** (static build: 329 days / 1,645 plays from playmaker-game/playmaker-content, picks scored in
 your browser, no crowd stats; the full service keeps answers on a server, see docs/ARCHITECTURE.md).
 
 A daily football decision game. Five real moments from professional matches: you have the ball, pick the pass. Then
@@ -39,7 +39,7 @@ synthetic scene, no broadcast picture). Regenerate them with `scripts/showcase/`
 - **Five real moments a day** from open professional tracking data (Bundesliga, 2. Bundesliga, A-League). Watch 3 s of
   real play, then two questions: **What would you do?** (scored by the AI coach, close calls get full points) and
   **What did the pro actually do?** (objective: the real pass).
-- **Training**: endless play over the whole bank (every past day's moments; 150 in the demo, 585 in the full
+- **Training**: endless play over the whole bank (every past day's moments; 1,645 in the public game, 150 in the repo's test bank, all of them in the full
   release), shuffled with no repeat until every play was seen, with a running average, a run of top picks, a
   pitch-zone filter and a "training bank" progress card. It never counts for the daily streak or stats.
 - **The reveal**: your points, the AI's pick with what helped and hurt, the pro's pick, what happened next, the crowd

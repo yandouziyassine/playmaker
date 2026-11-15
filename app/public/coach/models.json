@@ -239,6 +239,7 @@
       60
     ],
     "shot_range": 35.0,
-    "score": "p * V(target) + (1 - p) * (-V_opp(loss point)) - V(now); shot: xG - V(now); V(target) of a pass = the arrival model, of a carry = the value model"
+    "shot_min_angle": 0.12,
+    "score": "p * V(target) + (1 - p) * (-V_opp(loss point)) - V(now); shot (goal distance <= shot_range and goal angle >= shot_min_angle rad): xG - V(now); V(target) of a pass = the arrival model, of a carry = the value model"
   }
 }

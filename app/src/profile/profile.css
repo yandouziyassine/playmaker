@@ -1,0 +1,32 @@
+/* Player profile dialog (nickname + player code). Uses the design tokens only. */
+dialog.profile {
+  width: min(480px, calc(100vw - 2 * var(--s-4)));
+  max-height: calc(100dvh - 2 * var(--s-4));
+  overflow: auto;
+  color: var(--fg);
+  padding: var(--s-4);
+  margin: auto;
+}
+dialog.profile::backdrop { background: rgba(0, 0, 0, 0.6); }
+.pf-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); }
+.pf-head h2 { margin: 0; font: 800 var(--fs-lg)/1.1 var(--font-display); text-transform: uppercase; letter-spacing: 0.02em; }
+.pf-close { min-width: var(--tap); min-height: var(--tap); font-size: 1.6rem; line-height: 1; border-radius: var(--r-pill); cursor: pointer; }
+.pf-close:focus-visible, dialog.profile button:focus-visible, dialog.profile input:focus-visible, dialog.profile textarea:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+.pf-field { display: grid; gap: var(--s-1); margin: var(--s-4) 0; font-weight: 600; }
+.pf-field input, .pf-code {
+  font: inherit; color: var(--fg); background: var(--surface-2); border: 1px solid var(--line-strong);
+  border-radius: var(--r-inner); padding: var(--s-2) var(--s-3); min-height: var(--tap); width: 100%;
+}
+.pf-code { font-family: ui-monospace, "Cascadia Mono", Menlo, monospace; font-size: var(--fs-sm); resize: vertical; word-break: break-all; margin: var(--s-2) 0; }
+.pf-sec { border-top: 1px solid var(--line); padding-top: var(--s-3); margin-top: var(--s-4); }
+.pf-sec h3 { margin: 0 0 var(--s-1); font-size: var(--fs-md); }
+.pf-row { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+.pf-row .ghost:not([hidden]) {
+  display: inline-flex; align-items: center; min-height: var(--tap); padding: 0 var(--s-4);
+  border: 1px solid var(--line-strong); border-radius: var(--r-pill); font-weight: 600; cursor: pointer;
+}
+.pf-msg { min-height: 1.5em; margin: var(--s-2) 0 0; }
+.pf-msg.bad { color: var(--attack-ink); }
+.pf-stats { margin-top: 0; }

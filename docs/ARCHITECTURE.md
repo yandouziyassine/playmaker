@@ -6,7 +6,7 @@ the professional actually do (scored against the real pass). This document descr
 one round flows through it, and what is planned but not yet running.
 
 Status (2026-11-12): runs locally (game, API, content). A **static demo** is live at
-https://yandouziyassine.github.io/playmaker/ (section 9.4: it trades the server-side answers for static hosting). The
+https://playmaker-game.github.io/ (section 9.4: it trades the server-side answers for static hosting). The
 AWS deployment in section 12 is **planned, not deployed**.
 
 Related sources:
@@ -369,7 +369,7 @@ Typed dictionaries (`app/src/i18n/`; the Lab's strings in their own dictionaries
 ### 9.4 Static demo (GitHub Pages)
 
 `npm run demo:content -- <content-vN>` packages the first 30 days of a release (public files **and** answer files)
-into `demo/content/`; `npm run demo:build` builds the app with `VITE_DEMO=1` under `/playmaker/` with relative URLs and
+into `demo/content/`; `npm run demo:build` builds the app with `VITE_DEMO=1` at the site root (any base works: all URLs are relative) and
 copies the content next to it. `.github/workflows/pages.yml` deploys it from `main`.
 
 In demo mode (`app/src/demo.ts`) there is no server. Today's date is mapped onto the 30 days cyclically, so there is

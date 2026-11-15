@@ -1,6 +1,6 @@
 # Playmaker
 
-**Play the demo: https://yandouziyassine.github.io/playmaker/** (static build: 30 days of content, picks scored in
+**Play the demo: https://playmaker-game.github.io/** (static build: 30 days of content, picks scored in
 your browser, no crowd stats; the full service keeps answers on a server, see docs/ARCHITECTURE.md).
 
 A daily football decision game. Five real moments from professional matches: you have the ball, pick the pass. Then

@@ -1,6 +1,6 @@
 name: pages
-# Public static demo of Playmaker on GitHub Pages: the app built with VITE_DEMO=1 (picks scored in the browser from the
-# shipped answer files, no crowd stats, no service worker) and 30 days of content from demo/content.
+# The game lives at https://playmaker-game.github.io (built from this repo by playmaker-game/playmaker-game.github.io).
+# This keeps the old address (yandouziyassine.github.io/playmaker/) alive as a redirect that keeps path, query and #code=.
 on:
   push:
     branches: [main]
@@ -18,11 +18,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 24, cache: npm }
-      - run: npm ci
-      - run: node scripts/demo-build.mjs /playmaker/
+        with: { node-version: 24 }
+      - run: node scripts/redirect-site.mjs
       - uses: actions/upload-pages-artifact@v3
-        with: { path: dist }
+        with: { path: dist-redirect }
   deploy:
     needs: build
     runs-on: ubuntu-latest

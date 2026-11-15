@@ -3,10 +3,10 @@ import { t, tn } from "./i18n/index.ts";
 /** 1080x1350 share card (portrait, Instagram-friendly). Spoiler-free: score, squares and streak only, no player data. */
 export const CARD_W = 1080, CARD_H = 1350;
 const C = {
-  bg0: "#12391f", bg1: "#07170e", fg: "#f1faee", muted: "#a9c2b3", attack: "#ef476f",
+  bg0: "#123b26", bg1: "#06120c", fg: "#eef6ef", muted: "#a9c2b3", attack: "#ef476f",
   top: "#06d6a0", mid: "#ffd166", low: "#8d99ae",
 };
-const DISPLAY = `"Avenir Next Condensed", "Arial Narrow", "Roboto Condensed", system-ui, sans-serif`;
+const DISPLAY = `"Barlow Condensed", "Avenir Next Condensed", "Arial Narrow", "Roboto Condensed", system-ui, sans-serif`;
 
 /** Same thresholds as the emoji squares: green 100, yellow 50+, grey below. */
 export const tileColor = (p: number) => (p >= 100 ? C.top : p >= 50 ? C.mid : C.low);

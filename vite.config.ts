@@ -49,6 +49,8 @@ function demoPreload(): Plugin {
 
 // `npm run dev:phone`: HTTPS with a local self-signed certificate on the LAN, so a phone on the same Wi-Fi can open the
 // game and the Lab's live camera (browsers only allow getUserMedia in a secure context).
+const API = `http://localhost:${process.env.PLAYMAKER_API_PORT ?? 8787}`;
+
 export default defineConfig(({ mode }) => ({
   root: "app",
   plugins: [...(mode === "phone" ? [basicSsl()] : []), swPlugin(), demoPreload()], // swPlugin: /sw.js, build only (offline play)
@@ -63,5 +65,6 @@ export default defineConfig(({ mode }) => ({
       },
     },
   },
-  server: { port: 5173, proxy: { "/api": "http://localhost:8787", "/content": "http://localhost:8787" } },
+  // PLAYMAKER_API_PORT: the dev API on another port (several checkouts side by side; api/src/dev.ts reads it too)
+  server: { port: 5173, proxy: { "/api": API, "/content": API } },
 }));

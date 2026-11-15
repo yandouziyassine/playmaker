@@ -1,5 +1,5 @@
 /* "Your stats" card (done screen) and its compact version (intro). */
-.stats { text-align: left; margin-top: var(--s-6); }
+.stats { text-align: left; margin-top: var(--s-4); }
 .stats .shead { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s-2); margin-bottom: var(--s-3); }
 .stats .shead h2 { margin: 0; }
 .stiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-2); }
@@ -13,8 +13,9 @@
 .sbar .val { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
 .sbar .val small { font-weight: 400; font-size: var(--fs-xs); color: var(--muted); }
 .insight { margin: var(--s-4) 0 0; padding: var(--s-2) var(--s-3); border-radius: var(--r-inner); background: var(--surface-2); font-size: var(--fs-sm); }
-.stats.compact { margin: var(--s-4) 0 0; }
-.stats.compact .stat b { font-size: 1.5rem; }
+/* intro: three tiles on the ground, no card (the title is for screen readers) */
+.stats.compact { margin: 14px 0 0; }
+.stats.compact .shead { margin: 0; }
 @media (max-width: 380px) {
   .stat { padding: var(--s-2); }
   .stat b { font-size: 1.5rem; }

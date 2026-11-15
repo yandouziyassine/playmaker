@@ -1,55 +1,75 @@
 /* Playmaker design tokens: the one palette, type scale, spacing scale, radii and motion used by every page.
-   Colour roles: --accent (cyan) is the single accent: every interactive control (primary buttons, links, focus,
-   toggles) and every AI-coach highlight. The pitch keeps its own football colours (red attacking side, white
-   defenders, yellow pro / ball). Contrast (WCAG AA, computed): --fg on --bg 17.3:1, on --surface-2 12.7:1;
-   --muted on --bg 10.5:1, on --surface 9.1:1, on --surface-2 7.7:1; --accent-ink on --accent 8.8:1;
-   --accent on --surface-2 7.1:1; --attack-ink on --surface-2 5.5:1; --pro on --surface-2 9.4:1;
-   --low on --surface 6.1:1; --top on --surface-2 7.2:1; --disabled-fg on --disabled-bg 4.9:1. */
+   Look: a night matchday broadcast. Barlow Condensed scoreboard numerals over Barlow body text, tabular figures.
+   Colour means one thing: --accent (cyan) = the AI coach and the primary action (buttons, links, focus); --pro (gold) =
+   the pro; white = you; --attack (red) = your team; --top (green) = a top pick. The pitch has its own greens.
+   Contrast (WCAG AA, computed): --fg on --bg 17.3:1, on --surface 14.9:1; --muted on --bg 10.1:1, on --surface 8.6:1,
+   on --surface-2 7.3:1; --faint on --bg 7.6:1, on --surface 6.5:1; --accent on --bg 9.9:1, on --surface 8.5:1;
+   --accent-ink on --accent 8.8:1; --pro on --surface 11.4:1; --top on --surface 8.7:1; --attack-ink on --surface 6.6:1;
+   white on --attack-btn 4.9:1; --disabled-fg on --disabled-bg 5.2:1; --low-ink on --low-bg 7.2:1. */
+
+/* Fonts: self-hosted (SIL OFL 1.1, design/fonts/OFL.txt), latin subset, woff2. Four files: Barlow 400 and 600 (also
+   used for 700), Barlow Condensed 700 (also 600) and 800. index.html repeats these faces in its critical CSS and
+   preloads the condensed 800 (the hero title). */
+@font-face { font-family: "Barlow"; font-style: normal; font-weight: 400; font-display: swap; src: url("./fonts/barlow-400.woff2") format("woff2"); }
+@font-face { font-family: "Barlow"; font-style: normal; font-weight: 500 700; font-display: swap; src: url("./fonts/barlow-600.woff2") format("woff2"); }
+@font-face { font-family: "Barlow Condensed"; font-style: normal; font-weight: 600 700; font-display: swap; src: url("./fonts/barlow-condensed-700.woff2") format("woff2"); }
+@font-face { font-family: "Barlow Condensed"; font-style: normal; font-weight: 800 900; font-display: swap; src: url("./fonts/barlow-condensed-800.woff2") format("woff2"); }
+
 :root {
   color-scheme: dark;
   /* surfaces */
-  --bg: #07170e;
-  --surface: #0e2618;          /* cards */
-  --surface-2: #163423;        /* rows / tiles inside a card */
-  --surface-3: #1f4430;        /* selected chip */
-  --line: rgba(241, 250, 238, 0.12);
-  --line-strong: rgba(241, 250, 238, 0.42); /* control outlines, 3:1+ (WCAG 1.4.11) */
+  --bg: #06120c;               /* the ground */
+  --surface: #0d2418;          /* cards, tiles */
+  --surface-2: #153222;        /* rows / tiles inside a card */
+  --surface-3: #1b3326;        /* the other team's scoreboard tag, selected chip */
+  --line: rgba(238, 246, 239, 0.10);
+  --line-strong: rgba(238, 246, 239, 0.42); /* control outlines, 3:1+ (WCAG 1.4.11) */
   /* text */
-  --fg: #f1faee;
-  --muted: #b2c9bb;
-  /* the accent */
+  --fg: #eef6ef;
+  --muted: #a9c2b3;
+  --faint: #93a89b;            /* footnotes */
+  /* the accent: the AI coach and the primary action */
   --accent: #4cc9f0;
+  --accent-hover: #8fdcf5;
   --accent-ink: #04202c;       /* text on an accent fill */
-  --accent-soft: rgba(76, 201, 240, 0.14);
-  /* football / meaning colours */
-  --attack: #ef476f;           /* the attacking team on the pitch, the brand mark */
+  --accent-soft: rgba(76, 201, 240, 0.08);
+  --accent-soft-2: rgba(76, 201, 240, 0.16);
+  /* meaning colours */
+  --attack: #ef476f;           /* your team on the pitch, the brand mark */
   --attack-ink: #ff7a96;       /* small pink text on panels */
-  --attack-btn: #d12f57;       /* white text on it: 4.9:1 */
+  --attack-btn: #d12f57;       /* white text on it: 4.9:1 (the scoreboard tag of your team) */
   --pro: #ffd166;
-  --top: #06d6a0; --mid: #ffd166; --low: #93a0b4;
-  --disabled-bg: #233a2d; --disabled-fg: #93a89b;
+  --pro-soft: rgba(255, 209, 102, 0.14);
+  --top: #06d6a0; --top-ink: #04261b;
+  --mid: #ffd166; --mid-ink: #2b2000;
+  --low: #8fa598; --low-bg: #2a4235; --low-ink: #c7d6cc;
+  --disabled-bg: #1d3528; --disabled-fg: #93a89b;
+  /* the pitch */
+  --grass: #123b26; --grass-2: #164630;
 
   /* type */
-  --font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-display: "Avenir Next Condensed", "Arial Narrow", "Roboto Condensed", system-ui, sans-serif;
+  --font-body: "Barlow", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", system-ui, sans-serif;
   --fs-xs: 0.75rem;   /* 12 */
   --fs-sm: 0.875rem;  /* 14 */
   --fs-md: 1rem;      /* 16 */
   --fs-lg: 1.25rem;   /* 20 */
   --fs-xl: 1.75rem;   /* 28 */
-  --fs-2xl: clamp(2rem, 8.5vw, 2.75rem);
-  --fs-hero: 4.5rem;
-  --lh-tight: 1.05; --lh-snug: 1.25; --lh-body: 1.5;
+  --fs-2xl: clamp(2.25rem, 11vw, 2.875rem); /* 36-46: the hero title */
+  --fs-hero: 4.5rem;  /* 72: the points of a moment */
+  --fs-mega: 6.5rem;  /* 104: the day's total */
+  --lh-tight: 0.95; --lh-snug: 1.25; --lh-body: 1.45;
+  --track-caps: 0.14em;        /* small capitals (eyebrows) */
 
   /* spacing: 4 px scale */
   --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px; --s-6: 24px; --s-8: 32px; --s-10: 40px;
 
-  /* radii: inner radius = outer radius - padding. A card is 20 px with 12 px padding, so whatever hugs its inside
-     (rows, tiles, the 3D toggle inset 8 px in the pitch) gets 20 - 12 = 8 px; a row with 8 px padding gets 0. */
-  --r-card: 20px;
-  --pad-card: 12px;
-  --r-inner: calc(var(--r-card) - var(--pad-card)); /* 8 px */
-  --r-stage: 16px;             /* the pitch */
+  /* radii: inner radius = outer radius - padding. A card is 16 px with 14 px padding (rows inside: 4 px); tiles and
+     rows on the ground are 12 px; the pitch is 18 px. */
+  --r-card: 16px;
+  --pad-card: 14px;
+  --r-inner: 12px;
+  --r-stage: 18px;
   --r-pill: 999px;
 
   /* elevation: flat; one shadow, only for things floating over the pitch */
@@ -59,4 +79,5 @@
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
   --t-fast: 120ms; --t-med: 240ms; --t-slow: 600ms;
   --tap: 44px;                 /* minimum touch target */
+  --cta: 58px;                 /* the one big action in the thumb zone */
 }

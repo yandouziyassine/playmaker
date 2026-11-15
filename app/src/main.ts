@@ -3,12 +3,12 @@ import { playDay, Tour } from "./round.ts";
 import { shareText, square } from "./share.ts";
 import { shareCardFile, shareFileName, shareScore } from "./shareImage.ts";
 import { computeStats, kindLabel, KINDS, proReads, zoneLabel, ZONES, toRecord, type Bucket } from "./stats.ts";
-import { optionLabel, readsText } from "./text.ts";
+import { optionLabel } from "./text.ts";
 import { dayNotebook, lessonsFor, notebookFromRecords, weakestSkill, type Lesson, type NotebookEntry } from "./lessons.ts";
 import { History } from "./storage.ts";
 import { icon, setIconText } from "./design/icons.ts";
 import { startPreview } from "./preview.ts";
-import { initLang, localizeDom, pct, t, tn } from "./i18n/index.ts";
+import { getLang, initLang, localizeDom, pct, t, tn } from "./i18n/index.ts";
 import { mountLangSwitch } from "./i18n/ui.ts";
 import { markPendingDay, pickQueue, registerSW, startFlushing, warmOffline } from "./offline/index.ts";
 
@@ -105,25 +105,27 @@ function renderStats(host: HTMLElement, compact: boolean) {
   host.querySelector(".stats")?.remove();
   const s = computeStats(history.days(), history.moments());
   if (!s.games) return;
+  const streak = history.streak(realToday);
   void statsCss.then(() => {
     host.querySelector(".stats")?.remove(); // callbacks run in call order: the latest render wins, one card per host
-    const card = buildStats(s, compact);
-    const anchor = compact ? host.querySelector("#play") : null;
-    if (anchor) anchor.after(card); else host.append(card);
+    const card = buildStats(s, compact, streak);
+    // intro: three tiles above the call to action (it sits at the bottom of the screen, so nothing moves)
+    const anchor = compact ? host.querySelector(".kickoff") : null;
+    if (anchor) anchor.before(card); else host.append(card);
   });
 }
 
-function buildStats(s: ReturnType<typeof computeStats>, compact: boolean): HTMLElement {
-  const card = el("section", `card stats${compact ? " compact" : ""}`);
+function buildStats(s: ReturnType<typeof computeStats>, compact: boolean, streak = 0): HTMLElement {
+  const card = el("section", compact ? "stats compact" : "card stats");
   card.setAttribute("aria-label", t("stats.title"));
-  const head = el("div", "shead");
+  const head = el("div", compact ? "shead sr-only" : "shead");
   head.append(el("h2", "", t("stats.title")), el("span", "fine", tn("stats.games", s.games)));
   const tiles = el("div", "stiles");
   const tile = (v: string, k: string, accent = "") => { const t = el("div", `stat stile ${accent}`); t.append(el("b", "", v), el("span", "", k)); tiles.append(t); };
   if (compact) {
-    tile(s.avgDay == null ? "–" : `${s.avgDay}`, t("stats.avgDay"));
+    tile(`${streak}`, tn("done.streakTile", streak));
     tile(s.bestDay ? `${s.bestDay.total}` : "–", t("stats.bestDay"));
-    tile(pctText(s.perfect), t("stats.perfect"), "top");
+    tile(pctText(s.proRead), t("stats.proReads"), "pro");
   } else {
     tile(pctText(s.proRead), t("stats.proReads"), "pro"); // games are in the header
     tile(s.avgDay == null ? "–" : `${s.avgDay}`, t("stats.avgDay"));
@@ -180,8 +182,8 @@ function renderNotebook(host: HTMLElement) {
     p.append(icon("target"), el("span", "", tn("notebook.weakest", weak.of, { skill: t(`skill.${weak.skill}`), k: weak.n })));
     box.append(p);
   }
-  const anchor = host.querySelector("#next-in");
-  if (anchor) anchor.after(box); else host.append(box);
+  const anchor = host.querySelector("#share");
+  if (anchor) anchor.before(box); else host.append(box);
 }
 
 let savedUrl = "";
@@ -189,18 +191,26 @@ function finish(day: Day, pts: number[]) {
   show("done");
   const total = pts.reduce((a, b) => a + b, 0);
   const streak = history.streak(realToday);
+  $("done-eyebrow").textContent = t("done.eyebrow", { n: day.day_number });
   $("total").textContent = `${total}`;
-  // the result squares: styled tiles for the eye, the emoji string (same as the share text) as the accessible text
+  $("outof").textContent = t("done.outOf", { max: pts.length * 100 });
+  // the result squares: the emoji string (same as the share text) as the accessible text, numbered tiles for the eye
   const sq = $("squares");
-  const tiles = el("span", "tiles"); tiles.setAttribute("aria-hidden", "true");
-  pts.forEach((p, i) => { const t = el("span", `tile ${p >= 100 ? "top" : p >= 50 ? "mid" : "low"}`); t.style.animationDelay = `${i * 70}ms`; tiles.append(t); });
-  sq.replaceChildren(el("span", "sr-only", pts.map(square).join(" ")), tiles);
-  markPendingDay(sq, tiles, pickQueue.pending(date).map((p) => p.index)); // answers given offline: scored later
-  const reads = proReads(history.moments()[date]); // from the per-moment records (null for days played before question 2)
-  if (reads) setIconText($("reads"), "eye", readsText(reads.right, reads.of)); else $("reads").textContent = "";
-  $("reads").hidden = !reads;
-  setIconText($("streak"), "flame", tn("done.streak", streak));
-  $("next-in").textContent = date === realToday ? t("done.nextIn", { time: untilTomorrow() }) : "";
+  sq.replaceChildren(el("span", "sr-only", pts.map(square).join(" ")));
+  const tiles = $("tiles");
+  tiles.replaceChildren(...pts.map((p, i) => { const e = el("span", `tile ${p >= 100 ? "top" : p >= 50 ? "mid" : "low"}`, String(p)); e.style.animationDelay = `${i * 70}ms`; return e; }));
+  markPendingDay(tiles, tiles, pickQueue.pending(date).map((p) => p.index)); // answers given offline: scored later
+  const recs = history.moments()[date];
+  const reads = proReads(recs); // from the per-moment records (null for days played before question 2)
+  const statTile = (id: string, value: string | null, label: string) => {
+    const e = $(id); e.hidden = value === null;
+    e.replaceChildren(...(value === null ? [] : [el("b", "", value), document.createTextNode(" "), el("span", "", label)]));
+  };
+  statTile("reads", reads ? `${reads.right}/${reads.of}` : null, t("stats.proReads"));
+  const known = Array.isArray(recs) ? recs.filter((r) => r && typeof r.same_as_ai === "boolean") : [];
+  statTile("sameai", known.length ? `${known.filter((r) => r.same_as_ai).length}/${known.length}` : null, t("stats.sameAi"));
+  statTile("streak", `${streak}`, tn("done.streakTile", streak));
+  $("next-in").textContent = date === realToday ? `${t("done.nextIn", { time: untilTomorrow() })} · ` : "";
   const text = `${shareText(day.day_number, pts, reads)}
 ${location.origin}`;
   const btn = $<HTMLButtonElement>("share");
@@ -250,15 +260,18 @@ async function start() {
     void renderArchive();
     return;
   }
-  $("day-label").textContent = `${t("day.label", { n: day.day_number })}${date !== realToday ? ` · ${date}` : ""}`;
+  $("day-label").textContent = `${t("intro.eyebrow", { n: day.day_number, k: day.moments.length })}${date !== realToday ? ` · ${date}` : ""}`;
+  try {
+    $("date-label").textContent = new Intl.DateTimeFormat(getLang(), { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" })
+      .format(new Date(`${date}T00:00:00Z`)).replace(/\./g, "");
+  } catch { /* no Intl: no date */ }
   current = day;
   // the service worker caches the day and its five moments: opened online, the day can be finished offline
   warmOffline([`content/days/${date}.json`, ...day.moments.map((id) => `content/moments/${id}.json`)]);
   const done = history.days()[date];
   if (done) return finish(day, done);
   play.disabled = false; play.removeAttribute("aria-busy");
-  play.replaceChildren(icon("play"), t("intro.play"));
-  play.classList.add("with-icon");
+  setIconText(play, "arrowRight", t("intro.play"), true);
   stopPreview = startPreview($("preview"), $<HTMLCanvasElement>("preview-pitch"), $("preview-cap"), date);
   renderStats($("intro"), true);
   void renderArchive();
@@ -273,7 +286,7 @@ async function start() {
     const pts = await playDay(
       {
         canvas: $<HTMLCanvasElement>("pitch"), title: $("title"), dots: $("dots"), hint: $("hint"), actions: $("actions"),
-        list: $("list"), reveal: $("reveal"), next: $<HTMLButtonElement>("next"), tour,
+        list: $("list"), reveal: $("reveal"), next: $<HTMLButtonElement>("next"), tour, score: $("score"), count: $("count"),
       },
       day,
       history.player(),

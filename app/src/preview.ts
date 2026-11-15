@@ -7,7 +7,7 @@ import { t } from "./i18n/index.ts";
 
 const getSample = (): Promise<Moment> => fetch("content/sample.json").then((r) => { if (!r.ok) throw new Error(String(r.status)); return r.json() as Promise<Moment>; });
 
-const PX_PER_M = 5.6; // zoom: about 40 m of pitch in the 232 px tall preview
+const PX_PER_M = 5.6; // zoom: about 35 m of pitch in the 200 px tall preview
 
 export function startPreview(fig: HTMLElement, canvas: HTMLCanvasElement, cap: HTMLElement, today: string): () => void {
   let stopped = false, timer = 0;
@@ -25,9 +25,9 @@ export function startPreview(fig: HTMLElement, canvas: HTMLCanvasElement, cap: H
     if (stopped) return;
     fig.removeAttribute("aria-busy");
     canvas.classList.remove("skeleton");
-    cap.textContent = src
-      ? t("preview.day", { n: src.day_number })
-      : t("preview.sample");
+    cap.textContent = src ? t("preview.day", { n: src.day_number, league: mo.league }) : t("preview.sample", { league: mo.league });
+    const meta = document.getElementById("preview-meta"); // the minute and, when the moment has it, the score
+    if (meta) meta.textContent = `${mo.minute}'${mo.scoreline ? `  ·  ${mo.scoreline[0]}–${mo.scoreline[1]}` : ""}`;
     run(canvas, mo, reduced, (f, ms) => { if (!stopped) timer = window.setTimeout(f, ms); });
   })().catch(() => { fig.hidden = true; });
   return stop;

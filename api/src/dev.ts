@@ -5,6 +5,8 @@ import { fsDeps } from "./fsAnswers.ts";
 import { handlePick } from "./handler.ts";
 
 const root = path.resolve(process.env.PLAYMAKER_CONTENT ?? "content");
+// PLAYMAKER_API_PORT: another port when several checkouts run side by side (vite.config.ts reads the same variable)
+const PORT = Number(process.env.PLAYMAKER_API_PORT ?? 8787);
 const pub = path.join(root, "public");
 const deps = fsDeps(root);
 
@@ -26,4 +28,4 @@ http.createServer(async (req, res) => {
     return;
   }
   res.writeHead(404).end();
-}).listen(8787, () => console.log(`dev API on http://localhost:8787 (content ${root})`));
+}).listen(PORT, () => console.log(`dev API on http://localhost:${PORT} (content ${root})`));

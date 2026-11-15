@@ -102,3 +102,5 @@ address Vite prints and accept the self-signed certificate once. The Lab's live 
 
 Bundesliga tracking and event data: Bassek et al. (2025), DFL / Sportec Solutions, CC BY 4.0.
 Tracking and event data: SkillCorner open data (MIT). Code: MIT.
+Fonts: Barlow and Barlow Condensed (The Barlow Project Authors, SIL Open Font License 1.1, self-hosted:
+`app/src/design/fonts/OFL.txt`).

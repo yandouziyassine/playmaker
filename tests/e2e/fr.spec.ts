@@ -36,8 +36,8 @@ test("plays one moment in French with the guided first moment", async ({ page })
   await confirm.click();
 
   const reveal = page.locator("#reveal");
-  await expect(reveal.locator(".proread")).toHaveText(/^(Tu as lu le jeu du pro|Le pro a joué\s:\sPasse à .+ · ta lecture\s:\sPasse à .+)$/);
-  await expect(reveal).toContainText("/100 points");
+  await expect(page.locator("#score .proread")).toHaveText(/^(Tu as lu le jeu du pro|Le pro a joué\s:\sPasse à .+ · ta lecture\s:\sPasse à .+)$/);
+  await expect(page.locator("#score")).toContainText("/100 points");
   await expect(reveal).toContainText("Entraîneur IA");
   await expect(reveal).toContainText("Le pro");
   await expect(reveal).toContainText("l’avis d’un modèle, pas la vérité");

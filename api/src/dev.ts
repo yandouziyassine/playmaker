@@ -2,7 +2,7 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { fsDeps } from "./fsAnswers.ts";
-import { handlePick } from "./handler.ts";
+import { handleBank, handlePick, handleTrain } from "./handler.ts";
 
 const root = path.resolve(process.env.PLAYMAKER_CONTENT ?? "content");
 // PLAYMAKER_API_PORT: another port when several checkouts run side by side (vite.config.ts reads the same variable)
@@ -16,6 +16,18 @@ http.createServer(async (req, res) => {
     let body = "";
     for await (const chunk of req) { body += chunk; if (body.length > 2048) break; }
     const r = await handlePick(body, req.socket.remoteAddress ?? "", deps);
+    res.writeHead(r.status, { "content-type": "application/json" }).end(JSON.stringify(r.body));
+    return;
+  }
+  if (req.method === "POST" && url.pathname === "/api/train") {
+    let body = "";
+    for await (const chunk of req) { body += chunk; if (body.length > 2048) break; }
+    const r = await handleTrain(body, req.socket.remoteAddress ?? "", deps);
+    res.writeHead(r.status, { "content-type": "application/json" }).end(JSON.stringify(r.body));
+    return;
+  }
+  if (req.method === "GET" && url.pathname === "/api/train/bank") {
+    const r = await handleBank(deps);
     res.writeHead(r.status, { "content-type": "application/json" }).end(JSON.stringify(r.body));
     return;
   }

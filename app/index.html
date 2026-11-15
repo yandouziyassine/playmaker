@@ -76,7 +76,10 @@
     .more { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-2); }
     .more a { display: flex; align-items: center; justify-content: center; gap: var(--s-2); min-height: 46px; padding: 0 var(--s-3); border-radius: var(--r-pill);
       border: 1px solid rgba(238, 246, 239, 0.22); color: var(--fg); font-weight: 600; font-size: 0.9375rem; text-decoration: none; text-align: center; line-height: 1.15; }
-    .more .icon { width: 18px; height: 18px; flex: none; }
+    .kickoff .trainbtn { display: flex; align-items: center; justify-content: center; gap: var(--s-2); min-height: 46px; padding: 0 var(--s-3); border-radius: var(--r-pill);
+      border: 1px solid rgba(238, 246, 239, 0.22); color: var(--fg); font-weight: 600; font-size: 0.9375rem; width: 100%; }
+    .more .icon, .trainbtn .icon { width: 18px; height: 18px; flex: none; }
+    .trainbtn .icon { color: var(--accent); }
     .card { background: var(--surface); border-radius: var(--r-card); padding: var(--pad-card); margin: var(--s-4) 0; }
     .howto { margin: var(--s-2) 0 0; }
     .howto summary { font-weight: 600; min-height: var(--tap); display: flex; align-items: center; }
@@ -110,6 +113,8 @@
         <!-- main.ts adds a returning player's stat tiles here; the call to action stays at the bottom (thumb zone) -->
         <div class="kickoff">
           <button id="play" class="primary big" disabled aria-busy="true"><span class="spinner" aria-hidden="true"></span><span data-i18n="intro.loading">Loading today's five</span></button>
+          <!-- training: endless play over the whole bank (app/src/training.ts); main.ts adds the bank size -->
+          <button id="train" class="trainbtn" type="button"><svg class="icon" viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="7"/><circle cx="10" cy="10" r="3.5"/><circle cx="10" cy="10" r=".6"/></svg><span id="train-label" data-i18n="train.entry">Training</span></button>
           <nav class="more" aria-label="More" data-i18n-aria="more.aria">
             <a href="replay.html" data-i18n-title="more.replay" title="Free play: a full match with the coach"><svg class="icon" viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="2.5" y="4" width="15" height="12" rx="1.5"/><path d="M10 4v12M2.5 10H5M15 10h2.5"/></svg><span data-i18n="more.replayShort">Full match</span></a>
             <a href="lab.html" data-i18n-title="more.lab" title="Lab: from a TV picture to tactics"><svg class="icon" viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 7V5.5a2 2 0 0 1 2-2h1.5M13.5 3.5H15a2 2 0 0 1 2 2V7M17 13v1.5a2 2 0 0 1-2 2h-1.5M6.5 16.5H5a2 2 0 0 1-2-2V13"/><circle cx="10" cy="10" r="2.5"/></svg><span data-i18n="more.labShort">Vision lab</span></a>
@@ -140,6 +145,7 @@
           <span id="count" class="count tnum" aria-hidden="true"></span>
         </div>
         <div id="dots" class="dots" role="img" aria-label="Progress" data-i18n-aria="game.progress"></div>
+        <div id="trainhud" class="trainhud tnum" hidden></div>
       </div>
       <!-- the points of the answered moment (reveal), above the pitch -->
       <div id="score" class="scorehead" hidden aria-live="polite"></div>
@@ -153,6 +159,11 @@
       <div id="list"></div>
       <div id="reveal" class="reveal" hidden aria-live="polite"></div>
       <div class="nextbar"><button id="next" class="primary big" hidden data-i18n="game.next">Next moment</button></div>
+      <div id="trainbar" class="trainbar" hidden>
+        <label class="zonepick"><span data-i18n="train.zone">Pitch zone</span><select id="train-zone"></select></label>
+        <button id="train-end" class="ghost" type="button" data-i18n="train.end">End training</button>
+        <p class="fine" data-i18n="train.note">Training never counts for your streak or your daily stats; answer a play again to beat your best.</p>
+      </div>
     </section>
 
     <section id="done" hidden>

@@ -24,7 +24,13 @@ body[data-screen="intro"] { background: radial-gradient(120% 360px at 50% 0, rgb
 .more a { display: flex; align-items: center; justify-content: center; gap: var(--s-2); min-height: 46px; padding: 0 var(--s-3); border-radius: var(--r-pill);
   border: 1px solid rgba(238, 246, 239, 0.22); color: var(--fg); font-weight: 600; font-size: 0.9375rem; text-decoration: none; text-align: center; line-height: 1.15; }
 .more a:hover { background: rgba(238, 246, 239, 0.06); color: var(--fg); }
-.more .icon { width: 18px; height: 18px; }
+.more .icon, .trainbtn .icon { width: 18px; height: 18px; }
+/* training entry: a full-width quiet button under the day's call to action */
+.kickoff .trainbtn { display: flex; align-items: center; justify-content: center; gap: var(--s-2); min-height: 46px; padding: 0 var(--s-3); border-radius: var(--r-pill);
+  border: 1px solid rgba(238, 246, 239, 0.22); color: var(--fg); font-weight: 600; font-size: 0.9375rem; width: 100%; }
+.kickoff .trainbtn:hover { background: rgba(238, 246, 239, 0.06); }
+.trainbtn .icon { color: var(--accent); }
+.trainbtn .tsub { color: var(--muted); font-weight: 400; }
 .howto { margin: var(--s-2) 0 0; }
 .howto summary { cursor: pointer; font-weight: 600; min-height: var(--tap); display: flex; align-items: center; }
 .howto ol { padding-left: 1.2rem; margin: 0 0 var(--s-1); color: var(--muted); }
@@ -138,6 +144,19 @@ body[data-screen="game"] main { padding: 0 var(--s-4) var(--s-4); }
 .nextbar:has(#next[hidden]) { display: none; }
 .nextbar .primary.big { margin: 0; }
 
+/* ---------- training: a running HUD instead of the day's progress bar; zone filter and exit under the reveal ---------- */
+body[data-mode="train"] .dots { display: none; }
+.trainhud { display: flex; gap: var(--s-4); font: 700 0.8125rem/1.2 var(--font-display); letter-spacing: var(--track-caps); text-transform: uppercase; color: var(--muted); }
+.trainhud[hidden] { display: none; }
+.trainhud b { color: var(--fg); font-size: 1rem; letter-spacing: 0.02em; margin-left: 4px; }
+.trainhud .run b { color: var(--top); }
+.trainbar { display: grid; gap: var(--s-3); margin-top: var(--s-4); padding-top: var(--s-4); border-top: 1px solid var(--line); }
+.trainbar[hidden] { display: none; }
+.trainbar p { margin: 0; }
+.zonepick { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); font-weight: 600; }
+.zonepick select { min-height: var(--tap); padding: 0 var(--s-3); border-radius: var(--r-inner); border: 1px solid var(--line-strong); background: var(--surface); color: var(--fg); font: inherit; }
+.bank .bankzones { margin: var(--s-3) 0 0; }
+
 /* Coach's note (reveal) */
 .lesson { margin-top: var(--s-3); padding: 10px var(--s-3); border-radius: var(--r-inner); background: var(--accent-soft); }
 .lesson p { margin: 0; }
@@ -218,3 +237,5 @@ body[data-screen="done"] { background: radial-gradient(110% 320px at 50% 0, rgba
 @media (prefers-reduced-motion: no-preference) {
   .coachmark { animation: rise var(--t-med) var(--ease); }
 }
+.bank .bankgo { width: 100%; margin-top: var(--s-3); }
+.bank .bankgo .icon { color: var(--accent); }

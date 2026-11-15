@@ -44,3 +44,12 @@ export async function demoPick(moment: string, option: number, guess: number | n
   save(picks);
   return buildResult(answer, option, {}, false, guess);
 }
+
+/** Training in the demo: scored from the answer file like a pick, but nothing is kept (answer again at will). */
+export async function demoTrain(moment: string, option: number, guess: number | null): Promise<PickResult> {
+  const r = await fetch(`content/answers/${moment}.json`);
+  if (!r.ok) throw new Error(String(r.status));
+  const answer = (await r.json()) as Answer;
+  if (!answer.options.some((o) => o.k === option)) throw new Error("400");
+  return buildResult(answer, option, {}, false, guess);
+}

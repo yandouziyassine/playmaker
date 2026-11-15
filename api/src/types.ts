@@ -33,4 +33,6 @@ export interface Deps {
   momentDate(moment: string): Promise<string | null>; // the day (YYYY-MM-DD) the moment is published, null if none
   today(): string; // UTC date YYYY-MM-DD
   ipHash(ip: string): string;
+  /** Every published moment with its day (training bank); optional for stores that cannot list. */
+  bank?(): Promise<{ id: string; date: string }[]>;
 }

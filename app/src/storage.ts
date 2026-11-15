@@ -57,3 +57,41 @@ export class History {
   flag(k: string): boolean { return this.get(k) === "1"; }
   setFlag(k: string) { this.set(k, "1"); }
 }
+
+/** Training (endless play over the content bank): kept apart from the daily game (other keys), so streaks, daily
+ *  history and daily stats never see it. One shuffled order of the bank, a position in it, and per moment the best
+ *  points (app/src/training.ts holds the logic). */
+export interface TrainRecord {
+  best: number; last: number; plays: number;
+  zone: Zone; kind: PickKind; league: string; guess_right: boolean | null;
+}
+export interface TrainState {
+  v: 1;
+  /** The bank's moment ids in play order; `pos` is the next one to play. A new shuffle starts when pos reaches the end. */
+  order: string[]; pos: number; cycle: number;
+  recs: Record<string, TrainRecord>;
+  /** Running totals over every training play: plays, points, current and best run of top picks (100 points). */
+  plays: number; sum: number; run: number; bestRun: number;
+  /** Pitch-zone filter ("all": none). */
+  zone: Zone | "all";
+}
+export const emptyTrain = (): TrainState => ({ v: 1, order: [], pos: 0, cycle: 0, recs: {}, plays: 0, sum: 0, run: 0, bestRun: 0, zone: "all" });
+const KEY_TRAIN = "pm.train";
+
+export class TrainStore {
+  private mem: string | null = null;
+  constructor(private kv: KV) {}
+  load(): TrainState {
+    let raw: string | null = this.mem;
+    try { raw = this.kv.getItem(KEY_TRAIN) ?? raw; } catch { /* memory only */ }
+    try {
+      const s = JSON.parse(raw ?? "") as TrainState;
+      if (s && s.v === 1 && Array.isArray(s.order) && typeof s.pos === "number" && s.recs && typeof s.recs === "object") return { ...emptyTrain(), ...s };
+    } catch { /* fresh start */ }
+    return emptyTrain();
+  }
+  save(s: TrainState) {
+    this.mem = JSON.stringify(s);
+    try { this.kv.setItem(KEY_TRAIN, this.mem); } catch { /* memory only */ }
+  }
+}

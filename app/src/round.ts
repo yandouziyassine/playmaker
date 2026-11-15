@@ -25,6 +25,10 @@ export interface RoundUI {
   score?: HTMLElement;
   /** "2/5" next to the scoreboard. */
   count?: HTMLElement;
+  /** Scores the answers instead of POST /api/pick (training: app/src/training.ts trainPick). */
+  pick?: (mo: Moment, option: number, guess: number | null) => Promise<PickResult>;
+  /** Training: no day, so no progress bar (the page draws its own running HUD). */
+  training?: boolean;
   /** Coach-marks of the guided first moment (first visit only). */
   tour?: Tour | null;
   /** Indexes of moments answered offline (scored later): their progress dot is drawn as pending. */
@@ -119,6 +123,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text = ""):
 
 /** Progress dots; `just`: the last answered dot fills with a short pop (useful feedback: the answer counted). */
 function renderDots(ui: RoundUI, points: number[], total: number, just = false) {
+  if (ui.training) return;
   ui.dots.innerHTML = "";
   progress(points, total).forEach((state, i) => ui.dots.append(el("span", `dot ${ui.pending?.has(i) ? "pending" : state}${just && i === points.length - 1 ? " just" : ""}`)));
   ui.dots.setAttribute("aria-label", t("game.dots", { done: points.length, total }));
@@ -442,7 +447,7 @@ export async function playMoment(ui: RoundUI, mo: Moment, player: string, index:
   clearOfflineReveal(ui.reveal);
   let res: PickResult;
   try {
-    res = await postPick(player, mo.id, pick, guess).finally(() => { ui.reveal.removeAttribute("aria-busy"); ui.actions.innerHTML = ""; });
+    res = await (ui.pick ? ui.pick(mo, pick, guess) : postPick(player, mo.id, pick, guess)).finally(() => { ui.reveal.removeAttribute("aria-busy"); ui.actions.innerHTML = ""; });
   } catch (e) {
     if (!onOffline || !isOfflineError(e)) throw e;
     // offline: the answer is queued; no server data to reveal, the day goes on

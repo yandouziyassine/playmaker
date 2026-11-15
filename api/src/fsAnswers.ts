@@ -18,6 +18,7 @@ export function fsDeps(root: string): Deps {
       return fs.existsSync(f) ? (JSON.parse(fs.readFileSync(f, "utf8")) as Answer) : null;
     },
     async momentDate(m) { return dates.get(m) ?? null; },
+    async bank() { return [...dates].map(([id, date]) => ({ id, date })); },
     today: () => process.env.PLAYMAKER_TODAY ?? new Date().toISOString().slice(0, 10),
     ipHash: (ip) => createHash("sha256").update("dev-salt" + ip).digest("hex").slice(0, 16),
   };

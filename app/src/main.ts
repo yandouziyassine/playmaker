@@ -1,11 +1,12 @@
 import { getDay, getIndex, getMoment, localDate, type Day } from "./api.ts";
-import { playDay, Tour } from "./round.ts";
+import { playDay, playMoment, Tour } from "./round.ts";
 import { shareText, square } from "./share.ts";
 import { shareCardFile, shareFileName, shareScore } from "./shareImage.ts";
 import { computeStats, kindLabel, KINDS, proReads, zoneLabel, ZONES, toRecord, type Bucket } from "./stats.ts";
 import { optionLabel } from "./text.ts";
 import { dayNotebook, lessonsFor, notebookFromRecords, weakestSkill, type Lesson, type NotebookEntry } from "./lessons.ts";
-import { History } from "./storage.ts";
+import { History, TrainStore, type TrainState } from "./storage.ts";
+import { bankSummary, describe, getBank, momentZone, nextId, recordPlay, syncBank, trainPick } from "./training.ts";
 import { icon, setIconText } from "./design/icons.ts";
 import { startPreview } from "./preview.ts";
 import { getLang, initLang, localizeDom, pct, t, tn } from "./i18n/index.ts";
@@ -240,6 +241,7 @@ ${location.origin}`;
   };
   try { renderNotebook($("done")); } catch { /* the notebook is a bonus */ }
   renderStats($("done"), false);
+  setupTraining($("done"));
   void renderArchive();
 }
 
@@ -256,6 +258,7 @@ async function start() {
   try { day = await getDay(date); } catch {
     $("intro-text").textContent = t("intro.noDay");
     play.hidden = true;
+    setupTraining($("intro")); // no daily game today: training may still have a bank
     $("preview").hidden = true; // shown from the first paint (index.html) for a shift-free intro; nothing to show here
     void renderArchive();
     return;
@@ -274,6 +277,7 @@ async function start() {
   setIconText(play, "arrowRight", t("intro.play"), true);
   stopPreview = startPreview($("preview"), $<HTMLCanvasElement>("preview-pitch"), $("preview-cap"), date);
   renderStats($("intro"), true);
+  setupTraining($("intro"));
   void renderArchive();
   if (day.moments[0]) getMoment(day.moments[0]).catch(() => {}); // warm the first moment: Play starts without a fetch
   play.onclick = async () => {
@@ -315,5 +319,115 @@ startFlushing(async (q, res) => {
   const pts = history.days()[date];
   if (current && pts && document.body.dataset.screen === "done") finish(current, pts);
 });
+
+// ---------- training: endless play over the whole bank (app/src/training.ts) ----------
+const trainStore = new TrainStore(localStorage);
+let bank: Promise<string[]> | null = null;
+const getBankOnce = () => (bank ??= getBank().catch((e) => { bank = null; throw e; }));
+
+/** The training entry (intro: the button under the call to action; done screen: the bank card's button) and, once
+ *  something was played, the bank card. The bank is fetched when the page is idle (its size goes on the button). */
+function setupTraining(host: HTMLElement) {
+  $<HTMLButtonElement>("train").onclick = () => void startTraining();
+  const later = (f: () => void) => ("requestIdleCallback" in window ? requestIdleCallback(f, { timeout: 2500 }) : setTimeout(f, 1200));
+  later(() => {
+    getBankOnce().then((ids) => {
+      if (!ids.length) return;
+      $("train-label").textContent = t("train.entryN", { n: ids.length });
+      renderBank(host, trainStore.load(), ids);
+    }).catch(() => { /* offline or no training API: the button still tries when tapped */ });
+  });
+}
+
+/** "Training bank" card: seen x of the bank, average best, best run, best and weakest zone, and a way back in. On the
+ *  done screen it is shown even before the first training play (the intro's button is not there). */
+function renderBank(host: HTMLElement, st: TrainState, ids: string[]) {
+  host.querySelector(".bank")?.remove();
+  const intro = host.id === "intro";
+  if (!st.plays && intro) return;
+  const box = el("section", "card bank stats");
+  box.setAttribute("aria-label", t("train.bankTitle"));
+  if (st.plays) {
+    const sum = bankSummary(st, ids);
+    const head = el("div", "shead");
+    head.append(el("h2", "", t("train.bankTitle")), el("span", "fine tnum", `${t("train.plays")} ${st.plays}`));
+    const tiles = el("div", "stiles");
+    const tile = (v: string, k: string, cls = "") => { const d = el("div", `stat stile ${cls}`); d.append(el("b", "", v), el("span", "", k)); tiles.append(d); };
+    tile(`${sum.seen}/${sum.size}`, t("train.seen"));
+    tile(sum.avgBest == null ? "–" : `${sum.avgBest}`, t("train.avgBest"), "ai");
+    tile(`${st.bestRun}`, t("train.bestRun"), "top");
+    box.append(head, tiles);
+    if (sum.bestZone && sum.worstZone) box.append(el("p", "fine bankzones", t("train.zones", { best: zoneLabel(sum.bestZone), worst: zoneLabel(sum.worstZone) })));
+  }
+  if (!intro) {
+    const go = el("button", "ghost bankgo");
+    setIconText(go, "target", t("train.entryN", { n: ids.length }));
+    go.onclick = () => void startTraining();
+    box.append(go);
+  }
+  const anchor = intro ? host.querySelector(".introtop") : $("next-in").parentElement;
+  void statsCss.then(() => { host.querySelector(".bank")?.remove(); if (anchor) anchor.after(box); else host.append(box); });
+}
+
+async function startTraining() {
+  history.setFlag("pm.howto");
+  show("game");
+  document.body.dataset.mode = "train";
+  const hud = $("trainhud"), bar = $("trainbar"), next = $<HTMLButtonElement>("next"), hint = $("hint");
+  hud.hidden = false; bar.hidden = false;
+  $("train-end").onclick = () => location.reload(); // back to the intro / full-time screen as it was
+  let ids: string[];
+  try { ids = await getBankOnce(); } catch { hint.textContent = t("train.failed"); return; }
+  let st = syncBank(trainStore.load(), ids);
+  trainStore.save(st);
+  if (!ids.length) { hint.textContent = t("train.empty"); return; }
+  // the zone filter: from the moments' own positions (the carrier at the release); nothing is known before loading one
+  const zone = $<HTMLSelectElement>("train-zone");
+  zone.replaceChildren(...(["all", ...ZONES] as const).map((z) => { const o = el("option", "", z === "all" ? t("train.zoneAll") : zoneLabel(z)); o.value = z; return o; }));
+  zone.value = st.zone;
+  let wake: (() => void) | null = null;
+  zone.onchange = () => { st = { ...st, zone: zone.value as TrainState["zone"] }; trainStore.save(st); wake?.(); };
+  const drawHud = () => {
+    const item = (cls: string, k: string, v: string) => { const s = el("span", cls, k); s.append(el("b", "", v)); return s; };
+    hud.replaceChildren(
+      item("", t("train.plays"), `${st.plays}`),
+      item("", t("train.avg"), st.plays ? `${Math.round(st.sum / st.plays)}` : "–"),
+      item("run", t("train.run"), `${st.run}`),
+    );
+  };
+  drawHud();
+  const count = $("count");
+  const ui = {
+    canvas: $<HTMLCanvasElement>("pitch"), title: $("title"), dots: $("dots"), hint, actions: $("actions"),
+    list: $("list"), reveal: $("reveal"), next, tour: null, score: $("score"), count,
+    training: true, pick: (mo: { id: string }, option: number, guess: number | null) => trainPick(mo.id, option, guess),
+  };
+  const seen = new Set<string>(); // lesson ids shown in this session
+  const skip = new Set<string>(); // other zones' plays met while looking for one of the chosen zone (they keep their turn)
+  for (;;) {
+    const found = nextId(st, Math.random, skip);
+    st = found.state;
+    if (!found.id || skip.size > 60) { // nothing left for this filter in this round
+      hint.textContent = t(st.zone === "all" ? "train.empty" : "train.filterEmpty");
+      next.hidden = true;
+      await new Promise<void>((r) => (wake = r));
+      wake = null; skip.clear();
+      continue;
+    }
+    const id = found.id;
+    let mo;
+    try { hint.textContent = t("train.loading"); mo = await getMoment(id); } catch { hint.textContent = t("train.failed"); return; }
+    if (st.zone !== "all" && momentZone(mo) !== st.zone) { skip.add(id); continue; }
+    skip.clear();
+    count.textContent = t("train.play", { n: st.plays + 1 });
+    let res;
+    try { res = await playMoment(ui, mo, history.player(), 0, 0, [], undefined, seen); } catch { hint.textContent = t("train.failed"); return; }
+    if (res) { st = recordPlay(st, id, res.points, describe(mo, res)); trainStore.save(st); drawHud(); }
+    next.hidden = false;
+    setIconText(next, "arrowRight", t("train.next"), true);
+    next.focus();
+    await new Promise<void>((r) => (next.onclick = () => r()));
+  }
+}
 
 void start();

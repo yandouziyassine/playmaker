@@ -19,3 +19,20 @@ export function parsePick(body: string | null | undefined): PickRequest | null {
   if ("guess" in o && !isK(o.guess)) return null; // when sent, the guess must be an option k (no explicit null)
   return { player: o.player, moment: o.moment, option: o.option, guess: "guess" in o ? (o.guess as number) : null };
 }
+
+/** Training request (POST /api/train): `{moment, option, guess?}`. No player id: training answers are not stored, so
+ *  they can be sent again and again. */
+export interface TrainRequest { moment: string; option: number; guess: number | null }
+export function parseTrain(body: string | null | undefined): TrainRequest | null {
+  if (!body || body.length > 1024) return null;
+  let v: unknown;
+  try { v = JSON.parse(body); } catch { return null; }
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return null;
+  const o = v as Record<string, unknown>;
+  const keys = Object.keys(o).sort().join();
+  if (keys !== "moment,option" && keys !== "guess,moment,option") return null;
+  if (typeof o.moment !== "string" || !ID.test(o.moment)) return null;
+  if (!isK(o.option)) return null;
+  if ("guess" in o && !isK(o.guess)) return null;
+  return { moment: o.moment, option: o.option, guess: "guess" in o ? (o.guess as number) : null };
+}

@@ -14,6 +14,8 @@ export interface PickResult {
   after: { fps: number; frames: ([number, number] | null)[][]; ball: ([number, number] | null)[] } | null;
   /** Second question: the recorded guess of the pro's choice, and whether it was the real pass (null: no guess sent). */
   guess: number | null; guess_right: boolean | null;
+  /** Per option the coach's completion chance and net xG (servers before 2026-11 do not send it). */
+  coach?: Record<number, { p: number; score: number }>;
 }
 export interface DayIndex { days: { date: string; day_number: number }[] }
 export const getIndex = () => fetch("content/days/index.json").then(json<DayIndex>);

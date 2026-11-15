@@ -21,7 +21,7 @@ let hook: (() => void) | null = null;
 let pick: { fn: (k: number) => void; mo: Moment } | null = null, help: HTMLElement | null = null, replay = false;
 const orbit = () => !!view && view.getMode() !== "eyes";
 const HELP = () => t(orbit() ? "v3d.helpOrbit" : "v3d.help"), HELP_PICK = () => t(orbit() ? "v3d.helpPickOrbit" : "v3d.helpPick");
-const helpText = () => { if (help) help.textContent = pick ? HELP_PICK() : HELP(); };
+const helpText = () => { if (help) help.textContent = pick ? HELP_PICK() : last?.overlay.analysis ? t("v3d.helpAnalysis") : HELP(); };
 
 export const is3D = () => on && !!view;
 
@@ -95,7 +95,9 @@ export function setup3D(canvas: HTMLCanvasElement, isReplay = false) {
 
 /** Mirror a 2D paint into the 3D view (kept for when 3D is turned on later). */
 export function paint3D(mo: Moment, frame: Cm[], ball: Cm, overlay: Overlay3D = {}) {
+  const hadAnalysis = !!last?.overlay.analysis;
   last = { mo, frame, ball, overlay };
+  if (hadAnalysis !== !!overlay.analysis) helpText();
   if (on && view) view.show(mo, frame, ball, overlay);
 }
 
@@ -107,6 +109,9 @@ export function pick3D(mo: Moment | null, fn: ((k: number) => void) | null) {
   if (!view) return;
   if (pick) view.setPickHandler(pick.fn, pick.mo); else view.clearPickHandler();
 }
+
+/** Look at option i of the coach's analysis in 3D (free play's 1 2 3 keys); nothing in 2D. */
+export function focus3D(i: number) { if (on && view) view.focusOption(i); }
 
 /** Point badges in 3D (normally not needed: paint3D already shows overlay.scores). null clears them. */
 export function scores3D(scores: Record<number, number> | null) { view?.showScores(scores); }

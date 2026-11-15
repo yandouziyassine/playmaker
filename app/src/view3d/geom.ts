@@ -7,6 +7,7 @@
 // Looking along +x with +y up, three.js puts world -z on the left of the screen, so the player's left stays on the left.
 import type { Moment } from "../api.ts";
 import type { Overlay } from "../pitch.ts";
+import type { Analysis3D } from "./analysis.ts";
 
 export type Vec = [number, number];
 /** What the 3D view draws: a daily moment, or free play's frame dressed as one (team colours by side, the goal the
@@ -237,6 +238,9 @@ export interface Overlay3D extends Overlay {
   /** The daily reveal's "what really happened" replay is running: its progress 0..1. The stadium camera follows the
    *  ball like a broadcast, the eyes turn towards it, tactical stays put; the arrows fade out as it runs. */
   replay?: number;
+  /** The coach's analysis (free play paused, the daily reveal): option arcs with their numbers, the why layers, the
+   *  tabs and breakdown card under the view, and the analysis camera (view3d/coachLayer.ts). Replaces the arrows. */
+  analysis?: Analysis3D;
 }
 
 export interface ArrowSpec { from: Vec; to: Vec; color: string; dashed: boolean }

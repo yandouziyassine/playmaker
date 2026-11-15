@@ -13,5 +13,6 @@ export function buildResult(a: Answer, option: number, counts: Record<number, nu
     after: a.after ?? null,
     all_points: Object.fromEntries(a.options.map((o) => [o.k, o.points])),
     guess, guess_right: guess === null ? null : guess === a.pro_pick,
+    coach: Object.fromEntries(a.options.map((o) => [o.k, { p: o.p, score: o.score }])),
   };
 }

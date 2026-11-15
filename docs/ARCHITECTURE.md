@@ -329,6 +329,23 @@ tracking frames are interpolated, and a large jump of the focus snaps instead of
 is remembered; reduced motion is respected. Tap targets (teammates, carry chevrons, the goal) are ray-picked with
 large hit areas. Free play has the same 3D view.
 
+**The coach's analysis in 3D** (`view3d/analysis.ts`, pure and unit-tested; `view3d/coachLayer.ts`, the three.js and
+DOM part). When free play is paused with the coach, and on the daily reveal, the options become arcs over the grass:
+the one looked at is wide (its width grows with the completion chance) in its colour (coach cyan, pro yellow, you
+white), the others thin and translucent. Why: the coach's own pass lane (2 m either side of the line, ends excluded,
+as in `passFeatures`), the defenders who cut it ringed in pink, the coach's loss point as a pink cross, and two
+switches: **Space control** (the coach's closed-form pitch control evaluated on an 84 x 54 grid, a cyan glow where the
+attack gets first) and **Pressure** (where each defender can be within 1.5 s under the same motion model). A label at
+the target ("68 % · +0.010") and small tags at the others are laid out in screen space so they never overlap each
+other, another target or the view's buttons. Under the view, one tab per option (free play: the top 3, keys 1 2 3;
+the reveal: the AI's pick, the pro's and yours) and a breakdown card: net xG, completion, xG if it arrives and if it
+is lost (free play from `advice.ts`; the reveal from the answer file's `p` and `score`, now in the pick result's
+`coach` field, and the coach's value phrase), and the reasons as green / pink chips. A fourth camera mode,
+**analysis**, frames the carrier and every option from behind the attack (closest distance that fits, by bisection)
+and is entered automatically with a 0.9 s eased glide (a cut with reduced motion) unless the visitor left it.
+Geometry is rebuilt only when the analysis or the option looked at changes; labels are re-laid out only when the
+camera moves. Cost: about +18 kB on the lazy 3D chunk (+7 kB gzip).
+
 ### 9.2 Offline play
 
 `app/src/offline/`: a service worker (production builds only) precaches the game shell and caches days and moments;

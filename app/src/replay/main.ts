@@ -7,12 +7,13 @@
 import type { LoadedCoach } from "../coach/picture.ts";
 import type { FrameAdvice, Outcome, ProChoice } from "./coach.ts";
 import {
-  ballHeightAt, carrierAt, clock, decodeBallZ, decodeHalf, frameDots, fromGlobal, goals, minuteLabel, playerAt, scoreAt, toGlobal, toView, totalFrames, trail,
+  ballHeightAt, carrierAt, clock, velocityAt, decodeBallZ, decodeHalf, frameDots, fromGlobal, goals, minuteLabel, playerAt, scoreAt, toGlobal, toView, totalFrames, trail,
   viewFlip, type HalfData, type MatchMeta,
 } from "./data.ts";
 import type { Vec } from "../coach/geometry.ts";
 import type { Moment3D, Overlay3D } from "../view3d/geom.ts";
-import { is3D, on3DChange, paint3D, pick3D, setup3D } from "../view3d/toggle.ts";
+import type { Analysis3D } from "../view3d/analysis.ts";
+import { focus3D, is3D, on3DChange, paint3D, pick3D, setup3D } from "../view3d/toggle.ts";
 import { ARROW_COLORS, TOP, drawPitch, drawScene, type View } from "./draw.ts";
 import { setIconText, spinner } from "../design/icons.ts";
 import { getLang, initLang, localizeDom, num, t } from "../i18n/index.ts";
@@ -96,6 +97,7 @@ function resize() {
 }
 
 function draw() {
+  coachBox.classList.toggle("in3d", is3D()); // in 3D the tabs and the card under the view replace the list
   if (!ready) { drawPitch(ctx, view); return; }
   const fpos = fromGlobal(meta, g), h = halves[fpos.half];
   if (!h) { drawPitch(ctx, view); return; }
@@ -132,8 +134,34 @@ function scene3D(h: HalfData, half: number, frame: number, players: { player: nu
   };
   last3D = mo;
   const o: Overlay3D = { balls: tr.map(cm3D), ballH: ballHeightAt(heights[half], frame) };
-  if (shown) o.coach = options.map((q, i) => ({ k: q.k, color: ARROW_COLORS[i] ?? "#f1faee" }));
+  if (shown) {
+    o.coach = options.map((q, i) => ({ k: q.k, color: ARROW_COLORS[i] ?? "#f1faee" }));
+    o.analysis = analysis3D(h, shown, players);
+  }
   return [mo, fr, ball ? cm3D(ball) : null, o];
+}
+
+let lastAnalysis: Analysis3D | null = null;
+/** The coach's top 3 for the 3D analysis: per option its completion chance, the value if it arrives (or is kept) and
+ *  if it is lost, both relative to keeping the ball here (coach/explain.ts valueTerms), the net xG and the reasons;
+ *  the players' velocities in the view's frame for the pitch-control layers. Kept while the paused frame stays. */
+function analysis3D(h: HalfData, a: FrameAdvice, players: { player: number }[]): Analysis3D {
+  const key = `rp:${a.half}:${a.frame}`;
+  if (lastAnalysis?.key === key) return lastAnalysis;
+  const vel: ([number, number] | null)[] = new Array(meta.players.length).fill(null);
+  for (const d of players) vel[d.player] = toView(velocityAt(h, a.frame, d.player, meta.fps), flip);
+  const options = a.ranked.slice(0, TOP).map((r, i) => {
+    const o = r.option, target = o.target !== undefined ? meta.players[o.target] : undefined;
+    return {
+      k: i, tag: String(i + 1), color: ARROW_COLORS[0], faint: "#eef6ef",
+      tab: o.kind === "pass" ? t("an.tabPass", { shirt: target?.shirt ?? "?" }) : o.kind === "carry" ? t("an.tabCarry") : t("an.tabShot"),
+      title: C.optionTitle(o, meta.players), p: o.p, score: o.score,
+      gain: o.kind === "shot" ? undefined : o.value - a.vNow,
+      loss: o.kind === "shot" || o.vLost === undefined ? undefined : -o.vLost - a.vNow,
+      reasons: r.reasons.map((x) => ({ text: translatePhrase(x.text), sign: x.sign })),
+    };
+  });
+  return (lastAnalysis = { key, options, focus: 0, vel, pc: brain.coach.pc, choose: { label: t("an.choose"), fn: (k) => choose(k) } });
 }
 
 function showTime() {
@@ -279,11 +307,12 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault(); seek(g + (e.key === "ArrowLeft" ? -5 : 5) * meta.fps, true).catch(failed);
   } else if (e.key === "a" || e.key === "A") { if (playing) pause(); else askCoach(); }
   else if ((e.key === "f" || e.key === "F") && advice && !coachBox.hidden) choose(0);
+  else if (/^[1-3]$/.test(e.key) && advice && !coachBox.hidden && is3D()) focus3D(Number(e.key) - 1); // the 3D tabs
 });
 new ResizeObserver(resize).observe(canvas);
 resize();
 setup3D(canvas, true); // once: wraps the canvas with the 3D view and its toggle
-on3DChange(() => { if (ready && is3D()) needHeight(where().half); });
+on3DChange(() => { coachBox.classList.toggle("in3d", is3D()); if (ready && is3D()) needHeight(where().half); });
 
 async function boot() {
   // all on the first round trip: match.json, the first half's positions, the coach chunk and its weights (they used to

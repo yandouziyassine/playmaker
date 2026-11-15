@@ -56,3 +56,5 @@ h2 span { display: block; margin-top: 2px; color: var(--muted); text-transform: 
 #tally { font-variant-numeric: tabular-nums; }
 .credit { margin-top: var(--s-6); }
 @media (prefers-reduced-motion: reduce) { #pitch.skeleton, .reveal { animation: none; } }
+/* in 3D the tabs and the breakdown card under the view (view3d/coachLayer.ts) replace the option list */
+.coach.in3d #options { display: none; }

@@ -27,6 +27,8 @@ describe("handlePick", () => {
     expect(r.status).toBe(200);
     expect(r.body).toMatchObject({ points: 0, among_best: false, pro_instinct: true, ai_pick: 0, pro_pick: 2, crowd: null, repeat: false });
     expect(r.body).toMatchObject({ guess: null, guess_right: null }); // old client: no second question
+    // the coach's completion chance and net xG per option, for the reveal's 3D analysis
+    expect(r.body).toMatchObject({ coach: { 0: { p: 0.8, score: 0.02 }, 1: { p: 0.9, score: 0.01 }, 2: { p: 0.5, score: -0.01 } } });
   });
   it("scores the pro guess against the real pass", async () => {
     const right = await handlePick(body2(P(1), 0, 2), "1.1.1.1", deps());

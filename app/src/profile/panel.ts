@@ -6,8 +6,9 @@ import "./profile.css";
 
 type Store = KVStore & { removeItem?(k: string): void };
 
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> = {}, ...kids: (Node | string)[]) {
-  const e = Object.assign(document.createElement(tag), props);
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Record<string, unknown> = {}, ...kids: (Node | string)[]): HTMLElementTagNameMap[K] {
+  const e = document.createElement(tag);
+  Object.assign(e, props);
   e.append(...kids);
   return e;
 }

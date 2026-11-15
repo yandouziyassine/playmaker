@@ -6,7 +6,7 @@ the professional actually do (scored against the real pass). This document descr
 one round flows through it, and what is planned but not yet running.
 
 Status (2026-11-12): runs locally (game, API, content). A **static demo** is live at
-https://yandouziyassine.github.io/playmaker/ (section 9.4: it trades the server-side answers for static hosting). The
+https://playmaker-game.github.io/ (section 9.4: it trades the server-side answers for static hosting). The
 AWS deployment in section 12 is **planned, not deployed**.
 
 Related sources:
@@ -131,6 +131,14 @@ Linear models were kept on purpose: the browser runs the exact same formulas. Th
 (`coach/export.py`) to `app/public/coach/models.json` (StandardScaler + coefficients). `app/src/coach/` is a
 TypeScript port of the features, pitch control, advice and explanations (exact logistic contributions turned into
 "helps / hurts" phrases).
+
+**Coach v2 weights (2026-11-14).** The library now places each Bundesliga event on the frame where its player
+releases the ball (read from the tracking) instead of trusting the hand-logged time and spot: 91 % of passes are
+placed instead of 69 %, giving 35 % more training passes. Same formulas and features; the pass, value, arrival and
+shot weights in `models.json` were refitted and the replay match's events re-exported (190 more placed events). Held
+out, the coach's score of the pro's pass agrees better with what followed (Spearman with the net xG of the next 15 s,
+Bundesliga 0.099 -> 0.137, +0.038 [+0.023, +0.056]); pass accuracy is about the same (AUC 0.851 -> 0.853). Details:
+the library README, "Coach v2". The daily content was not rebuilt with them yet.
 
 **Parity.** `app/test/coach-parity.test.ts` loads a fixture written by the library's `coach/parity_fixtures.py` on 30
 real tracking frames from both halves of one Bundesliga match (J03WOH, models trained without it). For every frame it
@@ -376,7 +384,7 @@ Typed dictionaries (`app/src/i18n/`; the Lab's strings in their own dictionaries
 ### 9.4 Static demo (GitHub Pages)
 
 `npm run demo:content -- <content-vN>` packages the first 30 days of a release (public files **and** answer files)
-into `demo/content/`; `npm run demo:build` builds the app with `VITE_DEMO=1` under `/playmaker/` with relative URLs and
+into `demo/content/`; `npm run demo:build` builds the app with `VITE_DEMO=1` at the site root (any base works: all URLs are relative) and
 copies the content next to it. `.github/workflows/pages.yml` deploys it from `main`.
 
 In demo mode (`app/src/demo.ts`) there is no server. Today's date is mapped onto the 30 days cyclically, so there is
@@ -462,4 +470,4 @@ From the design spec, section 3 and 5. Nothing below exists yet.
   1.6 s per analysed frame on a laptop CPU in headless Chromium; the possession share is very rough.
 - **Parity covers one match** (30 frames). It guards the port, not the models' quality.
 - **Failed-pass targets are inferred** in the Bundesliga data (outcome-informed), so the pass model's headline AUC is
-  an upper bound (leak check 0.77-0.81 vs 0.838).
+  an upper bound (coach v2, 7 held-out Bundesliga matches: leak check 0.781 vs 0.853).

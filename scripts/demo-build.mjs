@@ -1,10 +1,10 @@
 // Static demo build for GitHub Pages: the app built with VITE_DEMO=1 under the repo's base path, plus the packaged demo
-// content copied to dist/content. Usage: node scripts/demo-build.mjs [base=/playmaker/]
+// content copied to dist/content. Usage: node scripts/demo-build.mjs [base=/]
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
-const base = process.argv[2] ?? "/playmaker/";
+const base = process.argv[2] ?? "/";
 if (!fs.existsSync("demo/content/demo.json")) {
   console.error("demo/content is missing: run node scripts/demo-content.mjs <release> first");
   process.exit(1);

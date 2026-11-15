@@ -2,7 +2,7 @@
 
 *Yassine Yandouzi, November 2026*
 
-**Play the demo: https://yandouziyassine.github.io/playmaker/** (a static build: 30 days that cycle, picks scored in
+**Play the demo: https://playmaker-game.github.io/** (a static build: 30 days that cycle, picks scored in
 your browser; see "A static demo" below for what that trades away).
 
 ## The problem

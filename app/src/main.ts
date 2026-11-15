@@ -9,7 +9,7 @@ import { History, TrainStore, type TrainState } from "./storage.ts";
 import { bankSummary, describe, getBank, momentZone, nextId, recordPlay, syncBank, trainPick } from "./training.ts";
 import { icon, setIconText } from "./design/icons.ts";
 import { startPreview } from "./preview.ts";
-import { getLang, initLang, localizeDom, pct, t, tn } from "./i18n/index.ts";
+import { getLang, initLang, localizeDom, num, pct, t, tn } from "./i18n/index.ts";
 import { mountLangSwitch } from "./i18n/ui.ts";
 import { mountProfileButton } from "./profile/button.ts";
 import { markPendingDay, pickQueue, registerSW, startFlushing, warmOffline } from "./offline/index.ts";
@@ -335,7 +335,7 @@ function setupTraining(host: HTMLElement) {
   later(() => {
     getBankOnce().then((ids) => {
       if (!ids.length) return;
-      $("train-label").textContent = t("train.entryN", { n: ids.length });
+      $("train-label").textContent = t("train.entryN", { n: num(ids.length) });
       renderBank(host, trainStore.load(), ids);
     }).catch(() => { /* offline or no training API: the button still tries when tapped */ });
   });
@@ -355,7 +355,7 @@ function renderBank(host: HTMLElement, st: TrainState, ids: string[]) {
     head.append(el("h2", "", t("train.bankTitle")), el("span", "fine tnum", `${t("train.plays")} ${st.plays}`));
     const tiles = el("div", "stiles");
     const tile = (v: string, k: string, cls = "") => { const d = el("div", `stat stile ${cls}`); d.append(el("b", "", v), el("span", "", k)); tiles.append(d); };
-    tile(`${sum.seen}/${sum.size}`, t("train.seen"));
+    tile(`${num(sum.seen)}/${num(sum.size)}`, t("train.seen"));
     tile(sum.avgBest == null ? "–" : `${sum.avgBest}`, t("train.avgBest"), "ai");
     tile(`${st.bestRun}`, t("train.bestRun"), "top");
     box.append(head, tiles);
@@ -363,7 +363,7 @@ function renderBank(host: HTMLElement, st: TrainState, ids: string[]) {
   }
   if (!intro) {
     const go = el("button", "ghost bankgo");
-    setIconText(go, "target", t("train.entryN", { n: ids.length }));
+    setIconText(go, "target", t("train.entryN", { n: num(ids.length) }));
     go.onclick = () => void startTraining();
     box.append(go);
   }

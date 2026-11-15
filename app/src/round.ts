@@ -1,11 +1,12 @@
 import { getMoment, postPick, type Day, type Moment, type PickResult } from "./api.ts";
-import { ballTrail, draw as draw2D, hitOption, optionTargets, stepOption, type View } from "./pitch.ts";
+import { COLORS, ballTrail, draw as draw2D, hitOption, optionTargets, stepOption, type View } from "./pitch.ts";
 import { optionLabel, outcomeText, pct, progress, proReadLine, tier, verdict } from "./text.ts";
-import { lessonsFor, revealLesson, type Lesson } from "./lessons.ts";
+import { lessonsFor, revealLesson, valuesOf, type Lesson } from "./lessons.ts";
 import { t, type Key } from "./i18n/index.ts";
 import { translatePhrase } from "./i18n/phrases.ts";
 import { is3D, on3DChange, paint3D, pick3D, setup3D } from "./view3d/toggle.ts";
 import type { Overlay3D as Overlay } from "./view3d/geom.ts";
+import type { Analysis3D, AnalysisOption } from "./view3d/analysis.ts";
 import { icon, setIconText, spinner, type IconName } from "./design/icons.ts";
 import { isOfflineError } from "./offline/pickQueue.ts";
 import { clearOfflineReveal, renderOfflineReveal } from "./offline/ui.ts";
@@ -233,22 +234,50 @@ function choose(ui: RoundUI, ctx: CanvasRenderingContext2D, v: View, mo: Moment,
   });
 }
 
-async function playAfter(ctx: CanvasRenderingContext2D, v: View, mo: Moment, res: PickResult, pick: number) {
+/** The reveal's analysis for the 3D view: the AI's pick, the pro's and yours (one tab each, merged when they are the
+ *  same option) with the coach's completion chance and net xG (answer file), the value if it arrives / is lost (the
+ *  coach's own value phrase) and its reasons. The 2D pitch keeps its arrows. */
+export function revealAnalysis(mo: Moment, res: PickResult, pick: number): Analysis3D {
+  const roles: { k: number; tag: string; color: string }[] = [];
+  for (const r of [{ k: res.ai_pick, tag: t("who.ai"), color: COLORS.ai }, { k: res.pro_pick, tag: t("who.pro"), color: COLORS.pro }, { k: pick, tag: t("who.you"), color: COLORS.mine }]) {
+    const same = roles.find((x) => x.k === r.k);
+    if (same) same.tag += ` · ${r.tag}`; else roles.push({ ...r });
+  }
+  const options = roles.flatMap((r): AnalysisOption[] => {
+    const o = mo.options.find((q) => q.k === r.k);
+    if (!o) return [];
+    const reasons = res.reasons[r.k] ?? [], vals = valuesOf(reasons), c = res.coach?.[r.k];
+    const shirt = o.player !== undefined ? mo.players[o.player]?.shirt : undefined;
+    return [{
+      k: r.k, tag: r.tag, color: r.color,
+      tab: o.kind === "pass" ? t("an.tabPass", { shirt: shirt ?? "?" }) : o.kind === "carry" ? t("an.tabCarry") : t("an.tabShot"),
+      title: optionLabel(mo, r.k), p: c?.p, score: c?.score, gain: o.kind === "shot" ? undefined : vals.gain, loss: o.kind === "shot" ? undefined : vals.loss,
+      reasons: reasons.map((x) => ({ text: translatePhrase(x.text), sign: x.effect })),
+    }];
+  });
+  return { key: `day:${mo.id}`, options, focus: 0 };
+}
+
+async function playAfter(ctx: CanvasRenderingContext2D, v: View, mo: Moment, res: PickResult, pick: number, analysis?: Analysis3D) {
   const a = res.after;
   const release = mo.lead_up[mo.lead_up.length - 1]!;
   const arrows: Overlay = { ai: res.ai_pick, pro: res.pro_pick, mine: pick };
-  draw(ctx, v, mo, release, mo.ball[mo.ball.length - 1] ?? null, arrows);
+  const arrows3: Overlay = { ...arrows, analysis };
+  draw(ctx, v, mo, release, mo.ball[mo.ball.length - 1] ?? null, arrows, arrows3);
   if (!a || reduced()) return;
   await sleep(1400);
   for (let f = 0; f < a.frames.length; f++) {
     const balls = a.ball.slice(0, f + 1);
     // 3D: the arrows stay and fade out, the camera follows the ball (view3d/view.ts, overlay.replay)
     draw(ctx, v, mo, a.frames[f]!, a.ball[f] ?? null, { trail: ballTrail(balls, v), balls, dim: true },
-      { ...arrows, balls, dim: true, replay: a.frames.length > 1 ? f / (a.frames.length - 1) : 1 });
+      { ...arrows3, balls, dim: true, replay: a.frames.length > 1 ? f / (a.frames.length - 1) : 1 });
     await sleep(1000 / a.fps);
   }
   await sleep(500);
-  draw(ctx, v, mo, a.frames[a.frames.length - 1]!, a.ball[a.ball.length - 1] ?? null, { ...arrows, trail: ballTrail(a.ball, v), balls: a.ball, dim: true });
+  draw2D(ctx, v, mo, a.frames[a.frames.length - 1]!, a.ball[a.ball.length - 1] ?? null, { ...arrows, trail: ballTrail(a.ball, v), dim: true });
+  // 3D: with the analysis, back to the decision (its arcs, lane and rings are about the release frame); else as 2D
+  if (analysis) paint3D(mo, release, mo.ball[mo.ball.length - 1] ?? null, arrows3);
+  else paint3D(mo, a.frames[a.frames.length - 1]!, a.ball[a.ball.length - 1] ?? null, { ...arrows, balls: a.ball, dim: true });
 }
 
 const OUTCOME_ICON: Record<PickResult["outcome"]["kind"], IconName> = { goal: "goal", shot: "target", kept: "keep", lost: "lost" };
@@ -384,16 +413,19 @@ export async function playMoment(ui: RoundUI, mo: Moment, player: string, index:
   try { navigator.vibrate?.(res.points >= 100 ? [30, 40, 30] : 20); } catch { /* not supported */ }
   ui.hint.textContent = res.after ? t("reveal.after") : "";
   const release = mo.lead_up[mo.lead_up.length - 1]!;
+  let analysis: Analysis3D | undefined;
+  try { analysis = revealAnalysis(mo, res, mine); } catch { /* the 3D analysis is a bonus */ }
   const showAll = () => {
-    draw(ctx, v, mo, release, mo.ball[mo.ball.length - 1] ?? null, { ai: res.ai_pick, pro: res.pro_pick, mine, scores: res.all_points });
+    const o: Overlay = { ai: res.ai_pick, pro: res.pro_pick, mine, scores: res.all_points };
+    draw(ctx, v, mo, release, mo.ball[mo.ball.length - 1] ?? null, o, { ...o, analysis });
     ui.hint.textContent = t("reveal.allHint");
   };
   let lesson: Lesson | null = null;
   try { lesson = revealLesson(lessonsFor(mo, res, (k) => optionLabel(mo, k)), seen); } catch { /* the note is a bonus */ }
-  renderReveal(ui, mo, res, mine, () => void playAfter(ctx, v, mo, res, mine), showAll, lesson);
+  renderReveal(ui, mo, res, mine, () => void playAfter(ctx, v, mo, res, mine, analysis), showAll, lesson);
   if (res.repeat) ui.reveal.prepend(el("p", "fine", t("reveal.repeat")));
   renderDots(ui, [...points, res.points], total, true);
-  await playAfter(ctx, v, mo, res, mine);
+  await playAfter(ctx, v, mo, res, mine, analysis);
   const legend = el("span", "legend");
   legend.append(el("span", "ai", t("who.ai")), el("span", "pro", t("who.pro")), el("span", "mine", t("who.you")));
   ui.hint.replaceChildren(legend);

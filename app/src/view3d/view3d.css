@@ -30,3 +30,45 @@
   background: rgba(7, 23, 14, 0.82); border: 1px solid var(--line-strong); box-shadow: var(--shadow-float); }
 .v3d-names[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
 .v3d-names:hover:not([aria-pressed="true"]) { color: var(--fg); }
+/* ---- the coach's analysis (coachLayer.ts) ---- */
+/* the "Space control" / "Pressure" switches: under the 3D / 2D toggle (top-right) */
+.v3d-switches { position: absolute; top: calc(var(--s-2) + var(--tap) + var(--s-1)); right: var(--s-2); display: flex; flex-direction: column; align-items: flex-end; gap: var(--s-1); }
+.v3d-switches[hidden] { display: none; }
+.v3d-switch { min-height: var(--tap); padding: 0 var(--s-3); border-radius: calc(var(--r-stage) - var(--s-2)); font-size: var(--fs-xs); font-weight: 600; color: var(--muted);
+  background: rgba(7, 23, 14, 0.82); border: 1px solid var(--line-strong); box-shadow: var(--shadow-float); }
+.v3d-switch[aria-pressed="true"] { border-color: var(--accent); color: var(--fg); }
+.v3d-switch:hover:not([aria-pressed="true"]) { color: var(--fg); }
+/* labels over the options' targets, placed by analysis.ts layoutLabels (never over each other or the buttons) */
+.v3d-labels { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.v3d-labels[hidden] { display: none; }
+.v3d-label { position: absolute; top: 0; left: 0; white-space: nowrap; padding: 2px var(--s-2); border-radius: var(--r-inner); background: rgba(7, 23, 14, 0.86);
+  color: var(--c, var(--fg)); font: 700 var(--fs-xs)/1.4 var(--font-display); font-variant-numeric: tabular-nums; border: 1px solid transparent; opacity: 0.85; will-change: transform; }
+.v3d-label.on { padding: 3px var(--s-2); font-size: var(--fs-sm); border-color: var(--c, var(--accent)); opacity: 1; box-shadow: var(--shadow-float); }
+/* the panel under the view: one tab per option, the breakdown card */
+.v3d-panel { margin-top: var(--s-2); }
+.v3d-panel[hidden], .v3d-stage:not(.is3d) .v3d-panel { display: none; }
+.v3d-tabs { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 6px; }
+.v3d-tab { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 52px; padding: var(--s-1); border-radius: var(--r-inner);
+  background: transparent; color: var(--fg); border: 1px solid var(--line); text-align: center; }
+.v3d-tab .tg { font: 800 var(--fs-md)/1.1 var(--font-display); color: var(--fg); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.v3d-tab .tl { font-size: var(--fs-xs); color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.v3d-tab[aria-selected="true"] { border: 2px solid var(--c, var(--accent)); background: color-mix(in srgb, var(--c, var(--accent)) 10%, transparent); }
+.v3d-tab[aria-selected="true"] .tg { color: var(--c, var(--accent)); }
+.v3d-tab:hover:not([aria-selected="true"]) { border-color: var(--line-strong); }
+.v3d-card { margin-top: var(--s-2); padding: 14px; border-radius: var(--r-stage); background: var(--surface); }
+.v3d-card .hd { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-3); }
+.v3d-card h3 { margin: 0; font-size: 1.0625rem; font-weight: 700; line-height: var(--lh-snug); }
+.v3d-card .net { font: 800 1.625rem/1 var(--font-display); color: var(--c, var(--accent)); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.v3d-card .netl { margin: 2px 0 var(--s-3); font-size: var(--fs-xs); color: var(--muted); text-align: right; }
+.v3d-card .nums { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-2); }
+.v3d-card .nums b { display: block; font: 800 1.375rem/1.1 var(--font-display); font-variant-numeric: tabular-nums; }
+.v3d-card .nums span { font-size: var(--fs-xs); color: var(--muted); }
+.v3d-card .nums .gain b { color: var(--top); }
+.v3d-card .nums .loss b { color: var(--attack-ink); }
+.v3d-card .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: var(--s-3); }
+.v3d-chip { padding: var(--s-1) 10px; border-radius: var(--s-3); font-size: 0.8125rem; font-weight: 600; line-height: 1.3; }
+.v3d-chip.good { background: rgba(6, 214, 160, 0.14); color: var(--top); }
+.v3d-chip.bad { background: rgba(255, 122, 150, 0.14); color: var(--attack-ink); }
+.v3d-chip.info { background: var(--surface-2); color: var(--muted); }
+.v3d-an-choose { width: 100%; margin-top: var(--s-3); }
+.v3d-mode[hidden] { display: none; }

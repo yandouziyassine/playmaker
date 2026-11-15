@@ -15,6 +15,9 @@ export interface PickResult {
   outcome: Answer["outcome"]; reasons: Record<number, Reason[]>; crowd: Record<number, number> | null; repeat: boolean; all_points: Record<number, number>; after: After | null;
   /** The recorded guess of the pro's choice and whether it matches the real pass (null when no guess was sent). */
   guess: number | null; guess_right: boolean | null;
+  /** Per option the coach's completion chance (pass arrives / ball kept / goal) and net xG score, for the reveal's
+   *  analysis (the 3D view's arcs and breakdown card). */
+  coach: Record<number, { p: number; score: number }>;
 }
 export interface StoredPick { option: number; points: number; at: string; guess?: number | null }
 export interface Store {

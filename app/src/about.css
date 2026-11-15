@@ -1,10 +1,15 @@
 /* About page. Tokens and shared components: design/tokens.css, design/components.css. */
 @import "./design/tokens.css";
 @import "./design/components.css";
+body { background: radial-gradient(120% 320px at 50% 0, rgba(76, 201, 240, 0.08), rgba(6, 18, 12, 0) 70%) no-repeat var(--bg); }
 .topbar, main { max-width: 640px; margin: 0 auto; }
-main { padding: var(--s-2) var(--s-4) var(--s-10); }
+.topbar { padding: var(--s-3) var(--s-5) 0; }
+main { padding: var(--s-2) var(--s-5) var(--s-10); }
 main p, main li { color: var(--muted); max-width: 64ch; }
 main b { color: var(--fg); }
-h2 { margin-top: var(--s-8); }
+h1 { margin-top: var(--s-4); }
+/* each section title gets a short cyan rule, like a broadcast caption */
+h2 { margin-top: var(--s-8); padding-top: var(--s-3); border-top: 2px solid var(--accent); display: inline-block; }
 ul { padding-left: 1.2rem; }
 li { margin: var(--s-2) 0; }
+li::marker { color: var(--accent); }

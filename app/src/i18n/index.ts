@@ -87,10 +87,11 @@ export function initLang(): Lang {
 export function saveLang(l: Lang) { try { storage()?.setItem(LANG_KEY, l); } catch { /* memory only */ } }
 
 /** Fills the page's static strings: data-i18n (text), data-i18n-html (trusted dictionary markup), data-i18n-aria
- *  (aria-label), data-i18n-content (meta content). */
+ *  (aria-label), data-i18n-content (meta content), data-i18n-title (title). */
 export function localizeDom(root: ParentNode = document, tr: (key: string) => string = (k) => t(k as Key)) {
   for (const e of root.querySelectorAll<HTMLElement>("[data-i18n]")) e.textContent = tr(e.dataset.i18n!);
   for (const e of root.querySelectorAll<HTMLElement>("[data-i18n-html]")) e.innerHTML = tr(e.dataset.i18nHtml!);
   for (const e of root.querySelectorAll<HTMLElement>("[data-i18n-aria]")) e.setAttribute("aria-label", tr(e.dataset.i18nAria!));
   for (const e of root.querySelectorAll<HTMLElement>("[data-i18n-content]")) e.setAttribute("content", tr(e.dataset.i18nContent!));
+  for (const e of root.querySelectorAll<HTMLElement>("[data-i18n-title]")) e.title = tr(e.dataset.i18nTitle!);
 }

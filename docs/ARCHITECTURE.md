@@ -223,6 +223,21 @@ all_points, after, crowd, repeat, guess, guess_right`.
 
 **Errors**: 400 invalid body or option, 404 unknown or future moment, 429 daily limit.
 
+**Training** (`handleTrain`, `handleBank` in `api/src/handler.ts`): endless play over the bank.
+- `GET /api/train/bank` returns `{moments: [id, ...]}`, every moment of the days **before** UTC today (oldest first),
+  so the bank grows by one day's five every day and a day's answers never leak before or on its own day.
+- `POST /api/train` with exactly `{moment, option}` or `{guess, moment, option}` (no player id) returns the same
+  `PickResult` with `crowd: null` and `repeat: false`. Nothing is stored: no first-answer rule, no crowd count, the
+  same moment can be answered again. 404 for today's or later moments; its own limit of 600 plays per network per day
+  (key `train#<ip hash>#<date>`).
+- The static demo has no server: its bank is every day of its content index and `demo.ts demoTrain` scores from the
+  answer file without keeping anything.
+- In the browser (`app/src/training.ts`, state in `storage.ts TrainStore`, key `pm.train`, apart from the daily keys
+  so streaks and daily stats never see it): one shuffled order of the bank and a position, no repeat until every play
+  was seen, then a new shuffle; new days are shuffled into the unplayed part; per moment the best and last points, its
+  zone, pick kind and league; running plays, average and run of top picks. An optional pitch-zone filter uses the
+  moment's own data (the carrier's position at the release), skipped plays keep their turn.
+
 `api/src/dev.ts` is a Node HTTP server on :8787 serving `POST /api/pick` and `GET /content/*` (same future-day rule
 for day files). The Lambda handler planned for AWS reuses `handlePick` with a DynamoDB `Store`.
 

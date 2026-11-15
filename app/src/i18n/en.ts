@@ -13,7 +13,8 @@ export const en = {
   // game page: head
   "meta.title": "Playmaker · daily football decisions",
   "meta.desc": "Five real moments a day from pro matches. You have the ball: pick the pass. Then see the AI coach's pick, the pro's choice and what really happened.",
-  "day.label": "Day #{n}",
+  "day.label": "Matchday {n}",
+  "intro.eyebrow": "Matchday {n} · {k} moments",
 
   // intro
   "intro.h1.html": "Five real pro moments a day. <em>Pick the pass.</em>",
@@ -22,8 +23,8 @@ export const en = {
   "intro.loading": "Loading today's five",
   "intro.play": "Play today's five",
   "intro.noDay": "No challenge for this day. Come back tomorrow.",
-  "preview.day": "A moment from day #{n}: watch 3 seconds of play, then make your pick.",
-  "preview.sample": "A sample moment: watch 3 seconds of play, then make your pick.",
+  "preview.day": "Matchday {n} · {league}",
+  "preview.sample": "A sample moment · {league}",
   "howto.summary": "How to play",
   "howto.1.html": "Watch 3 seconds of real play. The ball carrier has a yellow ring; your team (red) attacks up the screen.",
   "howto.2.html": "<b>What would you do?</b> Tap a teammate to pass, a yellow chevron to carry, or the goal to shoot, then Confirm. Up to 100 points if the AI coach rates your choice among the best (a close call scores 100 too).",
@@ -33,6 +34,8 @@ export const en = {
   "more.replay": "Free play: a full match with the coach",
   "more.lab": "Lab: from a TV picture to tactics",
   "more.about": "About the AI and privacy",
+  "more.replayShort": "Full match",
+  "more.labShort": "Vision lab",
   "footer.html": "Data: Bassek et al. (2025), DFL / Sportec Solutions, CC BY 4.0 · SkillCorner open data (MIT). Positions drawn by Playmaker. <a href=\"about.html\">About</a> · <a href=\"https://github.com/yandouziyassine/playmaker\">Code</a>",
 
   // game
@@ -45,6 +48,7 @@ export const en = {
   "game.loading": "Loading the moment…",
   "game.next": "Next moment",
   "game.seeScore": "See my score",
+  "q.step": "Question {i} of {n}",
   "q.you.tag": "What would you do?",
   "q.you.tap": "Tap a teammate to pass, a yellow chevron to carry, or the goal to shoot.",
   "q.you.list": "Through the carrier's eyes: tap a teammate, a yellow chevron or the goal (drag to look around), or use the list.",
@@ -89,6 +93,8 @@ export const en = {
   "reveal.all": "Every option's score",
   "reveal.allHint": "Points of every option: green 100, yellow 50+, grey below",
   "reveal.opinion": "The AI's ranking is a model opinion, not the truth.",
+  "reveal.rowsNote": "Points out of 100 for each option.",
+  "reveal.samePro": "Same as the pro",
   "reveal.repeat": "You already answered this moment: your first answer counts.",
 
   // tour (first moment only)
@@ -111,6 +117,11 @@ export const en = {
   "done.streak.one": "Streak: {n} day",
   "done.streak.other": "Streak: {n} days",
   "done.nextIn": "Next five in {time}",
+  "done.eyebrow": "Full time · Matchday {n}",
+  "done.outOf": "points out of {max}",
+  "done.streakTile.one": "day streak",
+  "done.streakTile.other": "day streak",
+  "done.replayMatch": "Replay a full match",
   "time.hm": "{h} h {m} min",
   "archive.h2": "Past days",
   "archive.fine": "Missed a day? Play it here. Past days don't count for your streak.",
@@ -342,6 +353,29 @@ export const en = {
   "rp.outShot": "a shot",
   "rp.outLost": "ball lost",
   "rp.outKept": "ball kept",
+
+  // training (endless play over the bank: app/src/training.ts)
+  "train.entry": "Training",
+  "train.entryN": "Training · {n} plays",
+  "train.h1": "Training: endless plays from the bank",
+  "train.play": "Play {n}",
+  "train.plays": "Plays",
+  "train.avg": "Average",
+  "train.run": "Top-pick run",
+  "train.next": "Next play",
+  "train.end": "End training",
+  "train.zone": "Pitch zone",
+  "train.zoneAll": "All zones",
+  "train.empty": "No plays in the training bank yet: they arrive with each past day.",
+  "train.filterEmpty": "No play left in this zone this round: choose another zone.",
+  "train.failed": "Could not reach the training bank. Check your connection, then try again.",
+  "train.loading": "Loading the next play…",
+  "train.bankTitle": "Training bank",
+  "train.seen": "Plays seen",
+  "train.avgBest": "Avg best",
+  "train.bestRun": "Best run",
+  "train.zones": "Best zone: {best} · weakest: {worst}",
+  "train.note": "Training never counts for your streak or your daily stats; answer a play again to beat your best.",
 
   // about page
   "about.title": "About Playmaker: the AI coach, scoring and privacy",

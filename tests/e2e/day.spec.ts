@@ -23,8 +23,10 @@ test("plays a full day: both questions, reveal, recap", async ({ page }) => {
     await page.locator(".opt").first().click();
     await expect(confirm).toBeEnabled();
     await confirm.click();
-    await expect(reveal.locator(".proread")).toHaveText(/^(You read the pro|The pro played Pass to .+)$/);
-    await expect(reveal).toContainText("points");
+    // the points, the verdict and the pro read sit above the pitch (#score); you / AI coach / the pro under it (#reveal)
+    const score = page.locator("#score");
+    await expect(score.locator(".proread")).toHaveText(/^(You read the pro|The pro played Pass to .+)$/);
+    await expect(score).toContainText("/100 points");
     await expect(reveal).toContainText("AI coach");
     await expect(reveal).toContainText("The pro");
     await expect(reveal).toContainText("model opinion");
@@ -40,8 +42,8 @@ test("plays a full day: both questions, reveal, recap", async ({ page }) => {
   }
   await expect(page.locator("#total")).toHaveText(/^\d+$/);
   await expect(page.locator("#squares")).toHaveText(/^([🟩🟨⬜] ?){5}$/u);
-  await expect(page.locator("#reads")).toHaveText(/^Pro reads [0-5]\/5$/);
-  await expect(page.locator("#streak")).toContainText("Streak: 1 day");
+  await expect(page.locator("#reads")).toHaveText(/^[0-5]\/5 Pro reads$/);
+  await expect(page.locator("#streak")).toHaveText("1 day streak");
   // Coach's notebook: the day's lessons (or a clean day) and, once something was flagged, the skill to work on
   const notebook = page.locator("#done .notebook");
   await expect(notebook.locator("h2")).toHaveText("Coach's notebook");
@@ -51,7 +53,7 @@ test("plays a full day: both questions, reveal, recap", async ({ page }) => {
   await page.reload();
   await expect(page.locator("#done")).toBeVisible();
   await expect(notebook.locator("h2")).toHaveText("Coach's notebook"); // rebuilt from the stored records
-  await expect(page.locator("#reads")).toHaveText(/^Pro reads [0-5]\/5$/);
+  await expect(page.locator("#reads")).toHaveText(/^[0-5]\/5 Pro reads$/);
   await expect(page.locator("#howto")).not.toHaveAttribute("open", "");
 });
 
@@ -79,9 +81,10 @@ test("launch day: the intro shows the product (sample moment preview)", async ({
 });
 
 test("public content never exposes answers", async ({ request }) => {
-  expect((await request.get("http://localhost:8787/content/../answers/x.json")).status()).toBe(404);
-  const day = await (await request.get("http://localhost:8787/content/days/2026-12-01.json")).json();
-  const mo = await (await request.get(`http://localhost:8787/content/moments/${day.moments[0]}.json`)).text();
+  const api = `http://localhost:${process.env.PLAYMAKER_API_PORT ?? 8787}`;
+  expect((await request.get(`${api}/content/../answers/x.json`)).status()).toBe(404);
+  const day = await (await request.get(`${api}/content/days/2026-12-01.json`)).json();
+  const mo = await (await request.get(`${api}/content/moments/${day.moments[0]}.json`)).text();
   for (const k of ["points", "pro_pick", "share_top", "reasons", "after"]) expect(mo).not.toContain(`"${k}"`);
 });
 
@@ -126,7 +129,7 @@ test("in 3D, the reveal shows the coach's analysis: tabs, breakdown card, switch
     await page.locator(".opt").last().click();
     await confirm.click();
   }
-  await expect(page.locator("#reveal")).toContainText("points");
+  await expect(page.locator("#score")).toContainText("points");
   const tabs = page.getByRole("tab");
   await expect(tabs.first()).toHaveAttribute("aria-selected", "true");
   await expect(tabs.first()).toContainText("AI coach");
@@ -176,6 +179,6 @@ test("keyboard play: arrows / Tab move the selection on the pitch, Enter confirm
   await page.keyboard.press("ArrowLeft");
   await expect(choice).toHaveText(/^Pass to /);
   await page.keyboard.press("Enter");
-  await expect(page.locator("#reveal")).toContainText("points");
+  await expect(page.locator("#score")).toContainText("points");
   await expect(page.locator("#next")).toBeFocused();
 });

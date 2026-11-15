@@ -39,6 +39,9 @@ synthetic scene, no broadcast picture). Regenerate them with `scripts/showcase/`
 - **Five real moments a day** from open professional tracking data (Bundesliga, 2. Bundesliga, A-League). Watch 3 s of
   real play, then two questions: **What would you do?** (scored by the AI coach, close calls get full points) and
   **What did the pro actually do?** (objective: the real pass).
+- **Training**: endless play over the whole bank (every past day's moments; 150 in the demo, 585 in the full
+  release), shuffled with no repeat until every play was seen, with a running average, a run of top picks, a
+  pitch-zone filter and a "training bank" progress card. It never counts for the daily streak or stats.
 - **The reveal**: your points, the AI's pick with what helped and hurt, the pro's pick, what happened next, the crowd
   split, every option's score on the pitch, and a replay of the real 6 seconds after the pass.
 - **2D or 3D**: a lazy three.js view with three cameras (player's eyes from the carrier's head, a TV-style stadium
@@ -102,3 +105,5 @@ address Vite prints and accept the self-signed certificate once. The Lab's live 
 
 Bundesliga tracking and event data: Bassek et al. (2025), DFL / Sportec Solutions, CC BY 4.0.
 Tracking and event data: SkillCorner open data (MIT). Code: MIT.
+Fonts: Barlow and Barlow Condensed (The Barlow Project Authors, SIL Open Font License 1.1, self-hosted:
+`app/src/design/fonts/OFL.txt`).

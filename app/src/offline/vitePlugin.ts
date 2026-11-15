@@ -50,7 +50,8 @@ export function precacheList(bundle: Record<string, BundleFile>, page: string, h
     if (bundle[file]) visit(file); else out.add(ref); // public/ files (favicon, manifest)
   }
   // every stylesheet too (a few kB): lazily imported CSS (e.g. the stats card) must render offline
-  for (const file of Object.keys(bundle)) if (file.endsWith(".css")) out.add(`/${file}`);
+  // and the self-hosted fonts (a few woff2 files referenced from the CSS), so text keeps its face offline
+  for (const file of Object.keys(bundle)) if (file.endsWith(".css") || file.endsWith(".woff2")) out.add(`/${file}`);
   return [...out].sort();
 }
 

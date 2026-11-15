@@ -132,6 +132,14 @@ Linear models were kept on purpose: the browser runs the exact same formulas. Th
 TypeScript port of the features, pitch control, advice and explanations (exact logistic contributions turned into
 "helps / hurts" phrases).
 
+**Coach v2 weights (2026-11-14).** The library now places each Bundesliga event on the frame where its player
+releases the ball (read from the tracking) instead of trusting the hand-logged time and spot: 91 % of passes are
+placed instead of 69 %, giving 35 % more training passes. Same formulas and features; the pass, value, arrival and
+shot weights in `models.json` were refitted and the replay match's events re-exported (190 more placed events). Held
+out, the coach's score of the pro's pass agrees better with what followed (Spearman with the net xG of the next 15 s,
+Bundesliga 0.099 -> 0.137, +0.038 [+0.023, +0.056]); pass accuracy is about the same (AUC 0.851 -> 0.853). Details:
+the library README, "Coach v2". The daily content was not rebuilt with them yet.
+
 **Parity.** `app/test/coach-parity.test.ts` loads a fixture written by the library's `coach/parity_fixtures.py` on 30
 real tracking frames from both halves of one Bundesliga match (J03WOH, models trained without it). For every frame it
 checks pass, value and shot features, p, value, score, loss value and target point within **1e-6**, the option
@@ -430,4 +438,4 @@ From the design spec, section 3 and 5. Nothing below exists yet.
   1.6 s per analysed frame on a laptop CPU in headless Chromium; the possession share is very rough.
 - **Parity covers one match** (30 frames). It guards the port, not the models' quality.
 - **Failed-pass targets are inferred** in the Bundesliga data (outcome-informed), so the pass model's headline AUC is
-  an upper bound (leak check 0.77-0.81 vs 0.838).
+  an upper bound (coach v2, 7 held-out Bundesliga matches: leak check 0.781 vs 0.853).

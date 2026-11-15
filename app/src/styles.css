@@ -36,7 +36,7 @@ body[data-screen="intro"] { background: radial-gradient(120% 360px at 50% 0, rgb
 /* ---------- game: scoreboard HUD, then the pitch is the hero ---------- */
 body[data-screen="game"] .topbar, body[data-screen="game"] footer { display: none; }
 body[data-screen="game"] main { padding: 0 var(--s-4) var(--s-4); }
-.gamehead { position: sticky; top: 0; z-index: 5; display: grid; gap: 10px; padding: var(--s-3) 0 10px; background: var(--bg); }
+.gamehead { position: sticky; top: 0; z-index: 5; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; padding: var(--s-3) 0 10px; background: var(--bg); }
 .hudrow { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); min-height: 34px; }
 #title { margin: 0; min-width: 0; display: flex; }
 .board { display: flex; align-items: stretch; min-width: 0; max-width: 100%; border-radius: 10px; overflow: hidden;

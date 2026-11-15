@@ -24,11 +24,17 @@ import {
 import { t } from "../i18n/index.ts";
 import {
   CAMERA_MODES, COLORS, EYES_ARROW, EYES_FOV, FAR_ARROW, GOAL_H, GOAL_HALF_WIDTH, HALF_LENGTH, HALF_WIDTH, LOOK_HOME, NO_FRAMING,
-  ORBIT_HOME, arrowFade, arrowSpecs, atlasCell, badgeItems, ballScale, ballShadow, broadcastFollow, cameraPose, carrierAt, cmToM, damp, dragLook,
+  ORBIT_HOME, arrowFade, orbitPosition, arrowSpecs, atlasCell, badgeItems, ballScale, ballShadow, broadcastFollow, cameraPose, carrierAt, cmToM, damp, dragLook,
   dragOrbit, eyesArrow, eyesFollowYaw, followFocus, frameTips, goalOf, isCameraMode, isTap, labelVisible, lerpFrame, lerpPoint, motion,
   pickTargets, pitchMarkings, rayPick, ribbon, surname, toWorld, turnTowards, zoomFov, zoomOrbit,
-  type CameraMode, type Follow, type Framing, type Look, type Moment3D, type Orbit, type Overlay3D, type PickTarget, type Vec,
+  type CameraMode, type Follow, type Framing, type Look, type Moment3D, type Orbit, type Overlay3D, type PickTarget, type Pose, type Vec,
 } from "./geom.ts";
+
+/** The camera modes of the selector: the three remembered ones and "analysis", offered while the coach's analysis is
+ *  shown (it frames the carrier and the options; entered automatically unless the visitor left it). */
+export type ViewMode = CameraMode | "analysis";
+import { GLIDE_MS, analysisPose, blendPose } from "./analysis.ts";
+import { createCoachLayer } from "./coachLayer.ts";
 import { IDLE_MS, LIMBS, accelLean, advancePhase, figureMatrices, gaitParams, kitColors, poseAt, rootMatrix, skinTone } from "./gait.ts";
 
 type Cm = [number, number] | null;
@@ -43,10 +49,12 @@ export interface View3D {
   showScores(scores: Record<number, number> | null): void;
   /** The option under a client point while picking is on (tests / debugging), or null. */
   pickAt(clientX: number, clientY: number): number | null;
-  /** The camera mode, remembered across visits. */
-  getMode(): CameraMode;
-  setMode(mode: CameraMode): void;
-  onModeChange(cb: ((mode: CameraMode) => void) | null): void;
+  /** The camera mode (the three base modes are remembered across visits; "analysis" while the coach's analysis shows). */
+  getMode(): ViewMode;
+  setMode(mode: ViewMode): void;
+  onModeChange(cb: ((mode: ViewMode) => void) | null): void;
+  /** Look at option i of the analysis (index in overlay.analysis.options): its arc, lane, numbers and reasons. */
+  focusOption(i: number): void;
   /** Back to the resting view (looking at the goal, or the mode's default camera). */
   reset(): void;
   /** Draw calls of the last render and the mean time of the last frames (ms), for the review scripts. */
@@ -54,13 +62,13 @@ export interface View3D {
   dispose(): void;
 }
 
-export const MODE_KEY = "playmaker.view3d.mode", NAMES_KEY = "playmaker.view3d.names";
+export const MODE_KEY = "playmaker.view3d.mode", NAMES_KEY = "playmaker.view3d.names", AUTO_KEY = "playmaker.view3d.analysis";
 const LABEL_FRAC = 0.034, TETHER_MIN = 0.6; // label height: 3.4 % of the canvas; the ball's line to its shadow above 0.6 m
 const MAX_CARRIES = 16, Y_AXIS = new Vector3(0, 1, 0);
 const MAX_FIGURES = 36, MAX_ARROW_VERTS = 8 * 60 * 3, MAX_TRAIL = 200, MAX_DPR = 1.5;
 const NUMBER_Y = 2.3, FIGURE_H = 1.8, BALL_R = 0.11, BALL_VIS_R = 0.16;
 /** The figures are drawn a little larger from the far cameras, where a 1.8 m player is a few pixels tall. */
-const FIGURE_SCALE: Record<CameraMode, number> = { eyes: 1, stadium: 1.15, tactical: 1.3 };
+const FIGURE_SCALE: Record<ViewMode, number> = { eyes: 1, stadium: 1.15, tactical: 1.3, analysis: 1.2 };
 const SPEED_TAU = 0.15, ACCEL_TAU = 0.3, RIM = 0.5; // s: smoothing of each figure's speed and acceleration; edge darkening
 
 /** Adds a dark rim (view-angle shading) to a Lambert material: the figures' outline without a second draw. */
@@ -190,6 +198,7 @@ export function hasWebGL(): boolean {
 const flat = <T extends BufferGeometry>(g: T): T => { g.rotateX(-Math.PI / 2); return g; };
 const readMode = (): CameraMode => { try { const v = localStorage.getItem(MODE_KEY); return isCameraMode(v) ? v : "eyes"; } catch { return "eyes"; } };
 const readNames = (): boolean => { try { return localStorage.getItem(NAMES_KEY) === "1"; } catch { return false; } };
+const readAuto = (): boolean => { try { return localStorage.getItem(AUTO_KEY) !== "0"; } catch { return true; } };
 
 /** A name label: "number surname" in white on a dark pill (drawn here); the canvas aspect for the sprite's scale. */
 function labelTexture(text: string): { tex: CanvasTexture; aspect: number } {
@@ -205,12 +214,14 @@ function labelTexture(text: string): { tex: CanvasTexture; aspect: number } {
 }
 
 // the mode selector's icons: local SVG (20 px grid like design/icons.ts, but only the 3D chunk needs them)
-const MODE_ICON: Record<CameraMode, string> = {
+const MODE_ICON: Record<ViewMode, string> = {
+  analysis: '<path d="M4 16c2.5-6 6-9.5 12-11"/><path d="M12.5 4.5 16 5l-.6 3.4"/><circle cx="4.5" cy="15.5" r="1.6"/>',
   eyes: '<path d="M2 10s3-5.5 8-5.5S18 10 18 10s-3 5.5-8 5.5S2 10 2 10z"/><circle cx="10" cy="10" r="2.5"/>',
   stadium: '<path d="M3 15.5h14M4.5 15.5V9l5.5-3.5L15.5 9v6.5"/><path d="M7.5 15.5V11h5v4.5"/>',
   tactical: '<rect x="3" y="4" width="14" height="12" rx="1.5"/><path d="M10 4v12M3 10h14"/><circle cx="10" cy="10" r="2"/>',
 };
-const MODE_LABEL: Record<CameraMode, () => string> = { eyes: () => t("v3d.modeEyes"), stadium: () => t("v3d.modeStadium"), tactical: () => t("v3d.modeTactical") };
+const MODE_LABEL: Record<ViewMode, () => string> = { eyes: () => t("v3d.modeEyes"), stadium: () => t("v3d.modeStadium"), tactical: () => t("v3d.modeTactical"), analysis: () => t("v3d.modeAnalysis") };
+const VIEW_MODES: readonly ViewMode[] = [...CAMERA_MODES, "analysis"];
 
 /** Creates the view inside `host` (its canvas and mode selector are prepended), or null when WebGL is not available. */
 export function createView3D(host: HTMLElement): View3D | null {
@@ -354,7 +365,10 @@ export function createView3D(host: HTMLElement): View3D | null {
 
   // ---- camera, steering and the motion state ----
   const camera = new PerspectiveCamera(EYES_FOV, 1, 0.1, 500);
-  let mode: CameraMode = readMode(), modeCb: ((m: CameraMode) => void) | null = null;
+  let base: CameraMode = readMode(), mode: ViewMode = base, modeCb: ((m: ViewMode) => void) | null = null;
+  let auto = readAuto(), analysisKey = "", anPose: Pose | null = null, anPoseKey = "";
+  let glide: { from: Pose; t0: number } | null = null;
+  const coach = createCoachLayer(scene, host, canvas, () => request());
   let look: Look = LOOK_HOME, fov = EYES_FOV, orbit: Orbit = ORBIT_HOME, framing: Framing = NO_FRAMING;
   let eye: Vec = [0, 0], focus: Vec = [0, 0], goal: Vec = goalOf(1), raf = 0, disposed = false;
   const aim = new Vector3(), ndc = new Vector3();
@@ -413,7 +427,15 @@ export function createView3D(host: HTMLElement): View3D | null {
       settled = Math.hypot(next[0] - focus[0], next[1] - focus[1]) < 0.01 && Math.hypot(want[0] - next[0], want[1] - next[1]) < 0.05;
     }
     focus = next;
-    const pose = cameraPose(mode, eye, focus, look, fov, framing, orbit, goal);
+    // the analysis camera (orbit drags still turn it), else the mode's; a mode change glides from where it was
+    let pose = mode === "analysis" && anPose ? { position: orbitPosition(anPose.position, anPose.target, orbit), target: anPose.target, fov: anPose.fov }
+      : cameraPose(mode === "analysis" ? base : mode, eye, focus, look, fov, framing, orbit, goal);
+    let gliding = false;
+    if (glide) {
+      const k = (now - glide.t0) / GLIDE_MS;
+      if (k >= 1 || reduced) glide = null;
+      else { pose = blendPose(glide.from, pose, k); gliding = true; }
+    }
     camera.position.set(...pose.position);
     camera.fov = pose.fov;
     camera.updateProjectionMatrix();
@@ -425,7 +447,7 @@ export function createView3D(host: HTMLElement): View3D | null {
     for (const l of labelOf.values()) l.sprite.visible = false;
     let n = 0;
     moving = false;
-    const fs = FIGURE_SCALE[mode], numberY = NUMBER_Y + FIGURE_H * (fs - 1); // the number stays over the (scaled) head
+    const fs = FIGURE_SCALE[mode], labelMode: CameraMode = mode === "analysis" ? "tactical" : mode, numberY = NUMBER_Y + FIGURE_H * (fs - 1); // the number stays over the (scaled) head
     frame.forEach((cm, i) => {
       if (!cm || n >= MAX_FIGURES) return;
       const pl = mo.players[i];
@@ -461,7 +483,7 @@ export function createView3D(host: HTMLElement): View3D | null {
       const limbCols = [skin, skin, col(kit.socks), col(kit.socks), col(SHOE), col(SHOE), shirt, shirt, skin, skin];
       limbCols.forEach((c, j) => limbs.setColorAt(n * LIMBS + j, c));
       let kn = i === mo.carrier && mode === "eyes" ? 0 : 1; // seen from just behind him, his own number would fill the screen
-      if (names && kn && labelVisible(mode, Math.hypot(x - camera.position.x, numberY - camera.position.y, z - camera.position.z))) {
+      if (names && kn && labelVisible(labelMode, Math.hypot(x - camera.position.x, numberY - camera.position.y, z - camera.position.z))) {
         const text = `${pl.shirt} ${surname(pl.name)}`;
         let l = labelOf.get(i);
         if (!l || l.text !== text) {
@@ -509,10 +531,11 @@ export function createView3D(host: HTMLElement): View3D | null {
       if (tether.visible) { tetherPos.setXYZ(0, bx, 0.02, -by); tetherPos.setXYZ(1, bx, ball.position.y - BALL_VIS_R, -by); tetherPos.needsUpdate = true; }
     }
     numberSize.value = mode === "eyes" ? 0.75 : 1.15;
+    coach.update(camera, arrowFade(o.replay), canvas.clientWidth, canvas.clientHeight);
     renderer.render(scene, camera);
     times.push(performance.now() - t1);
     if (times.length > 120) times.shift();
-    if (u < 1 || (moving && !reduced) || !settled) request();
+    if (u < 1 || (moving && !reduced) || !settled || gliding) request();
   }
   const request = () => { if (!raf && !disposed) raf = requestAnimationFrame(render); };
 
@@ -524,6 +547,19 @@ export function createView3D(host: HTMLElement): View3D | null {
     render(); // make sure the camera matches what is on screen
     ndc.set(((clientX - r.left) / r.width) * 2 - 1, -(((clientY - r.top) / r.height) * 2 - 1), 0.5).unproject(camera).sub(camera.position).normalize();
     return rayPick([camera.position.x, camera.position.y, camera.position.z], [ndc.x, ndc.y, ndc.z], picker.targets, screen());
+  }
+
+  /** The analysis option under a client point (tap one to look at it), or null. */
+  function focusAt(clientX: number, clientY: number): number | null {
+    const r = canvas.getBoundingClientRect();
+    if (!r.width || !r.height || !coach.active()) return null;
+    ndc.set(((clientX - r.left) / r.width) * 2 - 1, -(((clientY - r.top) / r.height) * 2 - 1), 0.5).unproject(camera).sub(camera.position).normalize();
+    return rayPick([camera.position.x, camera.position.y, camera.position.z], [ndc.x, ndc.y, ndc.z], coach.targets(), screen());
+  }
+  /** Start a camera move from what is on screen now (none with reduced motion). */
+  function startGlide() {
+    if (reduced || !lastMo) return;
+    glide = { from: { position: [camera.position.x, camera.position.y, camera.position.z], target: [aim.x, aim.y, aim.z], fov: camera.fov }, t0: performance.now() };
   }
 
   const pts = new Map<number, { x: number; y: number; x0: number; y0: number; t0: number }>();
@@ -557,8 +593,9 @@ export function createView3D(host: HTMLElement): View3D | null {
     const p0 = pts.get(e.pointerId);
     pts.delete(e.pointerId);
     if (p0 && e.type === "pointerup" && !multi && isTap(e.clientX - p0.x0, e.clientY - p0.y0, e.timeStamp - p0.t0)) {
-      const k = pickAt(e.clientX, e.clientY);
+      const k = pickAt(e.clientX, e.clientY), f = picker ? null : focusAt(e.clientX, e.clientY);
       if (k !== null && picker) picker.fn(k);
+      else if (f !== null) coach.focus(coach.indexOf(f));
       else if (e.timeStamp - lastEmptyTap < 350) { home(); lastEmptyTap = -1e9; request(); } // double tap on nothing: re-centre
       else lastEmptyTap = e.timeStamp;
     }
@@ -579,6 +616,7 @@ export function createView3D(host: HTMLElement): View3D | null {
     const w = Math.max(1, canvas.clientWidth), h = Math.max(1, canvas.clientHeight);
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
+    coach.relayout();
     if (lastMo) show(lastMo, lastFrame, lastBall, lastOverlay); // the framing depends on the aspect
     request();
   });
@@ -591,8 +629,8 @@ export function createView3D(host: HTMLElement): View3D | null {
   modes.className = "v3d-modes";
   modes.setAttribute("role", "group");
   modes.setAttribute("aria-label", t("v3d.modes"));
-  const modeButtons = new Map<CameraMode, HTMLButtonElement>();
-  for (const md of CAMERA_MODES) {
+  const modeButtons = new Map<ViewMode, HTMLButtonElement>();
+  for (const md of VIEW_MODES) {
     const b = document.createElement("button");
     b.type = "button"; b.className = "v3d-mode"; b.dataset.mode = md;
     b.innerHTML = `<svg class="icon" viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${MODE_ICON[md]}</svg>`;
@@ -603,12 +641,25 @@ export function createView3D(host: HTMLElement): View3D | null {
     modeButtons.set(md, b);
   }
   host.prepend(modes);
-  function paintModes() { for (const [md, b] of modeButtons) b.setAttribute("aria-pressed", String(md === mode)); }
-  function setMode(next: CameraMode) {
-    if (!isCameraMode(next)) return;
+  function paintModes() {
+    for (const [md, b] of modeButtons) {
+      b.setAttribute("aria-pressed", String(md === mode));
+      if (md === "analysis") b.hidden = !coach.active();
+    }
+  }
+  /** `user`: picked on the selector (leaving the analysis turns its automatic entry off; picking it turns it on). */
+  function setMode(next: ViewMode, user = true) {
+    if (next === "analysis" ? !coach.active() : !isCameraMode(next)) return;
     const changed = next !== mode;
+    if (changed) startGlide();
     mode = next;
-    try { localStorage.setItem(MODE_KEY, mode); } catch { /* private mode */ }
+    if (next === "analysis") { if (user) auto = true; }
+    else {
+      base = next;
+      try { localStorage.setItem(MODE_KEY, base); } catch { /* private mode */ }
+      if (user && coach.active()) auto = false;
+    }
+    if (user) try { localStorage.setItem(AUTO_KEY, auto ? "1" : "0"); } catch { /* private mode */ }
     paintModes();
     home();
     if (lastMo) show(lastMo, lastFrame, lastBall, lastOverlay); else request();
@@ -677,10 +728,31 @@ export function createView3D(host: HTMLElement): View3D | null {
     lastMo = mo; lastFrame = frame; lastBall = b; lastOverlay = o;
     goal = goalOf(mo.attack);
     const release = mo.lead_up[mo.lead_up.length - 1] ?? frame;
-    const specs = arrowSpecs(mo, o);
-    // the reveal (AI / pro / your arrows): turn and, if needed, widen and step back so they are all in view
+
+    // the coach's analysis: its layer, the analysis camera (entered on a new analysis unless the visitor left it)
+    const an = o.analysis && o.analysis.options.length ? o.analysis : null;
+    coach.set(mo, an, mode === "eyes");
+    host.classList.toggle("v3d-analysis", !!an);
+    if (an) {
+      const pk = `${an.key}:${aspect().toFixed(3)}`;
+      if (pk !== anPoseKey) { anPoseKey = pk; anPose = analysisPose(coach.points(), mo.attack ?? 1, aspect()); }
+      if (an.key !== analysisKey) {
+        analysisKey = an.key;
+        if (auto && mode !== "analysis") { startGlide(); mode = "analysis"; orbit = ORBIT_HOME; modeCb?.(mode); }
+        else if (mode === "analysis") startGlide();
+      }
+    } else if (analysisKey) {
+      analysisKey = ""; anPose = null; anPoseKey = "";
+      if (mode === "analysis") { startGlide(); mode = base; modeCb?.(mode); }
+    }
+    paintModes();
+
+    const specs = an ? [] : arrowSpecs(mo, o); // the analysis draws the options itself
+    // the reveal (AI / pro / your arrows, or the analysis' options): turn and, if needed, widen and step back so they
+    // are all in view
     const at = carrierAt(mo, frame) ?? eye;
-    framing = mode === "eyes" && (o.ai !== undefined || o.pro !== undefined) ? frameTips(at, specs.map((a) => a.to), aspect(), EYES_FOV, goal) : NO_FRAMING;
+    const tips = an ? coach.points().slice(1) : specs.map((a) => a.to);
+    framing = mode === "eyes" && (o.ai !== undefined || o.pro !== undefined || !!an) ? frameTips(at, tips, aspect(), EYES_FOV, goal) : NO_FRAMING;
 
     // the selected target: a ring under the teammate, on the carry point, or in the goal mouth
     const sel = o.selected === undefined ? undefined : pickTargets(mo).find((tg) => tg.k === o.selected);
@@ -747,7 +819,8 @@ export function createView3D(host: HTMLElement): View3D | null {
     showScores(scores) { scoresKey = ""; showScores(scores); },
     pickAt,
     getMode: () => mode,
-    setMode,
+    setMode: (md) => setMode(md),
+    focusOption: (i) => coach.focus(i),
     onModeChange(cb) { modeCb = cb; },
     reset() { home(); request(); },
     stats() {
@@ -764,6 +837,7 @@ export function createView3D(host: HTMLElement): View3D | null {
       ro.disconnect();
       clearBadges();
       clearLabels();
+      coach.dispose();
       const mats = new Set<Material>();
       scene.traverse((obj) => {
         const mesh = obj as Mesh;

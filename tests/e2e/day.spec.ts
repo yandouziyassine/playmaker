@@ -115,6 +115,43 @@ test("in 3D, tapping a teammate selects a pass", async ({ page }) => {
   await expect(page.locator(".actions .choice")).not.toHaveText("Nothing selected");
 });
 
+test("in 3D, the reveal shows the coach's analysis: tabs, breakdown card, switches", async ({ page }) => {
+  await page.goto("/?date=2026-12-01&today=2026-12-01&tour=0");
+  await page.getByRole("button", { name: "Play today's five" }).click();
+  const confirm = page.getByRole("button", { name: "Confirm" });
+  await expect(confirm).toBeDisabled({ timeout: 15_000 });
+  const toggle = page.locator(".v3d-toggle");
+  await toggle.click();
+  await expect(toggle).toHaveText(/2D|3D unavailable/, { timeout: 20_000 });
+  test.skip((await toggle.textContent()) === "3D unavailable", "no WebGL in this browser");
+  for (let q = 0; q < 2; q++) { // both questions from the list
+    await page.getByText("Choose from a list").click();
+    await page.locator(".opt").last().click();
+    await confirm.click();
+  }
+  await expect(page.locator("#score")).toContainText("points");
+  const tabs = page.getByRole("tab");
+  await expect(tabs.first()).toHaveAttribute("aria-selected", "true");
+  await expect(tabs.first()).toContainText("AI coach");
+  const card = page.locator(".v3d-card");
+  await expect(card).toContainText("net expected goals");
+  await expect(card.locator(".nums b").first()).toHaveText(/^\d+ %$/); // the coach's completion chance
+  await expect(page.locator(".v3d-label.on")).toHaveText(/\d+ % · [+-]\d\.\d{3}/); // on the pitch, at the target
+  await expect(page.locator('.v3d-mode[data-mode="analysis"]')).toHaveAttribute("aria-pressed", "true"); // the camera frames it
+  if (await tabs.count() > 1) {
+    const title = await card.locator("h3").textContent();
+    await tabs.nth(1).click();
+    await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
+    await expect(card.locator("h3")).not.toHaveText(title!);
+  }
+  const space = page.getByRole("button", { name: "Space control" });
+  const was = await space.getAttribute("aria-pressed");
+  await space.click();
+  await expect(space).toHaveAttribute("aria-pressed", was === "true" ? "false" : "true");
+  await toggle.click(); // back to 2D: the 3D panel goes away
+  await expect(page.locator(".v3d-panel")).toBeHidden();
+});
+
 test("keyboard play: arrows / Tab move the selection on the pitch, Enter confirms", async ({ page }) => {
   await page.goto("/?date=2026-12-01&today=2026-12-01&tour=0");
   await page.getByRole("button", { name: "Play today's five" }).click();

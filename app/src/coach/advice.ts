@@ -1,13 +1,14 @@
 // Rank the ball carrier's options in expected-goal units: port of coach/advice.py. For each pass and carry,
 // score = p * V(target) - (1 - p) * V_opp(loss point) - V(now), where V_opp is the value for the opponent (point
 // mirrored) and the loss point is where a failed pass is lost (laneLossPoint) or the carry point itself. A shot within
-// shot_range scores xG - V(now). Sorted best first; ties keep insertion order (Python's sorted is stable too).
+// shot_range from a goal angle of at least shot_min_angle (rad; coach v2: the shot model has no data below it) scores
+// xG - V(now). Sorted best first; ties keep insertion order (Python's sorted is stable too).
 import { PASS_FEATURES, SHOT_FEATURES, VALUE_FEATURES, laneLossPoint, passFeatures, shotFeatures, valueFeatures, vector, type State } from "./features.ts";
 import { HALF_LENGTH, HALF_WIDTH, type Vec } from "./geometry.ts";
 import { control, type PitchControlParams } from "./pitchControl.ts";
 
 export type Predict = (x: number[]) => number;
-export interface AdviceParams { carry_dist: number; carry_angles_deg: number[]; shot_range: number }
+export interface AdviceParams { carry_dist: number; carry_angles_deg: number[]; shot_range: number; shot_min_angle?: number }
 export interface Coach { predict: { pass: Predict; value: Predict; arrival?: Predict; shot: Predict }; pc: PitchControlParams; advice: AdviceParams }
 export interface CoachOption {
   kind: "pass" | "carry" | "shot";
@@ -52,7 +53,7 @@ export function options(s: State, carrier: number, coach: Coach): CoachOption[] 
     o.score = o.p * o.value - (1 - o.p) * o.vLost - vNow;
   });
   const sf = shotFeatures(here, s.def);
-  if (sf.goal_dist! <= coach.advice.shot_range) {
+  if (sf.goal_dist! <= coach.advice.shot_range && sf.goal_angle! >= (coach.advice.shot_min_angle ?? 0)) {
     const p = coach.predict.shot(vector(sf, SHOT_FEATURES));
     out.push({ kind: "shot", to: [HALF_LENGTH, 0], p, value: 1, score: p - vNow });
   }

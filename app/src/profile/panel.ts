@@ -68,7 +68,7 @@ export function openProfile(opts: ProfileOptions = {}): HTMLDialogElement {
     code = await encode(snapshot(kv));
     codeOut.value = code; codeOut.hidden = false;
     copyBtn.hidden = fileBtn.hidden = linkBtn.hidden = false;
-    make.hidden = true;
+    make.remove();
     codeOut.select();
   });
   copyBtn.addEventListener("click", async () => { if (await copy(code)) status(exportMsg, pt("profile.code.copied")); else codeOut.select(); });

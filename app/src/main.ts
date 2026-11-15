@@ -11,11 +11,13 @@ import { icon, setIconText } from "./design/icons.ts";
 import { startPreview } from "./preview.ts";
 import { getLang, initLang, localizeDom, pct, t, tn } from "./i18n/index.ts";
 import { mountLangSwitch } from "./i18n/ui.ts";
+import { mountProfileButton } from "./profile/button.ts";
 import { markPendingDay, pickQueue, registerSW, startFlushing, warmOffline } from "./offline/index.ts";
 
 initLang(); // ?lang=, saved choice, browser language; sets <html lang>
 localizeDom();
 mountLangSwitch();
+mountProfileButton(); // nickname + player code (no account): app/src/profile
 registerSW(); // offline play (production builds; see app/src/offline/register.ts)
 prefetch3DOnIntent();
 

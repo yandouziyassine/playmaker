@@ -22,12 +22,12 @@ const en = {
   "profile.import.ph": "PM1.…",
   "profile.import.go": "Import",
   "profile.import.fromLink": "A player code came with this link. Import it into this device?",
-  "profile.import.ok": "Imported: {days} days and {moments} moments merged.",
+  "profile.import.ok": "Imported and merged. Days: {days} · moments: {moments}.",
   "profile.import.format": "That doesn't look like a player code. Check you copied all of it.",
   "profile.import.version": "This code comes from a newer version of Playmaker. Reload the page and try again.",
   "profile.import.corrupt": "The code is damaged (a character changed or is missing). Copy it again.",
   "profile.close": "Close",
-  "profile.stats": "{days} days played · {moments} moments on this device",
+  "profile.stats": "On this device · days played: {days} · moments: {moments}",
 } as const;
 
 export type ProfileKey = keyof typeof en;
@@ -52,12 +52,12 @@ const fr: Record<ProfileKey, string> = {
   "profile.import.ph": "PM1.…",
   "profile.import.go": "Importer",
   "profile.import.fromLink": "Ce lien contient un code joueur. L'importer sur cet appareil ?",
-  "profile.import.ok": "Importé : {days} jours et {moments} moments fusionnés.",
+  "profile.import.ok": "Importé et fusionné. Jours : {days} · moments : {moments}.",
   "profile.import.format": "Ce n'est pas un code joueur. Vérifiez que vous l'avez copié en entier.",
   "profile.import.version": "Ce code vient d'une version plus récente de Playmaker. Rechargez la page et réessayez.",
   "profile.import.corrupt": "Le code est abîmé (un caractère a changé ou manque). Copiez-le à nouveau.",
   "profile.close": "Fermer",
-  "profile.stats": "{days} jours joués · {moments} moments sur cet appareil",
+  "profile.stats": "Sur cet appareil · jours joués : {days} · moments : {moments}",
 };
 
 export const PROFILE_DICTS: Record<Lang, Record<ProfileKey, string>> = { en, fr };

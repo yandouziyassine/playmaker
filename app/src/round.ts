@@ -416,7 +416,7 @@ function renderReveal(ui: RoundUI, mo: Moment, res: PickResult, pick: number, re
     bar(t("crowd.yours"), res.crowd[pick] ?? 0, "mine");
     if (res.ai_pick !== pick) bar(t("crowd.ai"), res.crowd[res.ai_pick] ?? 0, "ai");
     r.append(crowd);
-  } else {
+  } else if (import.meta.env.VITE_DEMO !== "1") { // the static demo has no server, so no crowd: say nothing there
     r.append(el("p", "fine crowdnone", t("crowd.none")));
   }
 }
